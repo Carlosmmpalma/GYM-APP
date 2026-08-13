@@ -19,13 +19,25 @@ class FirebaseMemberRepository implements MemberRepository {
   final FirebaseFirestore _firestore;
   final String _tenantId;
 
+  CollectionReference<Map<String, dynamic>> get _members => _firestore
+      .collection('tenants')
+      .doc(_tenantId)
+      .collection('members');
+
   @override
   Stream<List<MemberSummary>> watchMembers() {
-    return _firestore
-        .collection('tenants')
-        .doc(_tenantId)
-        .collection('members')
+    return _members
         .snapshots()
         .map((snapshot) => snapshot.docs.map(_fromDoc).toList());
+  }
+
+  @override
+  Future<void> setMemberActive({
+    required String memberId,
+    required bool active,
+  }) async {
+    await _members.doc(memberId).update({
+      'status': active ? 'active' : 'inactive',
+    });
   }
 }

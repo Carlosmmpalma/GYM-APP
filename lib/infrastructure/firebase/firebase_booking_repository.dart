@@ -1,12 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../domain/entities/booking.dart';
+import '../../domain/entities/subscription.dart';
 import '../../repositories/booking_repository.dart';
-
-/// Resultado interno do callback de `runTransaction` em [createBooking]
-/// — ver nota de arquitetura no método sobre porque não lançamos as
-/// exceções de domínio diretamente lá dentro.
-enum _BookingResult { booked, alreadyBooked, capacityExceeded, notBookable }
 
 Booking _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
   final data = doc.data()!;
@@ -27,148 +24,98 @@ Booking _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     isExtra: data['isExtra'] as bool? ?? false,
     createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     cancelledAt: (data['cancelledAt'] as Timestamp?)?.toDate(),
+    // `null` em bookings de seed anteriores à Fase 4 — ver nota em
+    // `booking.dart`.
+    serviceId: data['serviceId'] as String?,
+    period: data['period'] as String?,
   );
 }
 
-/// Nota de arquitetura (Fase 2): booking/cancelamento usam
-/// `runTransaction` client-side, não uma Cloud Function.
+/// Nota de arquitetura (Fase 4, substitui a nota da Fase 2): createBooking/
+/// cancelBooking passaram de transação Firestore client-side para Cloud
+/// Functions (Admin SDK) — mesmo motivo que já tinha levado
+/// `createSubscription` a ser Cloud Function na Fase 3, agora aplicado
+/// aqui também: a partir desta fase, a transação de booking precisa de
+/// validar o limite semanal de utilização
+/// (`usage/{memberId}_{serviceId}_{period}`), o que Firestore Data
+/// Model v1 §52 pede explicitamente que não fique só a cargo do
+/// cliente/Security Rules. A lógica completa (elegibilidade, limite
+/// semanal, `isExtra`, concorrência na última vaga) vive agora em
+/// `firebase/functions/src/createBooking.ts`/`cancelBooking.ts` — este
+/// ficheiro só chama essas funções e traduz os erros de volta para as
+/// exceções de domínio, mesmo padrão já usado em
+/// `firebase_subscription_repository.dart` para `createSubscription`.
 ///
-/// Platform Foundation §17 recomenda explicitamente Firestore
-/// Transactions para a concorrência da última vaga — é isso que está
-/// implementado aqui. As Security Rules (`firestore.rules`) garantem,
-/// documento a documento, que:
-///   - `activeBookingCount` nunca é escrito para além de `capacity`,
-///     nem alterado por outro campo que não seja +1/-1 por operação;
-///   - só o próprio membro cria/cancela a sua marcação (docId == uid).
-///
-/// Limitação conhecida (documentada, não escondida): as Rules validam
-/// cada escrita da transação isoladamente — não há forma nativa do
-/// Firestore de exigir "o contador só sobe se o documento de booking
-/// for criado a par". Um cliente malicioso podia, em teoria, enviar só
-/// o incremento do contador sem criar o booking. Isto nunca permite
-/// ultrapassar a capacidade (a Rule limita sempre `<= capacity`), e o
-/// contador é um read model reconciliável a partir dos bookings reais
-/// (Firestore Data Model v1 §28/32) — não é a fonte de verdade. Uma
-/// versão futura pode substituir isto por uma Cloud Function
-/// (Admin SDK, imune a Security Rules) se for preciso fechar esta
-/// lacuna; para o MVP da Fase 2, o guia aceita explicitamente a
-/// transação client-side.
+/// Repara que, ao contrário de todos os outros repositories Firebase
+/// deste projeto, este NÃO recebe `tenantId` — apanhado pelo
+/// `flutter analyze` (`unused_field`) ao remover a última leitura
+/// direta do Firestore sob `tenants/{tenantId}/...`. Nem `createBooking`/
+/// `cancelBooking` precisam (o tenant vem dos custom claims do
+/// chamador, do lado do servidor — ver `requireAuthenticated` em
+/// `callerContext.ts`), nem `watchMyBookings` (a query já era só por
+/// `memberId`, mesma nota de isolamento usada em `recalculateUsage.ts`:
+/// um uid só pertence a um tenant).
 class FirebaseBookingRepository implements BookingRepository {
-  FirebaseBookingRepository(this._firestore, this._tenantId);
+  FirebaseBookingRepository(this._firestore, this._functions);
 
   final FirebaseFirestore _firestore;
-  final String _tenantId;
-
-  DocumentReference<Map<String, dynamic>> _occurrenceDoc(String occurrenceId) =>
-      _firestore
-          .collection('tenants')
-          .doc(_tenantId)
-          .collection('sessionOccurrences')
-          .doc(occurrenceId);
+  final FirebaseFunctions _functions;
 
   @override
   Future<void> createBooking({
     required String occurrenceId,
     required String memberId,
   }) async {
-    final occurrenceRef = _occurrenceDoc(occurrenceId);
-    final bookingRef = occurrenceRef.collection('bookings').doc(memberId);
-
-    // Nota (bug real, apanhado a testar em Chrome): o callback de
-    // runTransaction() atravessa a fronteira do interop com JS no
-    // Flutter Web (a Promise da SDK JS do Firestore, convertida de
-    // volta para Future). Uma exceção Dart própria lançada AQUI DENTRO
-    // (ex.: `throw const BookingCapacityExceededException()`) não
-    // sobrevive a essa travessia com o tipo intacto — chega ao chamador
-    // como um erro genérico de conversão ("Dart exception thrown from
-    // converted Future..."), e nenhum `on XException catch` no ecrã
-    // apanhava, caindo sempre na mensagem de erro genérica. Por isso o
-    // callback só DEVOLVE um resultado; a exceção certa é lançada cá
-    // fora, já em Dart puro, depois do `await`.
-    final result = await _firestore.runTransaction<_BookingResult>((tx) async {
-      // Todas as leituras da transação têm de vir antes de qualquer
-      // escrita (regra do Firestore, não só boa prática).
-      final occurrenceSnap = await tx.get(occurrenceRef);
-      final bookingSnap = await tx.get(bookingRef);
-
-      if (!occurrenceSnap.exists) {
-        return _BookingResult.notBookable;
-      }
-      final data = occurrenceSnap.data()!;
-      final status = data['status'] as String? ?? 'scheduled';
-      final capacity = (data['capacity'] as num).toInt();
-      final activeCount = (data['activeBookingCount'] as num? ?? 0).toInt();
-
-      if (status != 'scheduled') {
-        return _BookingResult.notBookable;
-      }
-      if (bookingSnap.exists && bookingSnap.data()?['status'] == 'booked') {
-        return _BookingResult.alreadyBooked;
-      }
-      // Esta é a verificação que decide a corrida pela última vaga: o
-      // Firestore garante que, se duas transações lerem o mesmo
-      // activeCount e ambas tentarem escrever, só a primeira a
-      // COMMITAR vence — a segunda falha e é automaticamente repetida
-      // pelo SDK, lendo o valor já atualizado, e cai neste `if`.
-      if (activeCount >= capacity) {
-        return _BookingResult.capacityExceeded;
-      }
-
-      tx.set(bookingRef, {
+    try {
+      await _functions.httpsCallable('createBooking').call<void>({
+        'occurrenceId': occurrenceId,
         'memberId': memberId,
-        'status': 'booked',
-        'source': 'self',
-        'isExtra': false,
-        'createdAt': FieldValue.serverTimestamp(),
       });
-      tx.update(occurrenceRef, {'activeBookingCount': activeCount + 1});
-      return _BookingResult.booked;
-    });
-
-    switch (result) {
-      case _BookingResult.booked:
-        return;
-      case _BookingResult.alreadyBooked:
-        throw const AlreadyBookedException();
-      case _BookingResult.capacityExceeded:
-        throw const BookingCapacityExceededException();
-      case _BookingResult.notBookable:
+    } on FirebaseFunctionsException catch (e) {
+      final reason = e.details is Map ? (e.details as Map)['reason'] : null;
+      switch (reason) {
+        case 'capacity':
+          throw const BookingCapacityExceededException();
+        case 'already-booked':
+          throw const AlreadyBookedException();
+        case 'usage-limit':
+          final details = e.details as Map;
+          throw UsageLimitReachedException(
+            used: (details['used'] as num).toInt(),
+            limit: (details['limit'] as num).toInt(),
+          );
+      }
+      if (e.code == 'not-found') {
         throw const SessionNotBookableException();
+      }
+      if (e.code == 'permission-denied') {
+        throw const NotEligibleForServiceException();
+      }
+      rethrow;
     }
   }
 
   @override
-  Future<void> cancelBooking({
+  Future<bool> cancelBooking({
     required String occurrenceId,
     required String memberId,
   }) async {
-    final occurrenceRef = _occurrenceDoc(occurrenceId);
-    final bookingRef = occurrenceRef.collection('bookings').doc(memberId);
-
-    // Ver nota em createBooking sobre porque o callback só devolve um
-    // resultado, em vez de lançar a exceção lá dentro.
-    final found = await _firestore.runTransaction<bool>((tx) async {
-      final bookingSnap = await tx.get(bookingRef);
-      final occurrenceSnap = await tx.get(occurrenceRef);
-
-      if (!bookingSnap.exists || bookingSnap.data()?['status'] != 'booked') {
-        return false;
+    try {
+      final result = await _functions.httpsCallable('cancelBooking').call<Object?>({
+        'occurrenceId': occurrenceId,
+        'memberId': memberId,
+      });
+      // Defensivo (mesmo padrão de firebase_user_provisioning_repository.dart):
+      // `result.data` pode chegar como `Map<Object?, Object?>` no Flutter
+      // Web por causa do interop com JS, daí não fazer um `as Map<String,
+      // dynamic>` direto.
+      final data = Map<String, dynamic>.from(result.data as Map);
+      return data['usageRefunded'] as bool? ?? false;
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'not-found') {
+        throw const BookingNotFoundException();
       }
-      final activeCount =
-          (occurrenceSnap.data()?['activeBookingCount'] as num? ?? 0).toInt();
-
-      tx.update(bookingRef, {
-        'status': 'cancelled',
-        'cancelledAt': FieldValue.serverTimestamp(),
-      });
-      tx.update(occurrenceRef, {
-        'activeBookingCount': activeCount > 0 ? activeCount - 1 : 0,
-      });
-      return true;
-    });
-
-    if (!found) {
-      throw const BookingNotFoundException();
+      rethrow;
     }
   }
 

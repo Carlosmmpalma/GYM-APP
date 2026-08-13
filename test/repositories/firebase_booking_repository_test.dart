@@ -1,174 +1,29 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:gym_saas/domain/entities/booking.dart';
-import 'package:gym_saas/infrastructure/firebase/firebase_booking_repository.dart';
-
-const _tenantId = 'tenant_test';
-const _occurrenceId = 'occurrence_1';
-
-Future<FakeFirebaseFirestore> _firestoreWithOccurrence({required int capacity}) async {
-  final firestore = FakeFirebaseFirestore();
-  await firestore
-      .collection('tenants')
-      .doc(_tenantId)
-      .collection('sessionOccurrences')
-      .doc(_occurrenceId)
-      .set({
-    'serviceId': 'service_1',
-    'startAt': Timestamp.fromDate(DateTime(2026, 1, 1, 10)),
-    'endAt': Timestamp.fromDate(DateTime(2026, 1, 1, 11)),
-    'capacity': capacity,
-    'status': 'scheduled',
-    'activeBookingCount': 0,
-  });
-  return firestore;
-}
-
-void main() {
-  group('FirebaseBookingRepository.createBooking', () {
-    test('cria a marcação e incrementa activeBookingCount quando há vaga',
-        () async {
-      final firestore = await _firestoreWithOccurrence(capacity: 2);
-      final repository = FirebaseBookingRepository(firestore, _tenantId);
-
-      await repository.createBooking(
-        occurrenceId: _occurrenceId,
-        memberId: 'member_1',
-      );
-
-      final occurrenceDoc = await firestore
-          .collection('tenants')
-          .doc(_tenantId)
-          .collection('sessionOccurrences')
-          .doc(_occurrenceId)
-          .get();
-      expect(occurrenceDoc.data()!['activeBookingCount'], 1);
-
-      final bookingDoc = await firestore
-          .collection('tenants')
-          .doc(_tenantId)
-          .collection('sessionOccurrences')
-          .doc(_occurrenceId)
-          .collection('bookings')
-          .doc('member_1')
-          .get();
-      expect(bookingDoc.exists, isTrue);
-      expect(bookingDoc.data()!['status'], 'booked');
-    });
-
-    test('lança BookingCapacityExceededException quando a ocorrência está cheia',
-        () async {
-      final firestore = await _firestoreWithOccurrence(capacity: 1);
-      final repository = FirebaseBookingRepository(firestore, _tenantId);
-
-      await repository.createBooking(
-        occurrenceId: _occurrenceId,
-        memberId: 'member_1',
-      );
-
-      expect(
-        () => repository.createBooking(
-          occurrenceId: _occurrenceId,
-          memberId: 'member_2',
-        ),
-        throwsA(isA<BookingCapacityExceededException>()),
-      );
-    });
-
-    test('lança AlreadyBookedException se o mesmo membro tentar marcar duas vezes',
-        () async {
-      final firestore = await _firestoreWithOccurrence(capacity: 5);
-      final repository = FirebaseBookingRepository(firestore, _tenantId);
-
-      await repository.createBooking(
-        occurrenceId: _occurrenceId,
-        memberId: 'member_1',
-      );
-
-      expect(
-        () => repository.createBooking(
-          occurrenceId: _occurrenceId,
-          memberId: 'member_1',
-        ),
-        throwsA(isA<AlreadyBookedException>()),
-      );
-    });
-  });
-
-  group('FirebaseBookingRepository.cancelBooking', () {
-    test('cancela e decrementa activeBookingCount', () async {
-      final firestore = await _firestoreWithOccurrence(capacity: 3);
-      final repository = FirebaseBookingRepository(firestore, _tenantId);
-
-      await repository.createBooking(
-        occurrenceId: _occurrenceId,
-        memberId: 'member_1',
-      );
-      await repository.cancelBooking(
-        occurrenceId: _occurrenceId,
-        memberId: 'member_1',
-      );
-
-      final occurrenceDoc = await firestore
-          .collection('tenants')
-          .doc(_tenantId)
-          .collection('sessionOccurrences')
-          .doc(_occurrenceId)
-          .get();
-      expect(occurrenceDoc.data()!['activeBookingCount'], 0);
-
-      final bookingDoc = await firestore
-          .collection('tenants')
-          .doc(_tenantId)
-          .collection('sessionOccurrences')
-          .doc(_occurrenceId)
-          .collection('bookings')
-          .doc('member_1')
-          .get();
-      expect(bookingDoc.data()!['status'], 'cancelled');
-    });
-
-    test('lança BookingNotFoundException se não houver marcação ativa', () async {
-      final firestore = await _firestoreWithOccurrence(capacity: 3);
-      final repository = FirebaseBookingRepository(firestore, _tenantId);
-
-      expect(
-        () => repository.cancelBooking(
-          occurrenceId: _occurrenceId,
-          memberId: 'member_sem_marcacao',
-        ),
-        throwsA(isA<BookingNotFoundException>()),
-      );
-    });
-
-    test('depois de cancelar, o mesmo membro consegue voltar a marcar', () async {
-      final firestore = await _firestoreWithOccurrence(capacity: 1);
-      final repository = FirebaseBookingRepository(firestore, _tenantId);
-
-      await repository.createBooking(
-        occurrenceId: _occurrenceId,
-        memberId: 'member_1',
-      );
-      await repository.cancelBooking(
-        occurrenceId: _occurrenceId,
-        memberId: 'member_1',
-      );
-
-      await repository.createBooking(
-        occurrenceId: _occurrenceId,
-        memberId: 'member_1',
-      );
-
-      final bookingDoc = await firestore
-          .collection('tenants')
-          .doc(_tenantId)
-          .collection('sessionOccurrences')
-          .doc(_occurrenceId)
-          .collection('bookings')
-          .doc('member_1')
-          .get();
-      expect(bookingDoc.data()!['status'], 'booked');
-    });
-  });
-}
+// Fase 2 — testava `FirebaseBookingRepository.createBooking`/
+// `cancelBooking` como transações Firestore client-side, diretamente
+// contra `FakeFirebaseFirestore`.
+//
+// Fase 4: essa lógica (elegibilidade, limite semanal, concorrência na
+// última vaga, isExtra) migrou para Cloud Functions
+// (`firebase/functions/src/createBooking.ts`/`cancelBooking.ts`, Admin
+// SDK — ver nota de arquitetura em `firebase_booking_repository.dart`).
+// `FirebaseBookingRepository` passou a ser um wrapper fino sobre
+// `cloud_functions` (`httpsCallable(...).call(...)`); testá-lo aqui
+// exigiria mockar `HttpsCallable`/`HttpsCallableResult` com mocktail
+// sem forma de confirmar a forma exata dessa API sem correr Flutter a
+// sério — o mesmo risco já documentado no README para
+// `AssignSubscriptionScreen`/`ManagerScreen` (Fase 3).
+//
+// Os testes de comportamento do ECRÃ (reage bem a sucesso/erro) continuam
+// cobertos em `test/presentation/book_training_screen_test.dart` e
+// `test/presentation/my_bookings_screen_test.dart`, através de um fake
+// de `BookingRepository` que simula, diretamente no
+// `FakeFirebaseFirestore` do teste, o que a Cloud Function faria — não
+// através deste ficheiro.
+//
+// A lógica de NEGÓCIO da Cloud Function em si (limite semanal,
+// concorrência, devolução de usage na janela de antecedência) fica
+// como lacuna real, sinalizada no README ("Fase 4 — Ainda em aberto"):
+// precisaria de testes TypeScript contra o Firebase Functions Emulator
+// (não montado neste projeto — só o Firestore Emulator tem testes de
+// Rules hoje, em `firebase/tests`).
+void main() {}

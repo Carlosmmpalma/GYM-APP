@@ -56,8 +56,13 @@ service cloud.firestore {
       allow read, write: if belongsToTenant(tenantId);
     }
 
+    // Fase 4: escrita restrita a Manager (era ampla desde a Fase 1,
+    // quando ainda não guardava nada sensível). `config/bookingPolicy`
+    // (`minCancellationNoticeHours`) é uma decisão de negócio do
+    // Gestor, não algo que qualquer membro deva poder reescrever.
     match /tenants/{tenantId}/config/{configId} {
-      allow read, write: if belongsToTenant(tenantId);
+      allow read: if belongsToTenant(tenantId);
+      allow write: if isManager(tenantId);
     }
 
     // --- Services (Fase 2, escrita liberada na Fase 3) ---
@@ -72,73 +77,49 @@ service cloud.firestore {
       allow write: if isManager(tenantId);
     }
 
-    // --- Sessions / Bookings (Fase 2) ---
+    // --- Sessions / Bookings (Fase 2; escrita fechada ao cliente na Fase 4) ---
     //
-    // sessionOccurrences: leitura ampla (para mostrar vagas disponíveis
-    // a qualquer membro do tenant); a única escrita permitida a um
-    // cliente é a atualização de `activeBookingCount`, e só nas
-    // condições exatas de um booking (+1) ou cancelamento (-1) válido.
-    // Criar/cancelar a ocorrência em si (capacidade, horário, status)
-    // fica para quando existir o ecrã de gestão de aulas (Fase 5+).
+    // Até à Fase 3, a única escrita permitida a um cliente era o
+    // próprio membro a atualizar `activeBookingCount` (+1/-1) dentro
+    // das condições exatas de um booking/cancelamento — a transação
+    // client-side original (`firebase_booking_repository.dart`, Fase
+    // 2). A partir da Fase 4, `createBooking`/`cancelBooking` passaram
+    // a Cloud Functions (Admin SDK — ver nota de arquitetura em
+    // `createBooking.ts`): a validação do limite semanal de utilização
+    // não dá para exprimir com a mesma robustez em Security Rules (teria
+    // de cruzar o documento de `usage`, a `UsageRule` do Plan do
+    // membro, etc.), o mesmo motivo que já tinha levado
+    // `createSubscription` a ser Cloud Function na Fase 3.
+    //
+    // Consequência: leitura continua ampla (mostrar vagas/marcações a
+    // qualquer membro do tenant), mas ESCRITA fica `false` para o
+    // cliente em ambos — só a Cloud Function (Admin SDK, ignora estas
+    // regras) escreve. Isto fecha, de vez, a lacuna que já estava
+    // documentada (e aceite) no código antigo: "um cliente malicioso
+    // podia, em teoria, enviar só o incremento do contador sem criar o
+    // booking" — agora não consegue, porque não consegue escrever
+    // nenhum dos dois diretamente.
     match /tenants/{tenantId}/sessionOccurrences/{occurrenceId} {
       allow read: if belongsToTenant(tenantId);
-      allow create, delete: if false;
-      allow update: if belongsToTenant(tenantId) && isValidBookingCounterChange();
+      allow write: if false;
 
-      function isValidBookingCounterChange() {
-        let onlyCounterChanged = request.resource.data.diff(resource.data)
-            .affectedKeys().hasOnly(['activeBookingCount']);
-        let newCount = request.resource.data.activeBookingCount;
-        let oldCount = resource.data.activeBookingCount;
-        let capacity = resource.data.capacity;
-        let isBookingIncrement = newCount == oldCount + 1 && newCount <= capacity;
-        let isCancellationDecrement = newCount == oldCount - 1 && newCount >= 0;
-        return onlyCounterChanged && (isBookingIncrement || isCancellationDecrement);
-      }
-
-      // bookings: só o próprio membro cria/cancela a própria marcação.
-      // O id do documento é sempre o uid do membro (ver
-      // firebase_booking_repository.dart) — por isso "és dono deste
-      // documento" e "o id do documento é o teu uid" são a mesma
-      // verificação.
       match /bookings/{bookingId} {
         allow read: if belongsToTenant(tenantId);
-        allow delete: if false; // soft-cancel só (histórico preservado)
-
-        // Usada tanto no "create" (primeira marcação) como no "update"
-        // que reaproveita o mesmo documento para voltar a marcar depois
-        // de uma cancelação — ver nota em "allow update" abaixo.
-        function isValidNewBooking() {
-          return bookingId == request.auth.uid
-              && request.resource.data.memberId == request.auth.uid
-              && request.resource.data.status == 'booked';
-        }
-
-        allow create: if belongsToTenant(tenantId) && isValidNewBooking();
-
-        // Bug apanhado a testar em Chrome: como o id do documento é
-        // sempre == uid, depois de UMA cancelação o documento já
-        // existe (soft-cancel, nunca é apagado) — voltar a marcar
-        // chega ao Firestore como "update", não "create", mesmo sendo
-        // um `tx.set()` completo do lado do repository. A primeira
-        // versão desta regra só permitia a transição booked→cancelled,
-        // nunca o inverso, por isso re-marcar ficava permanentemente
-        // bloqueado depois do primeiro cancelamento. Agora o "update"
-        // cobre as duas transições válidas.
-        allow update: if belongsToTenant(tenantId)
-            && bookingId == request.auth.uid
-            && (
-              // Cancelar uma marcação ativa.
-              (resource.data.status == 'booked'
-                  && resource.data.memberId == request.auth.uid
-                  && request.resource.data.diff(resource.data).affectedKeys()
-                      .hasOnly(['status', 'cancelledAt'])
-                  && request.resource.data.status == 'cancelled')
-              ||
-              // Voltar a marcar depois de cancelada.
-              (resource.data.status == 'cancelled' && isValidNewBooking())
-            );
+        allow write: if false;
       }
+    }
+
+    // --- Usage tracking (Fase 4) ---
+    //
+    // `usage/{memberId}_{serviceId}_{period}` — read model derivado
+    // (Firestore Data Model v1 §32/D13), escrito só por
+    // `createBooking`/`cancelBooking`/`recalculateUsage` (Admin SDK).
+    // Leitura ampla dentro do tenant: o próprio membro lê para mostrar
+    // a barra "X/Y sessões esta semana" (Fase 4 story 7), e o Gestor
+    // também precisa de a poder consultar.
+    match /tenants/{tenantId}/usage/{usageId} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if false;
     }
 
     // --- Plans / PlanServices (Fase 3, UC26) ---
@@ -214,8 +195,9 @@ service cloud.firestore {
       // autenticado. É equivalente em termos de segurança ao
       // isolamento por tenant (um booking só é criado com
       // memberId == uid de quem o cria, dentro do próprio tenant desse
-      // uid — ver "allow create" abaixo — por isso nunca há forma de um
-      // uid corresponder a um booking de outro tenant) e mais simples.
+      // uid — agora garantido por `createBooking.ts`, Admin SDK, não
+      // por uma regra `allow create` aqui — por isso nunca há forma de
+      // um uid corresponder a um booking de outro tenant) e mais simples.
       allow read: if isSignedIn() && resource.data.memberId == request.auth.uid;
     }
 

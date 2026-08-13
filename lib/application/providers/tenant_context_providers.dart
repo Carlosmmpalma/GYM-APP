@@ -68,3 +68,11 @@ final completeTemporaryPasswordChangeUseCaseProvider =
     ref.watch(accountRepositoryProvider),
   );
 });
+
+/// Fase 4 — "antecedência mínima para cancelar", único valor por
+/// tenant. `autoDispose` porque só interessa enquanto
+/// `TenantSettingsScreen` estiver aberto.
+final minCancellationNoticeHoursProvider = FutureProvider.autoDispose<int>((ref) {
+  final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
+  return ref.watch(tenantRepositoryProvider).getMinCancellationNoticeHours(tenantId);
+});

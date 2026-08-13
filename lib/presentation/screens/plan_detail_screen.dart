@@ -30,9 +30,18 @@ class PlanDetailScreen extends ConsumerWidget {
     final activeServicesAsync = ref.watch(servicesProvider).whenData(
           (services) => services.where((s) => s.active).toList(),
         );
+    // O `plan` recebido no construtor é uma cópia imutável de quando
+    // `ManagePlansScreen` construiu este ecrã — para o toggle de
+    // ativo/inativo refletir o valor real, resolve pelo `plansProvider`
+    // (StreamProvider ao vivo) em vez de confiar só no valor inicial.
+    final currentPlan = ref.watch(plansProvider).valueOrNull?.firstWhere(
+              (p) => p.id == plan.id,
+              orElse: () => plan,
+            ) ??
+        plan;
 
     return Scaffold(
-      appBar: AppBar(title: Text(plan.name)),
+      appBar: AppBar(title: Text(currentPlan.name)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -43,15 +52,46 @@ class PlanDetailScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${plan.currentPrice.toStringAsFixed(2)} ${plan.currency}',
+                    '${currentPlan.currentPrice.toStringAsFixed(2)} ${currentPlan.currency}',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  if (plan.description.isNotEmpty) ...[
+                  if (currentPlan.description.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    Text(plan.description),
+                    Text(currentPlan.description),
                   ],
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Desativar, nunca eliminar — ver nota em `Plan.copyWith()`.
+          // Um Plano inativo continua a aparecer aqui e nas
+          // subscriptions já criadas; só deixa de poder ser escolhido
+          // em `AssignSubscriptionScreen` (que lê `plansProvider`, mas
+          // não filtra por `active` — ver nota "Ainda em aberto" no
+          // README: fica só visualmente marcado "· inativo" por agora,
+          // não bloqueado no picker).
+          Card(
+            child: SwitchListTile(
+              title: const Text('Plano ativo'),
+              subtitle: Text(
+                currentPlan.active
+                    ? 'Visível para atribuir a membros.'
+                    : 'Inativo — não deveria ser atribuído a novos membros.',
+              ),
+              value: currentPlan.active,
+              onChanged: (value) async {
+                try {
+                  await ref
+                      .read(planRepositoryProvider)
+                      .updatePlan(currentPlan.copyWith(active: value));
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Não foi possível atualizar o plano: $e')),
+                  );
+                }
+              },
             ),
           ),
           const SizedBox(height: 24),
@@ -225,17 +265,25 @@ class _UsageRuleDialogState extends State<_UsageRuleDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          RadioListTile<bool>(
-            title: const Text('Ilimitado'),
-            value: true,
+          // `groupValue`/`onChanged` no RadioListTile ficaram
+          // deprecated no Flutter 3.32 a favor de um `RadioGroup`
+          // ancestral partilhado — apanhado pelo `flutter analyze`
+          // (info, mas o CI corre com `--fatal-infos`).
+          RadioGroup<bool>(
             groupValue: _unlimited,
             onChanged: (v) => setState(() => _unlimited = v!),
-          ),
-          RadioListTile<bool>(
-            title: const Text('Limitado'),
-            value: false,
-            groupValue: _unlimited,
-            onChanged: (v) => setState(() => _unlimited = v!),
+            child: const Column(
+              children: [
+                RadioListTile<bool>(
+                  title: Text('Ilimitado'),
+                  value: true,
+                ),
+                RadioListTile<bool>(
+                  title: Text('Limitado'),
+                  value: false,
+                ),
+              ],
+            ),
           ),
           if (!_unlimited) ...[
             TextField(

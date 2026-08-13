@@ -22,6 +22,8 @@ class Booking extends Equatable {
     required this.isExtra,
     required this.createdAt,
     this.cancelledAt,
+    this.serviceId,
+    this.period,
   });
 
   final String id;
@@ -33,6 +35,19 @@ class Booking extends Equatable {
   final DateTime createdAt;
   final DateTime? cancelledAt;
 
+  /// Fase 4 — denormalizado de `SessionOccurrence.serviceId` no momento
+  /// da marcação, para `recalculateUsage` (Cloud Function) não precisar
+  /// de um join extra por booking. `null` só em bookings anteriores à
+  /// Fase 4 (dados de seed antigos no emulador) — nunca em bookings
+  /// novos.
+  final String? serviceId;
+
+  /// Fase 4 — chave ISO-8601 week (`YYYY-Www`) da semana do
+  /// `SessionOccurrence.startAt` no momento da marcação (não da data em
+  /// que foi feita a marcação — o limite é sobre a semana da SESSÃO).
+  /// `null` pela mesma razão que [serviceId].
+  final String? period;
+
   @override
   List<Object?> get props => [
         id,
@@ -43,6 +58,8 @@ class Booking extends Equatable {
         isExtra,
         createdAt,
         cancelledAt,
+        serviceId,
+        period,
       ];
 }
 
@@ -76,4 +93,21 @@ class SessionNotBookableException implements Exception {
 
   @override
   String toString() => 'Esta sessão já não está disponível.';
+}
+
+/// Fase 4 — "limite semanal (Standard 1x / Plus 2x / Premium 3x)
+/// validado corretamente". Lançada pela Cloud Function `createBooking`
+/// quando o membro já esgotou o [limit] de utilizações do serviço no
+/// período atual; distinta de [BookingCapacityExceededException]
+/// (que é sobre a sessão estar cheia, não sobre o limite do próprio
+/// membro).
+class UsageLimitReachedException implements Exception {
+  const UsageLimitReachedException({required this.used, required this.limit});
+
+  final int used;
+  final int limit;
+
+  @override
+  String toString() =>
+      'Já atingiste o limite semanal deste serviço ($used/$limit).';
 }

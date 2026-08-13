@@ -6,6 +6,7 @@ import 'package:gym_saas/repositories/booking_repository.dart';
 class _FakeBookingRepository implements BookingRepository {
   String? lastOccurrenceId;
   String? lastMemberId;
+  bool usageRefundedToReturn = true;
 
   @override
   Future<void> createBooking({
@@ -14,12 +15,13 @@ class _FakeBookingRepository implements BookingRepository {
   }) async {}
 
   @override
-  Future<void> cancelBooking({
+  Future<bool> cancelBooking({
     required String occurrenceId,
     required String memberId,
   }) async {
     lastOccurrenceId = occurrenceId;
     lastMemberId = memberId;
+    return usageRefundedToReturn;
   }
 
   @override
@@ -35,5 +37,18 @@ void main() {
 
     expect(repo.lastOccurrenceId, 'occ_1');
     expect(repo.lastMemberId, 'member_1');
+  });
+
+  // Fase 4 — cancelBooking passou a devolver se a utilização foi
+  // devolvida (ver nota em booking_repository.dart); confirma que o
+  // use case propaga esse valor tal e qual, sem o esconder.
+  test('propaga o valor de usageRefunded devolvido pelo repository', () async {
+    final repo = _FakeBookingRepository()..usageRefundedToReturn = false;
+    final useCase = CancelBookingUseCase(repo);
+
+    final usageRefunded =
+        await useCase(occurrenceId: 'occ_1', memberId: 'member_1');
+
+    expect(usageRefunded, isFalse);
   });
 }

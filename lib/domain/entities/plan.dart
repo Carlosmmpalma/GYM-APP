@@ -22,6 +22,19 @@ class Plan extends Equatable {
   final String currency;
   final bool active;
 
+  /// Usado pelo toggle "ativo/inativo" em `PlanDetailScreen` — nunca
+  /// eliminamos um Plan (teria de partir subscriptions/histórico que
+  /// já apontam para ele, mesmo padrão de Booking/Subscription no
+  /// resto do domínio), só desativamos.
+  Plan copyWith({bool? active}) => Plan(
+        id: id,
+        name: name,
+        description: description,
+        currentPrice: currentPrice,
+        currency: currency,
+        active: active ?? this.active,
+      );
+
   @override
   List<Object?> get props => [id, name, description, currentPrice, currency, active];
 }

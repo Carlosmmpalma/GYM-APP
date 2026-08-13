@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/plan_providers.dart';
-import '../../domain/entities/plan.dart';
 import 'plan_detail_screen.dart';
 
 /// UC26 — Ecrã Gestor: criar/editar Plans e Services (Fase 3).

@@ -1,0 +1,683 @@
+[debug] [2026-08-13T19:19:44.800Z] ----------------------------------------------------------------------
+[debug] [2026-08-13T19:19:44.802Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\carlo\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js emulators:start --project=demo-gym-saas-dev
+[debug] [2026-08-13T19:19:44.802Z] CLI Version:   15.26.0
+[debug] [2026-08-13T19:19:44.802Z] Platform:      win32
+[debug] [2026-08-13T19:19:44.803Z] Node Version:  v22.15.0
+[debug] [2026-08-13T19:19:44.803Z] Detected Agent: unknown
+[debug] [2026-08-13T19:19:44.803Z] Time:          Thu Aug 13 2026 20:19:44 GMT+0100 (Hora de verão da Europa Ocidental)
+[debug] [2026-08-13T19:19:44.803Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-08-13T19:19:45.883Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-08-13T19:19:45.883Z] > authorizing via signed-in user (carlospalma.mm@gmail.com)
+[debug] [2026-08-13T19:19:45.934Z] openjdk version "21.0.12" 2026-07-21 LTS
+
+[debug] [2026-08-13T19:19:45.934Z] OpenJDK Runtime Environment Temurin-21.0.12+8 (build 21.0.12+8-LTS)
+OpenJDK 64-Bit Server VM Temurin-21.0.12+8 (build 21.0.12+8-LTS, mixed mode, sharing)
+
+[debug] [2026-08-13T19:19:45.941Z] Parsed Java major version: 21
+[info] i  emulators: Starting emulators: auth, functions, firestore, storage, extensions {"metadata":{"emulator":{"name":"hub"},"message":"Starting emulators: auth, functions, firestore, storage, extensions"}}
+[info] i  emulators: Detected demo project ID "demo-gym-saas-dev", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail. {"metadata":{"emulator":{"name":"hub"},"message":"Detected demo project ID \"demo-gym-saas-dev\", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail."}}
+[debug] [2026-08-13T19:19:45.960Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-08-13T19:19:45.960Z] [auth] Authentication Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-08-13T19:19:45.960Z] [firestore] Firestore Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-08-13T19:19:45.961Z] [firestore.websocket] websocket server for firestore only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-08-13T19:19:45.961Z] [storage] Storage Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-08-13T19:19:45.961Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"auth":[{"address":"127.0.0.1","family":"IPv4","port":9099}],"firestore":[{"address":"127.0.0.1","family":"IPv4","port":8080}],"firestore.websocket":[{"address":"127.0.0.1","family":"IPv4","port":9150}],"storage":[{"address":"127.0.0.1","family":"IPv4","port":9199}]},"metadata":{"message":"assigned listening specs for emulators"}}
+[debug] [2026-08-13T19:19:45.966Z] Write emulator hub locator at C:\Users\carlo\AppData\Local\Temp\hub-demo-gym-saas-dev.json
+[debug] [2026-08-13T19:19:45.973Z] [Extensions] Started Extensions emulator, this is a noop.
+[debug] [2026-08-13T19:19:45.979Z] [functions] Functions Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-08-13T19:19:45.979Z] [eventarc] Eventarc Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-08-13T19:19:45.979Z] [tasks] Cloud Tasks Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-08-13T19:19:45.979Z] late-assigned ports for functions and eventarc emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"auth":[{"address":"127.0.0.1","family":"IPv4","port":9099}],"firestore":[{"address":"127.0.0.1","family":"IPv4","port":8080}],"firestore.websocket":[{"address":"127.0.0.1","family":"IPv4","port":9150}],"storage":[{"address":"127.0.0.1","family":"IPv4","port":9199}],"functions":[{"address":"127.0.0.1","family":"IPv4","port":5001}],"eventarc":[{"address":"127.0.0.1","family":"IPv4","port":9299}],"tasks":[{"address":"127.0.0.1","family":"IPv4","port":9499}]},"metadata":{"message":"late-assigned ports for functions and eventarc emulators"}}
+[debug] [2026-08-13T19:19:46.003Z] defaultcredentials: writing to file C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json
+[debug] [2026-08-13T19:19:46.004Z] Setting GAC to C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json {"metadata":{"emulator":{"name":"functions"},"message":"Setting GAC to C:\\Users\\carlo\\AppData\\Roaming\\firebase\\carlospalma_mm_gmail.com_application_default_credentials.json"}}
+[debug] [2026-08-13T19:19:46.017Z] Ignoring unsupported arg: auto_download {"metadata":{"emulator":{"name":"firestore"},"message":"Ignoring unsupported arg: auto_download"}}
+[debug] [2026-08-13T19:19:46.017Z] Ignoring unsupported arg: single_project_mode_error {"metadata":{"emulator":{"name":"firestore"},"message":"Ignoring unsupported arg: single_project_mode_error"}}
+[debug] [2026-08-13T19:19:46.017Z] Starting Firestore Emulator with command {"binary":"java","args":["-Dgoogle.cloud_firestore.debug_log_level=FINE","-Duser.language=en","-jar","C:\\Users\\carlo\\.cache\\firebase\\emulators\\cloud-firestore-emulator-v1.22.0.jar","--host","127.0.0.1","--port",8080,"--websocket_port",9150,"--database-edition","standard","--project_id","demo-gym-saas-dev","--rules","C:\\_dev\\Apps\\Gyms\\app\\firestore.rules","--single_project_mode",true,"--functions_emulator","127.0.0.1:5001"],"optionalArgs":["port","webchannel_port","host","rules","websocket_port","database-edition","functions_emulator","seed_from_export","project_id","single_project_mode"],"joinArgs":false,"shell":false,"port":8080} {"metadata":{"emulator":{"name":"firestore"},"message":"Starting Firestore Emulator with command {\"binary\":\"java\",\"args\":[\"-Dgoogle.cloud_firestore.debug_log_level=FINE\",\"-Duser.language=en\",\"-jar\",\"C:\\\\Users\\\\carlo\\\\.cache\\\\firebase\\\\emulators\\\\cloud-firestore-emulator-v1.22.0.jar\",\"--host\",\"127.0.0.1\",\"--port\",8080,\"--websocket_port\",9150,\"--database-edition\",\"standard\",\"--project_id\",\"demo-gym-saas-dev\",\"--rules\",\"C:\\\\_dev\\\\Apps\\\\Gyms\\\\app\\\\firestore.rules\",\"--single_project_mode\",true,\"--functions_emulator\",\"127.0.0.1:5001\"],\"optionalArgs\":[\"port\",\"webchannel_port\",\"host\",\"rules\",\"websocket_port\",\"database-edition\",\"functions_emulator\",\"seed_from_export\",\"project_id\",\"single_project_mode\"],\"joinArgs\":false,\"shell\":false,\"port\":8080}"}}
+[info] i  firestore: Firestore Emulator logging to firestore-debug.log {"metadata":{"emulator":{"name":"firestore"},"message":"Firestore Emulator logging to \u001b[1mfirestore-debug.log\u001b[22m"}}
+[debug] [2026-08-13T19:19:47.067Z] Aug 13, 2026 8:19:47 PM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start
+INFO: Started WebSocket server on ws://127.0.0.1:9150
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:19:47 PM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start\r\nINFO: Started WebSocket server on ws://127.0.0.1:9150\r\n"}}
+[debug] [2026-08-13T19:19:47.117Z] 
+API endpoint: http:// {"metadata":{"emulator":{"name":"firestore"},"message":"\nAPI endpoint: http://"}}
+[debug] [2026-08-13T19:19:47.117Z] 127.0.0.1:8080
+Database Edition: STANDARD
+Database Mode: CLOUD_FIRESTORE
+
+If you are using a library that supports the FIRESTORE_EMULATOR_HOST environment variable, run:
+
+   export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
+
+If you are running a Firestore in Datastore Mode project, run:
+
+   export DATASTORE_EMULATOR_HOST=127.0.0.1:8080
+
+Note: Support for Datastore Mode is in preview. If you encounter any bugs please file at https://github.com/firebase/firebase-tools/issues.
+Dev App Server is now running.
+
+ {"metadata":{"emulator":{"name":"firestore"},"message":"127.0.0.1:8080\nDatabase Edition: STANDARD\nDatabase Mode: CLOUD_FIRESTORE\n\nIf you are using a library that supports the FIRESTORE_EMULATOR_HOST environment variable, run:\r\n\n   export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080\n\nIf you are running a Firestore in Datastore Mode project, run:\r\n\n   export DATASTORE_EMULATOR_HOST=127.0.0.1:8080\n\nNote: Support for Datastore Mode is in preview. If you encounter any bugs please file at https://github.com/firebase/firebase-tools/issues.\r\nDev App Server is now running.\n\r\n"}}
+[info] +  firestore: Firestore Emulator was started in standard edition. {"metadata":{"emulator":{"name":"firestore"},"message":"Firestore Emulator was started in standard edition."}}
+[info] +  firestore: Firestore Emulator UI websocket is running on 9150. {"metadata":{"emulator":{"name":"firestore"},"message":"Firestore Emulator UI websocket is running on 9150."}}
+[debug] [2026-08-13T19:19:51.866Z] Aug 13, 2026 8:19:50 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:19:50 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:19:51.870Z] Ignoring unsupported arg: port {"metadata":{"emulator":{"name":"storage"},"message":"Ignoring unsupported arg: port"}}
+[debug] [2026-08-13T19:19:52.468Z] Temp file directory for storage emulator: C:\Users\carlo\AppData\Local\Temp/firebase/storage/blobs {"metadata":{"emulator":{"name":"storage"},"message":"Temp file directory for storage emulator: C:\\Users\\carlo\\AppData\\Local\\Temp/firebase/storage/blobs"}}
+[debug] [2026-08-13T19:19:52.478Z] [Extensions] Connecting Extensions emulator, this is a noop.
+[info] i  functions: Watching "C:\_dev\Apps\Gyms\app\firebase\functions" for Cloud Functions... {"metadata":{"emulator":{"name":"functions"},"message":"Watching \"C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\" for Cloud Functions..."}}
+[debug] [2026-08-13T19:19:52.480Z] Validating nodejs source
+[debug] [2026-08-13T19:19:53.307Z] > [functions] package.json contents: {
+  "name": "gym-saas-functions",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "lint": "eslint --ext .ts src",
+    "test": "echo \"(placeholder) adicionar testes das Cloud Functions na Fase 1+\" && exit 0"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.7.0",
+    "@typescript-eslint/parser": "^7.7.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0"
+  }
+}
+[debug] [2026-08-13T19:19:53.308Z] Building nodejs source
+[debug] [2026-08-13T19:19:53.308Z] Failed to find version of module node: reached end of search path C:\_dev\Apps\Gyms\app\firebase\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-08-13T19:19:53.310Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-08-13T19:19:53.316Z] Found firebase-functions binary at 'C:\_dev\Apps\Gyms\app\firebase\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8931
+
+[debug] [2026-08-13T19:19:54.039Z] Got response from /__/functions.yaml {"endpoints":{"healthCheck":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"healthCheck"},"createMember":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createMember"},"createStaff":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createStaff"},"createSubscription":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createSubscription"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[debug] [2026-08-13T19:19:57.067Z] defaultcredentials: writing to file C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json
+[debug] [2026-08-13T19:19:57.068Z] Setting GAC to C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json {"metadata":{"emulator":{"name":"functions"},"message":"Setting GAC to C:\\Users\\carlo\\AppData\\Roaming\\firebase\\carlospalma_mm_gmail.com_application_default_credentials.json"}}
+[info] +  functions: Loaded functions definitions from source: healthCheck, createMember, createStaff, createSubscription. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: healthCheck, createMember, createStaff, createSubscription."}}
+[info] +  functions[us-central1-healthCheck]: http function initialized (http://127.0.0.1:5001/demo-gym-saas-dev/us-central1/healthCheck). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-gym-saas-dev/us-central1/healthCheck)."}}
+[info] +  functions[us-central1-createMember]: http function initialized (http://127.0.0.1:5001/demo-gym-saas-dev/us-central1/createMember). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-gym-saas-dev/us-central1/createMember)."}}
+[info] +  functions[us-central1-createStaff]: http function initialized (http://127.0.0.1:5001/demo-gym-saas-dev/us-central1/createStaff). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-gym-saas-dev/us-central1/createStaff)."}}
+[info] +  functions[us-central1-createSubscription]: http function initialized (http://127.0.0.1:5001/demo-gym-saas-dev/us-central1/createSubscription). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-gym-saas-dev/us-central1/createSubscription)."}}
+[debug] [2026-08-13T19:19:57.078Z] Could not find VSCode notification endpoint: TypeError: fetch failed. If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.
+[info] 
+┌─────────────────────────────────────────────────────────────┐
+│ ✔  All emulators ready! It is now safe to connect your app. │
+│ i  View Emulator UI at http://127.0.0.1:4000/               │
+└─────────────────────────────────────────────────────────────┘
+
+┌────────────────┬────────────────┬──────────────────────────────────┐
+│ Emulator       │ Host:Port      │ View in Emulator UI              │
+├────────────────┼────────────────┼──────────────────────────────────┤
+│ Authentication │ 127.0.0.1:9099 │ http://127.0.0.1:4000/auth       │
+├────────────────┼────────────────┼──────────────────────────────────┤
+│ Functions      │ 127.0.0.1:5001 │ http://127.0.0.1:4000/functions  │
+├────────────────┼────────────────┼──────────────────────────────────┤
+│ Firestore      │ 127.0.0.1:8080 │ http://127.0.0.1:4000/firestore  │
+├────────────────┼────────────────┼──────────────────────────────────┤
+│ Storage        │ 127.0.0.1:9199 │ http://127.0.0.1:4000/storage    │
+├────────────────┼────────────────┼──────────────────────────────────┤
+│ Extensions     │ 127.0.0.1:5001 │ http://127.0.0.1:4000/extensions │
+└────────────────┴────────────────┴──────────────────────────────────┘
+  Emulator Hub host: 127.0.0.1 port: 4400
+  Other reserved ports: 4500, 9150
+┌─────────────────────────┬───────────────┬─────────────────────┐
+│ Extension Instance Name │ Extension Ref │ View in Emulator UI │
+└─────────────────────────┴───────────────┴─────────────────────┘
+Issues? Report them at https://github.com/firebase/firebase-tools/issues and attach the *-debug.log files.
+ 
+[debug] [2026-08-13T19:20:02.298Z] Aug 13, 2026 8:20:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:20:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:20:02.345Z] >>> [apiv2][query] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast [none]
+[debug] [2026-08-13T19:20:02.345Z] >>> [apiv2][body] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast {"eventId":"8beb26a1-11af-4434-9a38-6916436aef12","eventType":"providers/firebase.auth/eventTypes/user.create","resource":{"name":"projects/demo-gym-saas-dev","service":"firebaseauth.googleapis.com"},"params":{},"timestamp":"2026-08-13T19:20:02.343Z","data":{"uid":"GblBjWQdvmawCOA3hOY8jXVMKaVw","email":"leo@nxtperformancestudio.pt","emailVerified":false,"displayName":"Leo Gil","metadata":{"creationTime":"2026-08-13T19:20:02.342Z","lastSignInTime":"2026-08-13T19:20:02.342Z"},"customClaims":{},"providerData":[{"rawId":"leo@nxtperformancestudio.pt","providerId":"password","displayName":"Leo Gil","email":"leo@nxtperformancestudio.pt","federatedId":"leo@nxtperformancestudio.pt"}]}}
+[debug] [2026-08-13T19:20:02.351Z] <<< [apiv2][status] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast 200
+[debug] [2026-08-13T19:20:02.351Z] <<< [apiv2][body] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast {"status":"multicast_acknowledged"}
+[debug] [2026-08-13T19:20:02.367Z] >>> [apiv2][query] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast [none]
+[debug] [2026-08-13T19:20:02.367Z] >>> [apiv2][body] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast {"eventId":"898e7708-7c57-4d7d-92f7-11efdfbb3cf1","eventType":"providers/firebase.auth/eventTypes/user.create","resource":{"name":"projects/demo-gym-saas-dev","service":"firebaseauth.googleapis.com"},"params":{},"timestamp":"2026-08-13T19:20:02.367Z","data":{"uid":"cTEaZQQ57YP39BG0hcVpqrcIJJqE","email":"member-000001@nxt_performance_studio.gymsaas.internal","emailVerified":false,"displayName":"Rita Ferreira","metadata":{"creationTime":"2026-08-13T19:20:02.367Z","lastSignInTime":"2026-08-13T19:20:02.367Z"},"customClaims":{},"providerData":[{"rawId":"member-000001@nxt_performance_studio.gymsaas.internal","providerId":"password","displayName":"Rita Ferreira","email":"member-000001@nxt_performance_studio.gymsaas.internal","federatedId":"member-000001@nxt_performance_studio.gymsaas.internal"}]}}
+[debug] [2026-08-13T19:20:02.372Z] <<< [apiv2][status] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast 200
+[debug] [2026-08-13T19:20:02.372Z] <<< [apiv2][body] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast {"status":"multicast_acknowledged"}
+[debug] [2026-08-13T19:20:02.462Z] >>> [apiv2][query] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast [none]
+[debug] [2026-08-13T19:20:02.462Z] >>> [apiv2][body] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast {"eventId":"0b48e328-2eaf-441c-a462-352969ac0473","eventType":"providers/firebase.auth/eventTypes/user.create","resource":{"name":"projects/demo-gym-saas-dev","service":"firebaseauth.googleapis.com"},"params":{},"timestamp":"2026-08-13T19:20:02.462Z","data":{"uid":"GURwXOdBwXUFA3wilUZhfgi5YVd2","email":"member-000001@ghost_gym_isolation_test.gymsaas.internal","emailVerified":false,"displayName":"Fantasma de Teste","metadata":{"creationTime":"2026-08-13T19:20:02.462Z","lastSignInTime":"2026-08-13T19:20:02.462Z"},"customClaims":{},"providerData":[{"rawId":"member-000001@ghost_gym_isolation_test.gymsaas.internal","providerId":"password","displayName":"Fantasma de Teste","email":"member-000001@ghost_gym_isolation_test.gymsaas.internal","federatedId":"member-000001@ghost_gym_isolation_test.gymsaas.internal"}]}}
+[debug] [2026-08-13T19:20:02.465Z] <<< [apiv2][status] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast 200
+[debug] [2026-08-13T19:20:02.465Z] <<< [apiv2][body] POST http://127.0.0.1:5001/functions/projects/demo-gym-saas-dev/trigger_multicast {"status":"multicast_acknowledged"}
+[debug] [2026-08-13T19:20:57.556Z] Aug 13, 2026 8:20:57 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:20:57 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:20:57.868Z] Aug 13, 2026 8:20:57 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:20:57 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:20:58.195Z] Aug 13, 2026 8:20:58 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:20:58 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:20:58.510Z] Aug 13, 2026 8:20:58 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:20:58 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:20:58.921Z] Aug 13, 2026 8:20:58 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:20:58 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:20:59.236Z] Aug 13, 2026 8:20:59 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:20:59 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:03.716Z] Aug 13, 2026 8:21:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:10.573Z] Aug 13, 2026 8:21:10 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:10 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:12.580Z] Aug 13, 2026 8:21:12 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:12 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:13.893Z] Aug 13, 2026 8:21:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:22.902Z] Aug 13, 2026 8:21:22 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:22 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:38.133Z] Aug 13, 2026 8:21:38 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:38 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:38.462Z] Aug 13, 2026 8:21:38 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:38 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:38.772Z] Aug 13, 2026 8:21:38 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:38 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:42.578Z] Aug 13, 2026 8:21:42 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:42 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:49.744Z] Aug 13, 2026 8:21:49 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:49 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:50.073Z] Aug 13, 2026 8:21:50 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:50 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:21:50.399Z] Aug 13, 2026 8:21:50 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:21:50 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:22:02.285Z] Aug 13, 2026 8:22:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:22:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:22:10.691Z] Aug 13, 2026 8:22:10 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:22:10 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:22:25.380Z] Aug 13, 2026 8:22:25 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:22:25 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:22:25.707Z] Aug 13, 2026 8:22:25 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:22:25 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:22:30.597Z] Aug 13, 2026 8:22:30 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:22:30 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:22:30.922Z] Aug 13, 2026 8:22:30 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:22:30 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:22:30.938Z] Aug 13, 2026 8:22:30 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:22:30 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:22:31.264Z] Aug 13, 2026 8:22:31 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:22:31 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:22:53.353Z] [work-queue] {"queuedWork":["/demo-gym-saas-dev/us-central1/createSubscription-2026-08-13T19:22:53.353Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-08-13T19:22:53.354Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/demo-gym-saas-dev/us-central1/createSubscription-2026-08-13T19:22:53.353Z"],"workRunningCount":1}
+[debug] [2026-08-13T19:22:53.354Z] Accepted request OPTIONS /demo-gym-saas-dev/us-central1/createSubscription --> us-central1-createSubscription
+[debug] [2026-08-13T19:22:53.356Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-08-13T19:22:53.356Z] [functions] Got req.url=/demo-gym-saas-dev/us-central1/createSubscription, mapping to path=/ {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/demo-gym-saas-dev/us-central1/createSubscription, mapping to path=/"}}
+[debug] [2026-08-13T19:22:53.367Z] [worker-pool] addWorker(us-central1-createSubscription) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] addWorker(us-central1-createSubscription)"}}
+[debug] [2026-08-13T19:22:53.368Z] [worker-pool] Adding worker with key us-central1-createSubscription, total=1 {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Adding worker with key us-central1-createSubscription, total=1"}}
+[debug] [2026-08-13T19:22:54.313Z] [runtime-status] [35920] Resolved module firebase-admin {"declared":true,"installed":true,"version":"14.2.0","resolution":"C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\node_modules\\firebase-admin\\lib\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[runtime-status] [35920] Resolved module firebase-admin {\"declared\":true,\"installed\":true,\"version\":\"14.2.0\",\"resolution\":\"C:\\\\_dev\\\\Apps\\\\Gyms\\\\app\\\\firebase\\\\functions\\\\node_modules\\\\firebase-admin\\\\lib\\\\index.js\"}"}}
+[debug] [2026-08-13T19:22:54.314Z] [runtime-status] [35920] Resolved module firebase-functions {"declared":true,"installed":true,"version":"7.3.2","resolution":"C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\node_modules\\firebase-functions\\lib\\v2\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[runtime-status] [35920] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"7.3.2\",\"resolution\":\"C:\\\\_dev\\\\Apps\\\\Gyms\\\\app\\\\firebase\\\\functions\\\\node_modules\\\\firebase-functions\\\\lib\\\\v2\\\\index.js\"}"}}
+[debug] [2026-08-13T19:22:54.314Z] [runtime-status] [35920] Outgoing network have been stubbed. [{"name":"http","status":"mocked"},{"name":"http","status":"mocked"},{"name":"https","status":"mocked"},{"name":"https","status":"mocked"},{"name":"net","status":"mocked"}] {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[runtime-status] [35920] Outgoing network have been stubbed. [{\"name\":\"http\",\"status\":\"mocked\"},{\"name\":\"http\",\"status\":\"mocked\"},{\"name\":\"https\",\"status\":\"mocked\"},{\"name\":\"https\",\"status\":\"mocked\"},{\"name\":\"net\",\"status\":\"mocked\"}]"}}
+[debug] [2026-08-13T19:22:54.315Z] [runtime-status] [35920] Resolved module firebase-functions {"declared":true,"installed":true,"version":"7.3.2","resolution":"C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\node_modules\\firebase-functions\\lib\\v2\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[runtime-status] [35920] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"7.3.2\",\"resolution\":\"C:\\\\_dev\\\\Apps\\\\Gyms\\\\app\\\\firebase\\\\functions\\\\node_modules\\\\firebase-functions\\\\lib\\\\v2\\\\index.js\"}"}}
+[debug] [2026-08-13T19:22:54.315Z] [runtime-status] [35920] Detected firebase-functions v7+, skipping legacy stubs. {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[runtime-status] [35920] Detected firebase-functions v7+, skipping legacy stubs."}}
+[debug] [2026-08-13T19:22:54.316Z] [runtime-status] [35920] Resolved module firebase-admin {"declared":true,"installed":true,"version":"14.2.0","resolution":"C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\node_modules\\firebase-admin\\lib\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[runtime-status] [35920] Resolved module firebase-admin {\"declared\":true,\"installed\":true,\"version\":\"14.2.0\",\"resolution\":\"C:\\\\_dev\\\\Apps\\\\Gyms\\\\app\\\\firebase\\\\functions\\\\node_modules\\\\firebase-admin\\\\lib\\\\index.js\"}"}}
+[debug] [2026-08-13T19:22:54.371Z] [runtime-status] [35920] Resolved module firebase-functions {"declared":true,"installed":true,"version":"7.3.2","resolution":"C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\node_modules\\firebase-functions\\lib\\v2\\index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[runtime-status] [35920] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"7.3.2\",\"resolution\":\"C:\\\\_dev\\\\Apps\\\\Gyms\\\\app\\\\firebase\\\\functions\\\\node_modules\\\\firebase-functions\\\\lib\\\\v2\\\\index.js\"}"}}
+[debug] [2026-08-13T19:22:54.848Z] [runtime-status] [35920] firebase-admin has been stubbed. {"adminResolution":{"declared":true,"installed":true,"version":"14.2.0","resolution":"C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\node_modules\\firebase-admin\\lib\\index.js"}} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[runtime-status] [35920] firebase-admin has been stubbed. {\"adminResolution\":{\"declared\":true,\"installed\":true,\"version\":\"14.2.0\",\"resolution\":\"C:\\\\_dev\\\\Apps\\\\Gyms\\\\app\\\\firebase\\\\functions\\\\node_modules\\\\firebase-admin\\\\lib\\\\index.js\"}}"}}
+[debug] [2026-08-13T19:22:54.869Z] [runtime-status] [35920] Functions runtime initialized. {"cwd":"C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions","node_version":"22.15.0"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[runtime-status] [35920] Functions runtime initialized. {\"cwd\":\"C:\\\\_dev\\\\Apps\\\\Gyms\\\\app\\\\firebase\\\\functions\",\"node_version\":\"22.15.0\"}"}}
+[debug] [2026-08-13T19:22:54.869Z] [runtime-status] [35920] Listening to port: \\?\pipe\fire_emu_ae63268997907521 {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[runtime-status] [35920] Listening to port: \\\\?\\pipe\\fire_emu_ae63268997907521"}}
+[debug] [2026-08-13T19:22:54.898Z] [worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: IDLE"}}
+[debug] [2026-08-13T19:22:54.899Z] [worker-pool] submitRequest(triggerId=us-central1-createSubscription) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-createSubscription)"}}
+[info] i  functions: Beginning execution of "us-central1-createSubscription" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"Beginning execution of \"us-central1-createSubscription\""}}
+[debug] [2026-08-13T19:22:54.899Z] [worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: BUSY"}}
+[debug] [2026-08-13T19:22:54.903Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-createSubscription" in 3.9439ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"Finished \"us-central1-createSubscription\" in 3.9439ms"}}
+[debug] [2026-08-13T19:22:54.903Z] [worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: IDLE"}}
+[debug] [2026-08-13T19:22:54.903Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-08-13T19:22:54.904Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-08-13T19:22:54.904Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[debug] [2026-08-13T19:22:54.904Z] [work-queue] {"queuedWork":["/demo-gym-saas-dev/us-central1/createSubscription-2026-08-13T19:22:54.904Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-08-13T19:22:54.904Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/demo-gym-saas-dev/us-central1/createSubscription-2026-08-13T19:22:54.904Z"],"workRunningCount":1}
+[debug] [2026-08-13T19:22:54.904Z] Accepted request POST /demo-gym-saas-dev/us-central1/createSubscription --> us-central1-createSubscription
+[debug] [2026-08-13T19:22:54.905Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-08-13T19:22:54.906Z] [functions] Got req.url=/demo-gym-saas-dev/us-central1/createSubscription, mapping to path=/ {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/demo-gym-saas-dev/us-central1/createSubscription, mapping to path=/"}}
+[debug] [2026-08-13T19:22:54.906Z] [worker-pool] submitRequest(triggerId=us-central1-createSubscription) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-createSubscription)"}}
+[info] i  functions: Beginning execution of "us-central1-createSubscription" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"Beginning execution of \"us-central1-createSubscription\""}}
+[debug] [2026-08-13T19:22:54.906Z] [worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: BUSY"}}
+[info] >  {"verifications":{"app":"MISSING","auth":"VALID"},"logging.googleapis.com/labels":{"firebase-log-type":"callable-request-verification"},"severity":"DEBUG","message":"Callable request verification passed"} {"user":{"verifications":{"app":"MISSING","auth":"VALID"},"logging.googleapis.com/labels":{"firebase-log-type":"callable-request-verification"},"severity":"DEBUG","message":"Callable request verification passed"},"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"\u001b[90m> \u001b[39m {\"verifications\":{\"app\":\"MISSING\",\"auth\":\"VALID\"},\"logging.googleapis.com/labels\":{\"firebase-log-type\":\"callable-request-verification\"},\"severity\":\"DEBUG\",\"message\":\"Callable request verification passed\"}"}}
+[debug] [2026-08-13T19:22:55.014Z] Aug 13, 2026 8:22:55 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:22:55 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:22:55.092Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-createSubscription" in 186.4494ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"Finished \"us-central1-createSubscription\" in 186.4494ms"}}
+[debug] [2026-08-13T19:22:55.093Z] [worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: IDLE"}}
+[debug] [2026-08-13T19:22:55.093Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-08-13T19:22:55.093Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-08-13T19:22:55.093Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[debug] [2026-08-13T19:22:55.389Z] Aug 13, 2026 8:22:55 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:22:55 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:23:01.996Z] Aug 13, 2026 8:23:01 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:23:01 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:23:02.321Z] Aug 13, 2026 8:23:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:23:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:23:21.451Z] Aug 13, 2026 8:23:21 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:23:21 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:23:21.470Z] Aug 13, 2026 8:23:21 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:23:21 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:23:21.787Z] Aug 13, 2026 8:23:21 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:23:21 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:23:22.107Z] Aug 13, 2026 8:23:22 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:23:22 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:23:22.452Z] Aug 13, 2026 8:23:22 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:23:22 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:23:22.763Z] Aug 13, 2026 8:23:22 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:23:22 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:24:13.186Z] Aug 13, 2026 8:24:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:24:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:24:13.450Z] Aug 13, 2026 8:24:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:24:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:24:13.514Z] Aug 13, 2026 8:24:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:24:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:24:13.780Z] Aug 13, 2026 8:24:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:24:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:24:13.874Z] Aug 13, 2026 8:24:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:24:13 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:24:14.106Z] Aug 13, 2026 8:24:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:24:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:25:14.136Z] Aug 13, 2026 8:25:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:25:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:26:14.473Z] Aug 13, 2026 8:26:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:26:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:27:14.495Z] Aug 13, 2026 8:27:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:27:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:28:14.813Z] Aug 13, 2026 8:28:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:28:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:29:14.825Z] Aug 13, 2026 8:29:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:29:14 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:30:15.161Z] Aug 13, 2026 8:30:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:30:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:31:15.188Z] Aug 13, 2026 8:31:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:31:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:32:15.511Z] Aug 13, 2026 8:32:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:32:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:33:15.525Z] Aug 13, 2026 8:33:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:33:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:34:15.855Z] Aug 13, 2026 8:34:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:34:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:35:15.879Z] Aug 13, 2026 8:35:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:35:15 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:36:16.223Z] Aug 13, 2026 8:36:16 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:36:16 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[info] i  firestore: Change detected, updating rules... 
+[debug] [2026-08-13T19:36:38.757Z] >>> [apiv2][query] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules [none]
+[debug] [2026-08-13T19:36:38.757Z] >>> [apiv2][body] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules {"ignore_errors":true,"rules":{"files":[{"name":"security.rules","content":"rules_version = '2';\n\n// Fase 1 — isolamento entre tenants (Platform Foundation §7).\n// Fase 2 — regras específicas de booking (contador de vagas + ownership).\n//\n// A matriz fina de autorização por role (o que um Instructor pode\n// fazer vs. um Manager, etc.) continua a ser trabalho do documento\n// \"06 — Security & Business Rules\" e das fases 3+. Até lá, dentro do\n// próprio tenant, qualquer utilizador autenticado tem leitura/escrita\n// ampla — EXCETO em sessionOccurrences/bookings, onde a Fase 2 exige\n// regras mais apertadas (não dá para ter aqui uma regra ampla que\n// cubra tudo: no Firestore, se QUALQUER regra que faça match permitir\n// a operação, ela é permitida — por isso sessionOccurrences/bookings\n// têm de ficar FORA do wildcard genérico, não só \"sobrepostas\" por uma\n// regra mais restrita).\nservice cloud.firestore {\n  match /databases/{database}/documents {\n\n    function isSignedIn() {\n      return request.auth != null;\n    }\n\n    function belongsToTenant(tenantId) {\n      return isSignedIn() && request.auth.token.tenantId == tenantId;\n    }\n\n    // Fase 3 — primeira regra que distingue Manager de outros roles.\n    // `roles` é um array nos custom claims (mesmo formato usado pelo\n    // `requireManager()` das Cloud Functions — ver\n    // `firebase/functions/src/lib/callerContext.ts`), por isso o\n    // próprio token já traz esta informação sem precisar de nenhum\n    // `get()` extra a Firestore.\n    function isManager(tenantId) {\n      return belongsToTenant(tenantId) && 'manager' in request.auth.token.roles;\n    }\n\n    // Sonda de diagnóstico da Fase 0. Não faz parte do modelo de negócio.\n    match /_diagnostics/{docId} {\n      allow read, write: if true;\n    }\n\n    // --- Dados de configuração/identidade do tenant (Fase 1) ---\n    // Leitura/escrita ampla para qualquer utilizador do próprio tenant.\n    // Ver nota no topo do ficheiro sobre porque isto não pode incluir\n    // sessionOccurrences/bookings.\n\n    match /tenants/{tenantId} {\n      allow read, write: if belongsToTenant(tenantId);\n    }\n\n    match /tenants/{tenantId}/members/{memberId} {\n      allow read, write: if belongsToTenant(tenantId);\n    }\n\n    match /tenants/{tenantId}/staff/{staffId} {\n      allow read, write: if belongsToTenant(tenantId);\n    }\n\n    // Fase 4: escrita restrita a Manager (era ampla desde a Fase 1,\n    // quando ainda não guardava nada sensível). `config/bookingPolicy`\n    // (`minCancellationNoticeHours`) é uma decisão de negócio do\n    // Gestor, não algo que qualquer membro deva poder reescrever.\n    match /tenants/{tenantId}/config/{configId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if isManager(tenantId);\n    }\n\n    // --- Services (Fase 2, escrita liberada na Fase 3) ---\n    // Leitura ampla dentro do tenant; escrita só Manager, agora que\n    // `ManageServicesScreen` (Fase 3, UC26) existe. Mesmo padrão de\n    // `plans` logo abaixo — escrita direta do cliente, sem Cloud\n    // Function, porque não há nenhuma invariante cross-documento a\n    // validar (criar/ativar/desativar um Service é uma escrita\n    // isolada a UM documento).\n    match /tenants/{tenantId}/services/{serviceId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if isManager(tenantId);\n    }\n\n    // --- Sessions / Bookings (Fase 2) ---\n    //\n    // sessionOccurrences: leitura ampla (para mostrar vagas disponíveis\n    // a qualquer membro do tenant); a única escrita permitida a um\n    // cliente é a atualização de `activeBookingCount`, e só nas\n    // condições exatas de um booking (+1) ou cancelamento (-1) válido.\n    // Criar/cancelar a ocorrência em si (capacidade, horário, status)\n    // fica para quando existir o ecrã de gestão de aulas (Fase 5+).\n    match /tenants/{tenantId}/sessionOccurrences/{occurrenceId} {\n      allow read: if belongsToTenant(tenantId);\n      allow create, delete: if false;\n      allow update: if belongsToTenant(tenantId) && isValidBookingCounterChange();\n\n      function isValidBookingCounterChange() {\n        let onlyCounterChanged = request.resource.data.diff(resource.data)\n            .affectedKeys().hasOnly(['activeBookingCount']);\n        let newCount = request.resource.data.activeBookingCount;\n        let oldCount = resource.data.activeBookingCount;\n        let capacity = resource.data.capacity;\n        let isBookingIncrement = newCount == oldCount + 1 && newCount <= capacity;\n        let isCancellationDecrement = newCount == oldCount - 1 && newCount >= 0;\n        return onlyCounterChanged && (isBookingIncrement || isCancellationDecrement);\n      }\n\n      // bookings: só o próprio membro cria/cancela a própria marcação.\n      // O id do documento é sempre o uid do membro (ver\n      // firebase_booking_repository.dart) — por isso \"és dono deste\n      // documento\" e \"o id do documento é o teu uid\" são a mesma\n      // verificação.\n      match /bookings/{bookingId} {\n        allow read: if belongsToTenant(tenantId);\n        allow delete: if false; // soft-cancel só (histórico preservado)\n\n        // Usada tanto no \"create\" (primeira marcação) como no \"update\"\n        // que reaproveita o mesmo documento para voltar a marcar depois\n        // de uma cancelação — ver nota em \"allow update\" abaixo.\n        function isValidNewBooking() {\n          return bookingId == request.auth.uid\n              && request.resource.data.memberId == request.auth.uid\n              && request.resource.data.status == 'booked';\n        }\n\n        allow create: if belongsToTenant(tenantId) && isValidNewBooking();\n\n        // Bug apanhado a testar em Chrome: como o id do documento é\n        // sempre == uid, depois de UMA cancelação o documento já\n        // existe (soft-cancel, nunca é apagado) — voltar a marcar\n        // chega ao Firestore como \"update\", não \"create\", mesmo sendo\n        // um `tx.set()` completo do lado do repository. A primeira\n        // versão desta regra só permitia a transição booked→cancelled,\n        // nunca o inverso, por isso re-marcar ficava permanentemente\n        // bloqueado depois do primeiro cancelamento. Agora o \"update\"\n        // cobre as duas transições válidas.\n        allow update: if belongsToTenant(tenantId)\n            && bookingId == request.auth.uid\n            && (\n              // Cancelar uma marcação ativa.\n              (resource.data.status == 'booked'\n                  && resource.data.memberId == request.auth.uid\n                  && request.resource.data.diff(resource.data).affectedKeys()\n                      .hasOnly(['status', 'cancelledAt'])\n                  && request.resource.data.status == 'cancelled')\n              ||\n              // Voltar a marcar depois de cancelada.\n              (resource.data.status == 'cancelled' && isValidNewBooking())\n            );\n      }\n    }\n\n    // --- Plans / PlanServices (Fase 3, UC26) ---\n    //\n    // Leitura ampla dentro do tenant (qualquer membro precisa de ver os\n    // planos para, no futuro, os poder contratar/consultar); escrita\n    // só para Manager. Ao contrário de `bookings`, isto é escrita\n    // direta do cliente (`FirebasePlanRepository`), não passa por\n    // Cloud Function — não há nenhuma invariante cross-documento a\n    // validar aqui (ao contrário de `createSubscription`), por isso uma\n    // regra simples de role chega.\n    match /tenants/{tenantId}/plans/{planId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if isManager(tenantId);\n\n      match /services/{serviceId} {\n        allow read: if belongsToTenant(tenantId);\n        allow write: if isManager(tenantId);\n      }\n    }\n\n    // --- Subscriptions (Fase 3) ---\n    //\n    // Leitura ampla dentro do tenant: `isEligibleForService()`\n    // (`firebase_subscription_repository.dart`) faz uma query direta a\n    // esta coleção como o próprio membro, e um Manager também precisa\n    // de a poder consultar. Escrita SEMPRE negada ao cliente — a única\n    // via é a Cloud Function `createSubscription`, que corre com Admin\n    // SDK e por isso ignora estas regras (ver nota de arquitetura em\n    // `firebase_subscription_repository.dart` sobre porque a validação\n    // \"um serviço não pode estar em duas subscriptions ativas do mesmo\n    // membro\" não dá para exprimir aqui).\n    match /tenants/{tenantId}/subscriptions/{subscriptionId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if false;\n    }\n\n    // --- Leitura de \"bookings\" via collectionGroup (Fase 2) ---\n    //\n    // watchMyBookings() (firebase_booking_repository.dart) usa\n    // `firestore.collectionGroup('bookings').where('memberId', ...)`\n    // para mostrar as marcações do membro em TODAS as sessões, sem\n    // saber de antemão em que sessionOccurrence cada uma está.\n    //\n    // O match aninhado acima (`tenants/{tenantId}/sessionOccurrences/\n    // {occurrenceId}/bookings/{bookingId}`) só cobre pedidos a uma\n    // profundidade EXATA — get/list numa subcoleção concreta. Uma\n    // collectionGroup query não tem esse caminho fixo (varre TODAS as\n    // subcoleções chamadas \"bookings\", a qualquer profundidade), e o\n    // Firestore só autoriza esse tipo de pedido através de uma regra\n    // com wildcard recursivo `{path=**}` dedicada — não reaproveita a\n    // regra aninhada, mesmo que as condições sejam idênticas. Sem isto,\n    // o pedido cai no bloqueio genérico do fim do ficheiro (foi o que\n    // aconteceu: \"false for 'list' @ L112\" em vez de ser avaliado\n    // contra a regra de `bookings` lá de cima).\n    //\n    // Só `read` (get+list) — criar/atualizar uma booking continua a\n    // passar sempre pelo caminho completo e conhecido\n    // (`sessionOccurrences/{occurrenceId}/bookings/{bookingId}`, nunca\n    // por collectionGroup), por isso essa regra aninhada continua a ser\n    // a única fonte de verdade para escrita; esta aqui não adiciona\n    // nenhuma permissão de escrita nova.\n    match /{path=**}/bookings/{bookingId} {\n      // Duas tentativas anteriores tentaram extrair o tenantId do\n      // próprio `path` capturado por {path=**} (path.size(), depois\n      // path[0]/path[1]) — ambas deram erros de avaliação em runtime\n      // (a API exata de indexação de `path` não está a comportar-se\n      // como a documentação sugere, pelo menos nesta versão do\n      // emulador). Em vez de continuar a adivinhar essa sintaxe,\n      // simplifiquei para o que realmente importa aqui: só o dono da\n      // marcação a pode ler. Isto não depende de path nenhum — só do\n      // campo `memberId` do próprio documento vs. quem está\n      // autenticado. É equivalente em termos de segurança ao\n      // isolamento por tenant (um booking só é criado com\n      // memberId == uid de quem o cria, dentro do próprio tenant desse\n      // uid — ver \"allow create\" abaixo — por isso nunca há forma de um\n      // uid corresponder a um booking de outro tenant) e mais simples.\n      allow read: if isSignedIn() && resource.data.memberId == request.auth.uid;\n    }\n\n    // Tudo o resto fica bloqueado.\n    match /{document=**} {\n      allow read, write: if false;\n    }\n  }\n}\n"}]}}
+[debug] [2026-08-13T19:36:38.761Z] Aug 13, 2026 8:36:38 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:36:38 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:36:38.804Z] Aug 13, 2026 8:36:38 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:36:38 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:36:38.973Z] <<< [apiv2][status] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules 200
+[debug] [2026-08-13T19:36:38.973Z] <<< [apiv2][body] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules {}
+[info] +  firestore: Rules updated. 
+[debug] [2026-08-13T19:37:04.097Z] File C:\_dev\Apps\Gyms\app\firebase\functions\src\lib\callerContext.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\src\\lib\\callerContext.ts changed, reloading triggers"}}
+[debug] [2026-08-13T19:37:05.109Z] Validating nodejs source
+[debug] [2026-08-13T19:37:05.936Z] > [functions] package.json contents: {
+  "name": "gym-saas-functions",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "lint": "eslint --ext .ts src",
+    "test": "echo \"(placeholder) adicionar testes das Cloud Functions na Fase 1+\" && exit 0"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.7.0",
+    "@typescript-eslint/parser": "^7.7.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0"
+  }
+}
+[debug] [2026-08-13T19:37:05.936Z] Building nodejs source
+[debug] [2026-08-13T19:37:05.936Z] Failed to find version of module node: reached end of search path C:\_dev\Apps\Gyms\app\firebase\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-08-13T19:37:05.937Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-08-13T19:37:05.943Z] Found firebase-functions binary at 'C:\_dev\Apps\Gyms\app\firebase\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8135
+
+[debug] [2026-08-13T19:37:06.655Z] Got response from /__/functions.yaml {"endpoints":{"healthCheck":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"healthCheck"},"createMember":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createMember"},"createStaff":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createStaff"},"createSubscription":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createSubscription"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[debug] [2026-08-13T19:37:09.678Z] defaultcredentials: writing to file C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json
+[debug] [2026-08-13T19:37:09.679Z] Setting GAC to C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json {"metadata":{"emulator":{"name":"functions"},"message":"Setting GAC to C:\\Users\\carlo\\AppData\\Roaming\\firebase\\carlospalma_mm_gmail.com_application_default_credentials.json"}}
+[info] +  functions: Loaded functions definitions from source: healthCheck, createMember, createStaff, createSubscription. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: healthCheck, createMember, createStaff, createSubscription."}}
+[debug] [2026-08-13T19:37:09.680Z] [worker-pool] Shutting down IDLE worker (us-central1-createSubscription) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Shutting down IDLE worker (us-central1-createSubscription)"}}
+[debug] [2026-08-13T19:37:09.680Z] [worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: FINISHING {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: FINISHING"}}
+[debug] [2026-08-13T19:37:09.684Z] Aug 13, 2026 8:37:09 PM io.netty.channel.DefaultChannelPipeline onUnhandledInboundException
+WARNING: An exceptionCaught() event was fired, and it reached at the tail of the pipeline. It usually means the last handler in the pipeline did not handle the exception.
+java.net.SocketException: Connection reset
+	at java.base/sun.nio.ch.SocketChannelImpl.throwConnectionReset(SocketChannelImpl.java:401)
+	at java.base/sun.nio.ch.SocketChannelImpl.read(SocketChannelImpl.java:434)
+	at io.netty.buffer.PooledByteBuf.setBytes(PooledByteBuf.java:255)
+	at io.netty.buffer.AbstractByteBuf.writeBytes(AbstractByteBuf.java:1132)
+	at io.netty.channel.socket.nio.NioSocketChannel.doReadBytes(NioSocketChannel.java:356)
+	at io.netty.channel.nio.AbstractNioByteChannel$NioByteUnsafe.read(AbstractNioByteChannel.java:156)
+	at io.netty.channel.nio.NioEventLoop.processSelectedKey(NioEventLoop.java:796)
+	at io.netty.channel.nio.NioEventLoop.processSelectedKeysOptimized(NioEventLoop.java:732)
+	at io.netty.channel.nio.NioEventLoop.processSelectedKeys(NioEventLoop.java:658)
+	at io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:562)
+	at io.netty.util.concurrent.SingleThreadEventExecutor$4.run(SingleThreadEventExecutor.java:998)
+	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:37:09 PM io.netty.channel.DefaultChannelPipeline onUnhandledInboundException\r\nWARNING: An exceptionCaught() event was fired, and it reached at the tail of the pipeline. It usually means the last handler in the pipeline did not handle the exception.\r\njava.net.SocketException: Connection reset\r\n\tat java.base/sun.nio.ch.SocketChannelImpl.throwConnectionReset(SocketChannelImpl.java:401)\r\n\tat java.base/sun.nio.ch.SocketChannelImpl.read(SocketChannelImpl.java:434)\r\n\tat io.netty.buffer.PooledByteBuf.setBytes(PooledByteBuf.java:255)\r\n\tat io.netty.buffer.AbstractByteBuf.writeBytes(AbstractByteBuf.java:1132)\r\n\tat io.netty.channel.socket.nio.NioSocketChannel.doReadBytes(NioSocketChannel.java:356)\r\n\tat io.netty.channel.nio.AbstractNioByteChannel$NioByteUnsafe.read(AbstractNioByteChannel.java:156)\r\n\tat io.netty.channel.nio.NioEventLoop.processSelectedKey(NioEventLoop.java:796)\r\n\tat io.netty.channel.nio.NioEventLoop.processSelectedKeysOptimized(NioEventLoop.java:732)\r\n\tat io.netty.channel.nio.NioEventLoop.processSelectedKeys(NioEventLoop.java:658)\r\n\tat io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:562)\r\n\tat io.netty.util.concurrent.SingleThreadEventExecutor$4.run(SingleThreadEventExecutor.java:998)\r\n\tat io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)\r\n\tat io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)\r\n\tat java.base/java.lang.Thread.run(Thread.java:1583)\r\n\r\n"}}
+[debug] [2026-08-13T19:37:09.688Z] [worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: exited {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: exited"}}
+[debug] [2026-08-13T19:37:09.688Z] [worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: FINISHED {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-createSubscription"},"extension":{},"message":"[worker-us-central1-createSubscription-d1634825-e699-4667-8997-3fab1b5195c2]: FINISHED"}}
+[debug] [2026-08-13T19:37:16.257Z] Aug 13, 2026 8:37:16 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:37:16 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:38:16.585Z] Aug 13, 2026 8:38:16 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:38:16 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:39:11.945Z] File C:\_dev\Apps\Gyms\app\firebase\functions\src\cancelBooking.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\src\\cancelBooking.ts changed, reloading triggers"}}
+[debug] [2026-08-13T19:39:12.951Z] Validating nodejs source
+[debug] [2026-08-13T19:39:13.919Z] > [functions] package.json contents: {
+  "name": "gym-saas-functions",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "lint": "eslint --ext .ts src",
+    "test": "echo \"(placeholder) adicionar testes das Cloud Functions na Fase 1+\" && exit 0"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.7.0",
+    "@typescript-eslint/parser": "^7.7.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0"
+  }
+}
+[debug] [2026-08-13T19:39:13.919Z] Building nodejs source
+[debug] [2026-08-13T19:39:13.919Z] Failed to find version of module node: reached end of search path C:\_dev\Apps\Gyms\app\firebase\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-08-13T19:39:13.920Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-08-13T19:39:13.926Z] Found firebase-functions binary at 'C:\_dev\Apps\Gyms\app\firebase\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8721
+
+[debug] [2026-08-13T19:39:14.663Z] Got response from /__/functions.yaml {"endpoints":{"healthCheck":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"healthCheck"},"createMember":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createMember"},"createStaff":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createStaff"},"createSubscription":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createSubscription"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[debug] [2026-08-13T19:39:16.615Z] Aug 13, 2026 8:39:16 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:39:16 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:39:17.691Z] defaultcredentials: writing to file C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json
+[debug] [2026-08-13T19:39:17.691Z] Setting GAC to C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json {"metadata":{"emulator":{"name":"functions"},"message":"Setting GAC to C:\\Users\\carlo\\AppData\\Roaming\\firebase\\carlospalma_mm_gmail.com_application_default_credentials.json"}}
+[info] +  functions: Loaded functions definitions from source: healthCheck, createMember, createStaff, createSubscription. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: healthCheck, createMember, createStaff, createSubscription."}}
+[debug] [2026-08-13T19:40:01.941Z] Aug 13, 2026 8:40:01 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:40:01 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:40:04.554Z] File C:\_dev\Apps\Gyms\app\firebase\functions\src\lib\isoWeek.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\src\\lib\\isoWeek.ts changed, reloading triggers"}}
+[debug] [2026-08-13T19:40:05.568Z] Validating nodejs source
+[debug] [2026-08-13T19:40:06.336Z] > [functions] package.json contents: {
+  "name": "gym-saas-functions",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "lint": "eslint --ext .ts src",
+    "test": "echo \"(placeholder) adicionar testes das Cloud Functions na Fase 1+\" && exit 0"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.7.0",
+    "@typescript-eslint/parser": "^7.7.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0"
+  }
+}
+[debug] [2026-08-13T19:40:06.336Z] Building nodejs source
+[debug] [2026-08-13T19:40:06.336Z] Failed to find version of module node: reached end of search path C:\_dev\Apps\Gyms\app\firebase\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-08-13T19:40:06.337Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-08-13T19:40:06.342Z] Found firebase-functions binary at 'C:\_dev\Apps\Gyms\app\firebase\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8153
+
+[debug] [2026-08-13T19:40:07.017Z] Got response from /__/functions.yaml {"endpoints":{"healthCheck":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"healthCheck"},"createMember":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createMember"},"createStaff":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createStaff"},"createSubscription":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createSubscription"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[debug] [2026-08-13T19:40:10.043Z] defaultcredentials: writing to file C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json
+[debug] [2026-08-13T19:40:10.043Z] Setting GAC to C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json {"metadata":{"emulator":{"name":"functions"},"message":"Setting GAC to C:\\Users\\carlo\\AppData\\Roaming\\firebase\\carlospalma_mm_gmail.com_application_default_credentials.json"}}
+[info] +  functions: Loaded functions definitions from source: healthCheck, createMember, createStaff, createSubscription. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: healthCheck, createMember, createStaff, createSubscription."}}
+[debug] [2026-08-13T19:40:23.443Z] File C:\_dev\Apps\Gyms\app\firebase\functions\src\index.ts.tmp.33076.d1e43f11e746 changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\src\\index.ts.tmp.33076.d1e43f11e746 changed, reloading triggers"}}
+[debug] [2026-08-13T19:40:23.445Z] File C:\_dev\Apps\Gyms\app\firebase\functions\src\index.ts changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\_dev\\Apps\\Gyms\\app\\firebase\\functions\\src\\index.ts changed, reloading triggers"}}
+[debug] [2026-08-13T19:40:24.447Z] Validating nodejs source
+[debug] [2026-08-13T19:40:25.240Z] > [functions] package.json contents: {
+  "name": "gym-saas-functions",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "lint": "eslint --ext .ts src",
+    "test": "echo \"(placeholder) adicionar testes das Cloud Functions na Fase 1+\" && exit 0"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.7.0",
+    "@typescript-eslint/parser": "^7.7.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0"
+  }
+}
+[debug] [2026-08-13T19:40:25.240Z] Building nodejs source
+[debug] [2026-08-13T19:40:25.240Z] Failed to find version of module node: reached end of search path C:\_dev\Apps\Gyms\app\firebase\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "22". Using node@22 from host. 
+[debug] [2026-08-13T19:40:25.241Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-08-13T19:40:25.248Z] Found firebase-functions binary at 'C:\_dev\Apps\Gyms\app\firebase\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8118
+
+[debug] [2026-08-13T19:40:25.926Z] Got response from /__/functions.yaml {"endpoints":{"healthCheck":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"healthCheck"},"createMember":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createMember"},"createStaff":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createStaff"},"createSubscription":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"callableTrigger":{},"entryPoint":"createSubscription"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[debug] [2026-08-13T19:40:28.949Z] defaultcredentials: writing to file C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json
+[debug] [2026-08-13T19:40:28.949Z] Setting GAC to C:\Users\carlo\AppData\Roaming\firebase\carlospalma_mm_gmail.com_application_default_credentials.json {"metadata":{"emulator":{"name":"functions"},"message":"Setting GAC to C:\\Users\\carlo\\AppData\\Roaming\\firebase\\carlospalma_mm_gmail.com_application_default_credentials.json"}}
+[info] +  functions: Loaded functions definitions from source: healthCheck, createMember, createStaff, createSubscription. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: healthCheck, createMember, createStaff, createSubscription."}}
+[debug] [2026-08-13T19:41:01.959Z] Aug 13, 2026 8:41:01 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:41:01 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:42:02.298Z] Aug 13, 2026 8:42:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:42:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[info] i  firestore: Change detected, updating rules... 
+[debug] [2026-08-13T19:42:43.676Z] >>> [apiv2][query] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules [none]
+[debug] [2026-08-13T19:42:43.676Z] >>> [apiv2][body] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules {"ignore_errors":true,"rules":{"files":[{"name":"security.rules","content":"rules_version = '2';\n\n// Fase 1 — isolamento entre tenants (Platform Foundation §7).\n// Fase 2 — regras específicas de booking (contador de vagas + ownership).\n//\n// A matriz fina de autorização por role (o que um Instructor pode\n// fazer vs. um Manager, etc.) continua a ser trabalho do documento\n// \"06 — Security & Business Rules\" e das fases 3+. Até lá, dentro do\n// próprio tenant, qualquer utilizador autenticado tem leitura/escrita\n// ampla — EXCETO em sessionOccurrences/bookings, onde a Fase 2 exige\n// regras mais apertadas (não dá para ter aqui uma regra ampla que\n// cubra tudo: no Firestore, se QUALQUER regra que faça match permitir\n// a operação, ela é permitida — por isso sessionOccurrences/bookings\n// têm de ficar FORA do wildcard genérico, não só \"sobrepostas\" por uma\n// regra mais restrita).\nservice cloud.firestore {\n  match /databases/{database}/documents {\n\n    function isSignedIn() {\n      return request.auth != null;\n    }\n\n    function belongsToTenant(tenantId) {\n      return isSignedIn() && request.auth.token.tenantId == tenantId;\n    }\n\n    // Fase 3 — primeira regra que distingue Manager de outros roles.\n    // `roles` é um array nos custom claims (mesmo formato usado pelo\n    // `requireManager()` das Cloud Functions — ver\n    // `firebase/functions/src/lib/callerContext.ts`), por isso o\n    // próprio token já traz esta informação sem precisar de nenhum\n    // `get()` extra a Firestore.\n    function isManager(tenantId) {\n      return belongsToTenant(tenantId) && 'manager' in request.auth.token.roles;\n    }\n\n    // Sonda de diagnóstico da Fase 0. Não faz parte do modelo de negócio.\n    match /_diagnostics/{docId} {\n      allow read, write: if true;\n    }\n\n    // --- Dados de configuração/identidade do tenant (Fase 1) ---\n    // Leitura/escrita ampla para qualquer utilizador do próprio tenant.\n    // Ver nota no topo do ficheiro sobre porque isto não pode incluir\n    // sessionOccurrences/bookings.\n\n    match /tenants/{tenantId} {\n      allow read, write: if belongsToTenant(tenantId);\n    }\n\n    match /tenants/{tenantId}/members/{memberId} {\n      allow read, write: if belongsToTenant(tenantId);\n    }\n\n    match /tenants/{tenantId}/staff/{staffId} {\n      allow read, write: if belongsToTenant(tenantId);\n    }\n\n    // Fase 4: escrita restrita a Manager (era ampla desde a Fase 1,\n    // quando ainda não guardava nada sensível). `config/bookingPolicy`\n    // (`minCancellationNoticeHours`) é uma decisão de negócio do\n    // Gestor, não algo que qualquer membro deva poder reescrever.\n    match /tenants/{tenantId}/config/{configId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if isManager(tenantId);\n    }\n\n    // --- Services (Fase 2, escrita liberada na Fase 3) ---\n    // Leitura ampla dentro do tenant; escrita só Manager, agora que\n    // `ManageServicesScreen` (Fase 3, UC26) existe. Mesmo padrão de\n    // `plans` logo abaixo — escrita direta do cliente, sem Cloud\n    // Function, porque não há nenhuma invariante cross-documento a\n    // validar (criar/ativar/desativar um Service é uma escrita\n    // isolada a UM documento).\n    match /tenants/{tenantId}/services/{serviceId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if isManager(tenantId);\n    }\n\n    // --- Sessions / Bookings (Fase 2; escrita fechada ao cliente na Fase 4) ---\n    //\n    // Até à Fase 3, a única escrita permitida a um cliente era o\n    // próprio membro a atualizar `activeBookingCount` (+1/-1) dentro\n    // das condições exatas de um booking/cancelamento — a transação\n    // client-side original (`firebase_booking_repository.dart`, Fase\n    // 2). A partir da Fase 4, `createBooking`/`cancelBooking` passaram\n    // a Cloud Functions (Admin SDK — ver nota de arquitetura em\n    // `createBooking.ts`): a validação do limite semanal de utilização\n    // não dá para exprimir com a mesma robustez em Security Rules (teria\n    // de cruzar o documento de `usage`, a `UsageRule` do Plan do\n    // membro, etc.), o mesmo motivo que já tinha levado\n    // `createSubscription` a ser Cloud Function na Fase 3.\n    //\n    // Consequência: leitura continua ampla (mostrar vagas/marcações a\n    // qualquer membro do tenant), mas ESCRITA fica `false` para o\n    // cliente em ambos — só a Cloud Function (Admin SDK, ignora estas\n    // regras) escreve. Isto fecha, de vez, a lacuna que já estava\n    // documentada (e aceite) no código antigo: \"um cliente malicioso\n    // podia, em teoria, enviar só o incremento do contador sem criar o\n    // booking\" — agora não consegue, porque não consegue escrever\n    // nenhum dos dois diretamente.\n    match /tenants/{tenantId}/sessionOccurrences/{occurrenceId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if false;\n\n      match /bookings/{bookingId} {\n        allow read: if belongsToTenant(tenantId);\n        allow write: if false;\n      }\n    }\n\n    // --- Usage tracking (Fase 4) ---\n    //\n    // `usage/{memberId}_{serviceId}_{period}` — read model derivado\n    // (Firestore Data Model v1 §32/D13), escrito só por\n    // `createBooking`/`cancelBooking`/`recalculateUsage` (Admin SDK).\n    // Leitura ampla dentro do tenant: o próprio membro lê para mostrar\n    // a barra \"X/Y sessões esta semana\" (Fase 4 story 7), e o Gestor\n    // também precisa de a poder consultar.\n    match /tenants/{tenantId}/usage/{usageId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if false;\n    }\n\n    // --- Plans / PlanServices (Fase 3, UC26) ---\n    //\n    // Leitura ampla dentro do tenant (qualquer membro precisa de ver os\n    // planos para, no futuro, os poder contratar/consultar); escrita\n    // só para Manager. Ao contrário de `bookings`, isto é escrita\n    // direta do cliente (`FirebasePlanRepository`), não passa por\n    // Cloud Function — não há nenhuma invariante cross-documento a\n    // validar aqui (ao contrário de `createSubscription`), por isso uma\n    // regra simples de role chega.\n    match /tenants/{tenantId}/plans/{planId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if isManager(tenantId);\n\n      match /services/{serviceId} {\n        allow read: if belongsToTenant(tenantId);\n        allow write: if isManager(tenantId);\n      }\n    }\n\n    // --- Subscriptions (Fase 3) ---\n    //\n    // Leitura ampla dentro do tenant: `isEligibleForService()`\n    // (`firebase_subscription_repository.dart`) faz uma query direta a\n    // esta coleção como o próprio membro, e um Manager também precisa\n    // de a poder consultar. Escrita SEMPRE negada ao cliente — a única\n    // via é a Cloud Function `createSubscription`, que corre com Admin\n    // SDK e por isso ignora estas regras (ver nota de arquitetura em\n    // `firebase_subscription_repository.dart` sobre porque a validação\n    // \"um serviço não pode estar em duas subscriptions ativas do mesmo\n    // membro\" não dá para exprimir aqui).\n    match /tenants/{tenantId}/subscriptions/{subscriptionId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if false;\n    }\n\n    // --- Leitura de \"bookings\" via collectionGroup (Fase 2) ---\n    //\n    // watchMyBookings() (firebase_booking_repository.dart) usa\n    // `firestore.collectionGroup('bookings').where('memberId', ...)`\n    // para mostrar as marcações do membro em TODAS as sessões, sem\n    // saber de antemão em que sessionOccurrence cada uma está.\n    //\n    // O match aninhado acima (`tenants/{tenantId}/sessionOccurrences/\n    // {occurrenceId}/bookings/{bookingId}`) só cobre pedidos a uma\n    // profundidade EXATA — get/list numa subcoleção concreta. Uma\n    // collectionGroup query não tem esse caminho fixo (varre TODAS as\n    // subcoleções chamadas \"bookings\", a qualquer profundidade), e o\n    // Firestore só autoriza esse tipo de pedido através de uma regra\n    // com wildcard recursivo `{path=**}` dedicada — não reaproveita a\n    // regra aninhada, mesmo que as condições sejam idênticas. Sem isto,\n    // o pedido cai no bloqueio genérico do fim do ficheiro (foi o que\n    // aconteceu: \"false for 'list' @ L112\" em vez de ser avaliado\n    // contra a regra de `bookings` lá de cima).\n    //\n    // Só `read` (get+list) — criar/atualizar uma booking continua a\n    // passar sempre pelo caminho completo e conhecido\n    // (`sessionOccurrences/{occurrenceId}/bookings/{bookingId}`, nunca\n    // por collectionGroup), por isso essa regra aninhada continua a ser\n    // a única fonte de verdade para escrita; esta aqui não adiciona\n    // nenhuma permissão de escrita nova.\n    match /{path=**}/bookings/{bookingId} {\n      // Duas tentativas anteriores tentaram extrair o tenantId do\n      // próprio `path` capturado por {path=**} (path.size(), depois\n      // path[0]/path[1]) — ambas deram erros de avaliação em runtime\n      // (a API exata de indexação de `path` não está a comportar-se\n      // como a documentação sugere, pelo menos nesta versão do\n      // emulador). Em vez de continuar a adivinhar essa sintaxe,\n      // simplifiquei para o que realmente importa aqui: só o dono da\n      // marcação a pode ler. Isto não depende de path nenhum — só do\n      // campo `memberId` do próprio documento vs. quem está\n      // autenticado. É equivalente em termos de segurança ao\n      // isolamento por tenant (um booking só é criado com\n      // memberId == uid de quem o cria, dentro do próprio tenant desse\n      // uid — ver \"allow create\" abaixo — por isso nunca há forma de um\n      // uid corresponder a um booking de outro tenant) e mais simples.\n      allow read: if isSignedIn() && resource.data.memberId == request.auth.uid;\n    }\n\n    // Tudo o resto fica bloqueado.\n    match /{document=**} {\n      allow read, write: if false;\n    }\n  }\n}\n"}]}}
+[debug] [2026-08-13T19:42:43.678Z] Aug 13, 2026 8:42:43 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:42:43 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:42:43.731Z] <<< [apiv2][status] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules 200
+[debug] [2026-08-13T19:42:43.731Z] <<< [apiv2][body] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules {}
+[info] +  firestore: Rules updated. 
+[info] i  firestore: Change detected, updating rules... 
+[debug] [2026-08-13T19:42:52.325Z] >>> [apiv2][query] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules [none]
+[debug] [2026-08-13T19:42:52.325Z] >>> [apiv2][body] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules {"ignore_errors":true,"rules":{"files":[{"name":"security.rules","content":"rules_version = '2';\n\n// Fase 1 — isolamento entre tenants (Platform Foundation §7).\n// Fase 2 — regras específicas de booking (contador de vagas + ownership).\n//\n// A matriz fina de autorização por role (o que um Instructor pode\n// fazer vs. um Manager, etc.) continua a ser trabalho do documento\n// \"06 — Security & Business Rules\" e das fases 3+. Até lá, dentro do\n// próprio tenant, qualquer utilizador autenticado tem leitura/escrita\n// ampla — EXCETO em sessionOccurrences/bookings, onde a Fase 2 exige\n// regras mais apertadas (não dá para ter aqui uma regra ampla que\n// cubra tudo: no Firestore, se QUALQUER regra que faça match permitir\n// a operação, ela é permitida — por isso sessionOccurrences/bookings\n// têm de ficar FORA do wildcard genérico, não só \"sobrepostas\" por uma\n// regra mais restrita).\nservice cloud.firestore {\n  match /databases/{database}/documents {\n\n    function isSignedIn() {\n      return request.auth != null;\n    }\n\n    function belongsToTenant(tenantId) {\n      return isSignedIn() && request.auth.token.tenantId == tenantId;\n    }\n\n    // Fase 3 — primeira regra que distingue Manager de outros roles.\n    // `roles` é um array nos custom claims (mesmo formato usado pelo\n    // `requireManager()` das Cloud Functions — ver\n    // `firebase/functions/src/lib/callerContext.ts`), por isso o\n    // próprio token já traz esta informação sem precisar de nenhum\n    // `get()` extra a Firestore.\n    function isManager(tenantId) {\n      return belongsToTenant(tenantId) && 'manager' in request.auth.token.roles;\n    }\n\n    // Sonda de diagnóstico da Fase 0. Não faz parte do modelo de negócio.\n    match /_diagnostics/{docId} {\n      allow read, write: if true;\n    }\n\n    // --- Dados de configuração/identidade do tenant (Fase 1) ---\n    // Leitura/escrita ampla para qualquer utilizador do próprio tenant.\n    // Ver nota no topo do ficheiro sobre porque isto não pode incluir\n    // sessionOccurrences/bookings.\n\n    match /tenants/{tenantId} {\n      allow read, write: if belongsToTenant(tenantId);\n    }\n\n    match /tenants/{tenantId}/members/{memberId} {\n      allow read, write: if belongsToTenant(tenantId);\n    }\n\n    match /tenants/{tenantId}/staff/{staffId} {\n      allow read, write: if belongsToTenant(tenantId);\n    }\n\n    // Fase 4: escrita restrita a Manager (era ampla desde a Fase 1,\n    // quando ainda não guardava nada sensível). `config/bookingPolicy`\n    // (`minCancellationNoticeHours`) é uma decisão de negócio do\n    // Gestor, não algo que qualquer membro deva poder reescrever.\n    match /tenants/{tenantId}/config/{configId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if isManager(tenantId);\n    }\n\n    // --- Services (Fase 2, escrita liberada na Fase 3) ---\n    // Leitura ampla dentro do tenant; escrita só Manager, agora que\n    // `ManageServicesScreen` (Fase 3, UC26) existe. Mesmo padrão de\n    // `plans` logo abaixo — escrita direta do cliente, sem Cloud\n    // Function, porque não há nenhuma invariante cross-documento a\n    // validar (criar/ativar/desativar um Service é uma escrita\n    // isolada a UM documento).\n    match /tenants/{tenantId}/services/{serviceId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if isManager(tenantId);\n    }\n\n    // --- Sessions / Bookings (Fase 2; escrita fechada ao cliente na Fase 4) ---\n    //\n    // Até à Fase 3, a única escrita permitida a um cliente era o\n    // próprio membro a atualizar `activeBookingCount` (+1/-1) dentro\n    // das condições exatas de um booking/cancelamento — a transação\n    // client-side original (`firebase_booking_repository.dart`, Fase\n    // 2). A partir da Fase 4, `createBooking`/`cancelBooking` passaram\n    // a Cloud Functions (Admin SDK — ver nota de arquitetura em\n    // `createBooking.ts`): a validação do limite semanal de utilização\n    // não dá para exprimir com a mesma robustez em Security Rules (teria\n    // de cruzar o documento de `usage`, a `UsageRule` do Plan do\n    // membro, etc.), o mesmo motivo que já tinha levado\n    // `createSubscription` a ser Cloud Function na Fase 3.\n    //\n    // Consequência: leitura continua ampla (mostrar vagas/marcações a\n    // qualquer membro do tenant), mas ESCRITA fica `false` para o\n    // cliente em ambos — só a Cloud Function (Admin SDK, ignora estas\n    // regras) escreve. Isto fecha, de vez, a lacuna que já estava\n    // documentada (e aceite) no código antigo: \"um cliente malicioso\n    // podia, em teoria, enviar só o incremento do contador sem criar o\n    // booking\" — agora não consegue, porque não consegue escrever\n    // nenhum dos dois diretamente.\n    match /tenants/{tenantId}/sessionOccurrences/{occurrenceId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if false;\n\n      match /bookings/{bookingId} {\n        allow read: if belongsToTenant(tenantId);\n        allow write: if false;\n      }\n    }\n\n    // --- Usage tracking (Fase 4) ---\n    //\n    // `usage/{memberId}_{serviceId}_{period}` — read model derivado\n    // (Firestore Data Model v1 §32/D13), escrito só por\n    // `createBooking`/`cancelBooking`/`recalculateUsage` (Admin SDK).\n    // Leitura ampla dentro do tenant: o próprio membro lê para mostrar\n    // a barra \"X/Y sessões esta semana\" (Fase 4 story 7), e o Gestor\n    // também precisa de a poder consultar.\n    match /tenants/{tenantId}/usage/{usageId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if false;\n    }\n\n    // --- Plans / PlanServices (Fase 3, UC26) ---\n    //\n    // Leitura ampla dentro do tenant (qualquer membro precisa de ver os\n    // planos para, no futuro, os poder contratar/consultar); escrita\n    // só para Manager. Ao contrário de `bookings`, isto é escrita\n    // direta do cliente (`FirebasePlanRepository`), não passa por\n    // Cloud Function — não há nenhuma invariante cross-documento a\n    // validar aqui (ao contrário de `createSubscription`), por isso uma\n    // regra simples de role chega.\n    match /tenants/{tenantId}/plans/{planId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if isManager(tenantId);\n\n      match /services/{serviceId} {\n        allow read: if belongsToTenant(tenantId);\n        allow write: if isManager(tenantId);\n      }\n    }\n\n    // --- Subscriptions (Fase 3) ---\n    //\n    // Leitura ampla dentro do tenant: `isEligibleForService()`\n    // (`firebase_subscription_repository.dart`) faz uma query direta a\n    // esta coleção como o próprio membro, e um Manager também precisa\n    // de a poder consultar. Escrita SEMPRE negada ao cliente — a única\n    // via é a Cloud Function `createSubscription`, que corre com Admin\n    // SDK e por isso ignora estas regras (ver nota de arquitetura em\n    // `firebase_subscription_repository.dart` sobre porque a validação\n    // \"um serviço não pode estar em duas subscriptions ativas do mesmo\n    // membro\" não dá para exprimir aqui).\n    match /tenants/{tenantId}/subscriptions/{subscriptionId} {\n      allow read: if belongsToTenant(tenantId);\n      allow write: if false;\n    }\n\n    // --- Leitura de \"bookings\" via collectionGroup (Fase 2) ---\n    //\n    // watchMyBookings() (firebase_booking_repository.dart) usa\n    // `firestore.collectionGroup('bookings').where('memberId', ...)`\n    // para mostrar as marcações do membro em TODAS as sessões, sem\n    // saber de antemão em que sessionOccurrence cada uma está.\n    //\n    // O match aninhado acima (`tenants/{tenantId}/sessionOccurrences/\n    // {occurrenceId}/bookings/{bookingId}`) só cobre pedidos a uma\n    // profundidade EXATA — get/list numa subcoleção concreta. Uma\n    // collectionGroup query não tem esse caminho fixo (varre TODAS as\n    // subcoleções chamadas \"bookings\", a qualquer profundidade), e o\n    // Firestore só autoriza esse tipo de pedido através de uma regra\n    // com wildcard recursivo `{path=**}` dedicada — não reaproveita a\n    // regra aninhada, mesmo que as condições sejam idênticas. Sem isto,\n    // o pedido cai no bloqueio genérico do fim do ficheiro (foi o que\n    // aconteceu: \"false for 'list' @ L112\" em vez de ser avaliado\n    // contra a regra de `bookings` lá de cima).\n    //\n    // Só `read` (get+list) — criar/atualizar uma booking continua a\n    // passar sempre pelo caminho completo e conhecido\n    // (`sessionOccurrences/{occurrenceId}/bookings/{bookingId}`, nunca\n    // por collectionGroup), por isso essa regra aninhada continua a ser\n    // a única fonte de verdade para escrita; esta aqui não adiciona\n    // nenhuma permissão de escrita nova.\n    match /{path=**}/bookings/{bookingId} {\n      // Duas tentativas anteriores tentaram extrair o tenantId do\n      // próprio `path` capturado por {path=**} (path.size(), depois\n      // path[0]/path[1]) — ambas deram erros de avaliação em runtime\n      // (a API exata de indexação de `path` não está a comportar-se\n      // como a documentação sugere, pelo menos nesta versão do\n      // emulador). Em vez de continuar a adivinhar essa sintaxe,\n      // simplifiquei para o que realmente importa aqui: só o dono da\n      // marcação a pode ler. Isto não depende de path nenhum — só do\n      // campo `memberId` do próprio documento vs. quem está\n      // autenticado. É equivalente em termos de segurança ao\n      // isolamento por tenant (um booking só é criado com\n      // memberId == uid de quem o cria, dentro do próprio tenant desse\n      // uid — agora garantido por `createBooking.ts`, Admin SDK, não\n      // por uma regra `allow create` aqui — por isso nunca há forma de\n      // um uid corresponder a um booking de outro tenant) e mais simples.\n      allow read: if isSignedIn() && resource.data.memberId == request.auth.uid;\n    }\n\n    // Tudo o resto fica bloqueado.\n    match /{document=**} {\n      allow read, write: if false;\n    }\n  }\n}\n"}]}}
+[debug] [2026-08-13T19:42:52.327Z] Aug 13, 2026 8:42:52 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:42:52 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:42:52.366Z] <<< [apiv2][status] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules 200
+[debug] [2026-08-13T19:42:52.366Z] <<< [apiv2][body] PUT http://127.0.0.1:8080/emulator/v1/projects/demo-gym-saas-dev:securityRules {}
+[info] +  firestore: Rules updated. 
+[debug] [2026-08-13T19:43:02.321Z] Aug 13, 2026 8:43:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:43:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:44:02.652Z] Aug 13, 2026 8:44:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:44:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:44:18.801Z] ----------------------------------------------------------------------
+[debug] [2026-08-13T19:44:18.803Z] Command:       /usr/bin/node /sessions/sleepy-peaceful-sagan/.npm/_npx/7750544ccf494d8b/node_modules/.bin/firebase emulators:exec --project=demo-gym-saas-dev --only firestore echo rules-loaded-ok
+[debug] [2026-08-13T19:44:18.803Z] CLI Version:   15.26.0
+[debug] [2026-08-13T19:44:18.803Z] Platform:      linux
+[debug] [2026-08-13T19:44:18.803Z] Node Version:  v22.22.3
+[debug] [2026-08-13T19:44:18.803Z] Detected Agent: unknown
+[debug] [2026-08-13T19:44:18.804Z] Time:          Thu Aug 13 2026 20:44:18 GMT+0100 (Western European Summer Time)
+[debug] [2026-08-13T19:44:18.804Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-08-13T19:44:18.813Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2026-08-13T19:44:19.392Z] *** [apiv2] error from fetch(https://firebase-public.firebaseio.com/cli.json, {"headers":{},"method":"GET","dispatcher":{"_events":{},"_eventsCount":0}}): Error: Request was cancelled.
+[warn] ⚠  Unable to fetch the CLI MOTD and remote config. This is not a fatal error, but may indicate an issue with your network connection. 
+[debug] [2026-08-13T19:44:19.393Z] Failed to fetch MOTD FirebaseError: Failed to make request to https://firebase-public.firebaseio.com/cli.json
+[debug] [2026-08-13T19:44:19.410Z] openjdk version "11.0.31" 2026-04-21
+OpenJDK Runtime Environment (build 11.0.31+11-post-1ubuntu1-22.04.2-Ubuntu)
+OpenJDK 64-Bit Server VM (build 11.0.31+11-post-1ubuntu1-22.04.2-Ubuntu, mixed mode, sharing)
+
+[debug] [2026-08-13T19:44:19.413Z] Parsed Java major version: 11
+[debug] [2026-08-13T19:44:19.417Z] Could not find VSCode notification endpoint: TypeError: fetch failed. If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.
+[info] i  emulators: Shutting down emulators. {"metadata":{"emulator":{"name":"hub"},"message":"Shutting down emulators."}}
+[debug] [2026-08-13T19:44:19.419Z] Could not find VSCode notification endpoint: TypeError: fetch failed. If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.
+[error] 
+[error] Error: firebase-tools no longer supports Java version before 21. Please install a JDK at version 21 or above to get a compatible runtime.
+[debug] [2026-08-13T19:45:02.676Z] Aug 13, 2026 8:45:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:45:02 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:46:03.010Z] Aug 13, 2026 8:46:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:46:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:47:03.036Z] Aug 13, 2026 8:47:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:47:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:48:03.365Z] Aug 13, 2026 8:48:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:48:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:49:03.397Z] Aug 13, 2026 8:49:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:49:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:50:03.721Z] Aug 13, 2026 8:50:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:50:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:51:03.733Z] Aug 13, 2026 8:51:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:51:03 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:52:04.061Z] Aug 13, 2026 8:52:04 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:52:04 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:53:04.078Z] Aug 13, 2026 8:53:04 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:53:04 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:54:04.400Z] Aug 13, 2026 8:54:04 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:54:04 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:55:04.421Z] Aug 13, 2026 8:55:04 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:55:04 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:55:49.736Z] Aug 13, 2026 8:55:49 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:55:49 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:56:49.744Z] Aug 13, 2026 8:56:49 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:56:49 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:57:50.077Z] Aug 13, 2026 8:57:50 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:57:50 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:58:50.093Z] Aug 13, 2026 8:58:50 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+INFO: Detected non-HTTP/2 connection.
+ {"metadata":{"emulator":{"name":"firestore"},"message":"Aug 13, 2026 8:58:50 PM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead\r\nINFO: Detected non-HTTP/2 connection.\r\n"}}
+[debug] [2026-08-13T19:58:58.742Z] Received signal SIGINT (Ctrl-C) 1
+[info]  
+[info] i  emulators: Received SIGINT (Ctrl-C) for the first time. Starting a clean shutdown. 
+[info] i  emulators: Please wait for a clean shutdown or send the SIGINT (Ctrl-C) signal again to stop right now. 
+[debug] [2026-08-13T19:58:58.744Z] Found emulator hub locator: {"version":"15.26.0","origins":["http://127.0.0.1:4400","http://[::1]:4400"],"pid":31428}
+[debug] [2026-08-13T19:58:58.744Z] Delete emulator hub locator file: C:\Users\carlo\AppData\Local\Temp\hub-demo-gym-saas-dev.json
+[info] i  emulators: Shutting down emulators. {"metadata":{"emulator":{"name":"hub"},"message":"Shutting down emulators."}}
+[info] i  ui: Stopping Emulator UI {"metadata":{"emulator":{"name":"ui"},"message":"Stopping Emulator UI"}}
+[info] i  extensions: Stopping Extensions Emulator {"metadata":{"emulator":{"name":"extensions"},"message":"Stopping Extensions Emulator"}}
+[debug] [2026-08-13T19:58:58.746Z] [Extensions] Stopping Extensions emulator, this is a noop.
+[info] i  functions: Stopping Functions Emulator {"metadata":{"emulator":{"name":"functions"},"message":"Stopping Functions Emulator"}}
+[info] i  firestore: Stopping Firestore Emulator {"metadata":{"emulator":{"name":"firestore"},"message":"Stopping Firestore Emulator"}}
+[warn] !  Firestore Emulator has exited upon receiving signal: SIGKILL 
+[info] i  auth: Stopping Authentication Emulator {"metadata":{"emulator":{"name":"auth"},"message":"Stopping Authentication Emulator"}}
+[info] i  storage: Stopping Storage Emulator {"metadata":{"emulator":{"name":"storage"},"message":"Stopping Storage Emulator"}}
+[debug] [2026-08-13T19:58:58.772Z] Stopping rules runtime. {"metadata":{"emulator":{"name":"storage"},"message":"Stopping rules runtime."}}
+[info] i  eventarc: Stopping Eventarc Emulator {"metadata":{"emulator":{"name":"eventarc"},"message":"Stopping Eventarc Emulator"}}
+[info] i  tasks: Stopping Cloud Tasks Emulator {"metadata":{"emulator":{"name":"tasks"},"message":"Stopping Cloud Tasks Emulator"}}
+[info] i  hub: Stopping emulator hub {"metadata":{"emulator":{"name":"hub"},"message":"Stopping emulator hub"}}
+[info] i  logging: Stopping Logging Emulator {"metadata":{"emulator":{"name":"logging"},"message":"Stopping Logging Emulator"}}
+[debug] [2026-08-13T19:58:58.788Z] Could not find VSCode notification endpoint: TypeError: fetch failed. If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.

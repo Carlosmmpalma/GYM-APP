@@ -21,10 +21,11 @@ class _FakeBookingRepository implements BookingRepository {
   }
 
   @override
-  Future<void> cancelBooking({
+  Future<bool> cancelBooking({
     required String occurrenceId,
     required String memberId,
-  }) async {}
+  }) async =>
+      false;
 
   @override
   Stream<List<Booking>> watchMyBookings(String memberId) => const Stream.empty();
@@ -51,6 +52,13 @@ class _FakeSubscriptionRepository implements SubscriptionRepository {
   @override
   Stream<List<Subscription>> watchMemberSubscriptions(String memberId) =>
       const Stream.empty();
+
+  @override
+  Future<String?> getGrantingPlanId({
+    required String memberId,
+    required String serviceId,
+  }) async =>
+      null;
 }
 
 void main() {

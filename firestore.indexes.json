@@ -24,6 +24,24 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "activeServiceIds", "arrayConfig": "CONTAINS" }
       ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "memberId", "order": "ASCENDING" },
+        { "fieldPath": "serviceId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "isExtra", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "usage",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "memberId", "order": "ASCENDING" },
+        { "fieldPath": "serviceId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

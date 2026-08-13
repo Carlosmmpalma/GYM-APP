@@ -688,18 +688,23 @@ regra de utilização), e atribuir um Plano a um membro.
    `enabled:true`+`usage.type:unlimited`, ligar com "Limitado" grava
    `limit`/`period`) — ambos só dependem de Firestore
    (`fake_cloud_firestore`), por isso escrevi-os com confiança alta.
-   **`AssignSubscriptionScreen` e `ManagerScreen` continuam sem teste
-   de widget** — `AssignSubscriptionScreen` chama `createSubscription`
-   através de `FirebaseFunctions.httpsCallable(...).call(...)`, e
-   mockar essa cadeia com `mocktail` (`HttpsCallable`/
-   `HttpsCallableResult` são tipos do pacote `cloud_functions`, cuja
-   forma exata — generics, comportamento por omissão — não tenho como
-   confirmar sem correr Flutter) é um risco real de escrever um teste
-   que "passa" mas não verifica o que diz verificar. Prefiro não
-   escrever isso às cegas; fica para quando puderes correr/rever tu.
+   ~~`AssignSubscriptionScreen` continua sem teste de widget~~
+   **Resolvido (fora do plano de fases, depois da Fase 4):**
+   `assign_subscription_screen_test.dart` — o receio original era
+   mockar `FirebaseFunctions.httpsCallable(...).call(...)` diretamente
+   com `mocktail` (risco real de um teste que "passa" sem verificar
+   nada, ver texto original abaixo). A Fase 4 provou um padrão melhor
+   entretanto (`book_training_screen_test.dart`,
+   `my_bookings_screen_test.dart`): um fake que implementa
+   `SubscriptionRepository` inteiro (mantém as subscriptions em
+   memória, nunca toca em `cloud_functions`) injetado via
+   `subscriptionRepositoryProvider.overrideWithValue(...)`. Cobre
+   atribuição com sucesso (membro fica selecionado, preço limpa,
+   secção "Planos ativos" atualiza) e o caso de conflito
+   (`SubscriptionServiceConflictException` mostrada inline).
    `ManagerScreen` é só navegação (2-3 `ListTile`→`Navigator.push`)
-   sem lógica própria — baixo risco de bug, por isso também baixa
-   prioridade de teste automatizado.
+   sem lógica própria — baixo risco de bug, por isso continua sem
+   teste automatizado dedicado.
 3. **Discrepância no critério "Done" do guia** (secção abaixo): o
    texto do guia menciona um "picker de atribuição manual" que só deve
    mostrar alunos elegíveis — isso é o picker de atribuição de sessões
@@ -855,6 +860,135 @@ Acrescentado:
   `services` — membro lê mas não escreve, Manager do tenant cria e
   desativa, Manager de outro tenant não consegue.
 
+### Extensão pedida: ver os planos de cada membro (fora do guia)
+
+Depois de testares a Fase 3, pediste para conseguir ver os planos de
+cada membro e evitar duplicados — o segundo já estava coberto
+(`createSubscription` recusa por serviço em conflito, Domain Model v1
+§15), mas não havia forma de VER. Acrescentado:
+
+- `memberSubscriptionsProvider` (`plan_providers.dart`, `.family` por
+  `memberId`), sobre `watchMemberSubscriptions()` que já existia desde
+  a Fase 3.
+- `AssignSubscriptionScreen`: mostra logo, ao escolher o membro, um
+  cartão com os planos ativos que já tem — antes de tentares submeter.
+  Aceita também `initialMember` opcional.
+- `ManageMembersScreen` (novo, "Gestão → Membros") + `MemberDetailScreen`
+  (novo): lista de membros → detalhe com TODAS as subscriptions
+  (ativas e histórico, com estado, preço, serviços, datas) + botão
+  "Atribuir novo plano".
+- Sem alterações a `firestore.rules`: leitura de `members`/`plans`/
+  `services`/`subscriptions` já era ampla dentro do tenant.
+- **Não corri nada disto** — balanços de chavetas confirmados por
+  script, não compilação real nem widget tests novos para estes dois
+  ecrãs. Confirma com `flutter test`/`flutter analyze` e testa em
+  Chrome: Gestão → Membros → escolhe a Rita → deve aparecer a
+  subscription do seed.
+
+### Extensão pedida: desativar Plano / desativar Membro (fora do guia)
+
+Perguntaste sobre eliminar Plans/Services/Membros. Resposta curta:
+**desativar, não eliminar** — é o mesmo padrão já usado em todo o
+domínio (bookings e subscriptions nunca são apagados, só mudam de
+`status`; Plans e Services já tinham `active`). Eliminar partiria
+histórico (subscriptions/bookings que ainda apontam para esse
+id). Acrescentado:
+
+- `Plan.copyWith({active})` (novo método no domínio) + `SwitchListTile`
+  "Plano ativo" no topo de `PlanDetailScreen`, usando o
+  `updatePlan()` que já existia. Resolve o Plan atual pelo
+  `plansProvider` ao vivo (não pelo valor imutável recebido no
+  construtor), para o switch refletir o estado real mesmo depois de
+  navegares para trás e para a frente.
+- `MemberRepository.setMemberActive()` (novo, escreve `status` —
+  mesmo campo já lido em `_fromDoc`) + `SwitchListTile` "Membro ativo"
+  em `MemberDetailScreen`, mesmo raciocínio de resolver o membro atual
+  ao vivo.
+- **Não mexe no Firebase Auth nem em `firestore.rules`** — um membro
+  "inativo" continua tecnicamente a conseguir fazer login; isto é só
+  marcação de negócio. Bloquear login/marcação de um membro inativo a
+  sério (Rules) fica para quando for pedido — não implementei isso às
+  escondidas.
+- `AssignSubscriptionScreen`/`ManagePlansScreen` **não filtram** planos
+  inativos do dropdown/lista — continuam a aparecer, só marcados
+  "· inativo". Impedir escolher um Plano inativo no picker é um passo
+  a mais que não pediste explicitamente; fica sinalizado, não feito.
+- **Não corri nada disto** — mesma ressalva de sempre, confirma com
+  `flutter analyze`/`flutter test`.
+
+### Extensão pedida: gaps encontrados a comparar com os mockups (fora do guia)
+
+Pediste para analisar `Functional/nxt-studio-screens.html` (os
+mockups) contra o que já estava construído, e depois "faz todos" os
+gaps que encontrasse. Encontrei três:
+
+**1. Ecrã "Criar utilizador" (UC22) — em falta desde a Fase 1.**
+`createMember`/`createStaff` (Cloud Functions) existiam desde a Fase 1,
+mas nenhuma UI os chamava — não havia forma de criar um Aluno ou Staff
+a partir da app. Acrescentado:
+
+- `CreateUserScreen` (novo): `SegmentedButton` Aluno/Staff, nome,
+  email+papéis (Instrutor/Gestor) só para Staff. Ao contrário do
+  mockup ("Modalidade associada" com checkboxes Hyrox/PT/Pilates),
+  `createStaff.ts` não tem campo de modalidade no schema — só `roles`;
+  segui o que o backend aceita, não o mockup à letra.
+- Diálogo bloqueante (`barrierDismissible: false`) no fim, mostrando
+  nº de sócio ou email + password temporária em `SelectableText` — é a
+  ÚNICA vez que a password aparece (mockup: "credenciais comunicadas
+  fora da app"). Fechar o diálogo é a única saída.
+- FAB "+" ligado a partir de `ManageMembersScreen` e `ManageStaffScreen`
+  (ver ponto 2).
+
+**2. Gestão de Staff — não existia repository nem ecrã nenhum.**
+Só havia `MemberRepository` (Alunos); Instrutores/Gestores não tinham
+nenhuma forma de serem listados, vistos ou desativados pela app.
+Acrescentado, seguindo exatamente o padrão já usado para Members/Plans:
+
+- `StaffSummary` (domínio), `StaffRepository`/`FirebaseStaffRepository`
+  (lê `tenants/{tenantId}/staff`, mapeia `roles` via `Role.fromClaim`,
+  `active` a partir de `status`).
+- `ManageStaffScreen` (novo, "Gestão → Staff"): lista com papéis e
+  estado, FAB "+" → `CreateUserScreen`.
+- `StaffDetailScreen` (novo): email, papéis, `SwitchListTile` "Staff
+  ativo" (mesmo raciocínio de desativar-não-eliminar da secção
+  anterior). Nota explícita quando inativo: desativar aqui não cancela
+  automaticamente sessões futuras desse instrutor (UC24) — isso é
+  gestão de sessões, ainda não construída (Fase 5+).
+- `ManagerScreen`: novo card "Staff".
+
+**3. `AssignSubscriptionScreen` — UX diferente do mockup, mas sem
+hardcodar categorias.** O mockup (UC26) mostra atribuir vários
+serviços/níveis a um membro num único fluxo agrupado por categoria
+(sala nível único, aulas de grupo múltiplas, PT único). Não hardcodei
+essas categorias — violaria o Domain Model v1 §10 ("nunca um enum
+fixo na app": Plans são configuráveis por tenant, não uma lista fixa
+de categorias). Em vez disso:
+
+- Depois de atribuir um plano com sucesso, o ecrã já não faz `pop` —
+  fica no mesmo membro, limpa só o campo do plano e do preço (com uma
+  `key` nova no dropdown, porque `DropdownButtonFormField.initialValue`
+  só é lido na primeira construção — mudar a variável sozinha não
+  limpa o valor mostrado), e a secção "Planos ativos deste membro"
+  atualiza-se sozinha (é um `StreamProvider`). O Gestor pode assim
+  atribuir vários planos seguidos ao mesmo membro sem sair do ecrã.
+  Sair é sempre via botão de voltar da AppBar.
+
+**Não corri nada disto** — mesma ressalva de sempre: balanços de
+chavetas/parênteses confirmados por script em todos os 96 ficheiros
+`.dart` de `lib/`/`test/`, não compilação real. Não escrevi widget
+tests novos para `CreateUserScreen`/`ManageStaffScreen`/
+`StaffDetailScreen`/`AssignSubscriptionScreen` pela mesma razão já
+documentada nas extensões anteriores: mockar a cadeia `HttpsCallable`
+do `cloud_functions` via `mocktail` não dá para verificar sem correr
+Flutter a sério — prefiro documentar isto do que escrever um teste que
+posso não ter a certeza que está correto. Confirma com
+`flutter analyze`/`flutter test` e testa em Chrome: Gestão → Membros →
+"+" → cria um Aluno → confirma que aparece o diálogo com nº de sócio;
+Gestão → Staff → "+" → cria um Staff → confirma login com esse email;
+Gestão → Membros → escolhe alguém → "Atribuir novo plano" → atribui um
+plano → confirma que o ecrã fica no mesmo membro e o plano some do
+dropdown mas aparece na secção "Planos ativos".
+
 ### Passos para verificar a Fase 3 localmente
 
 Comandos em PowerShell — sem `&&`; cada passo em linhas separadas.
@@ -926,7 +1060,227 @@ aberto" acima — refere-se a um picker de sessões que não faz parte da
 lista de histórias desta fase nem existe ainda na app; sinalizada, não
 implementada às escondidas nem ignorada em silêncio.
 
+## Fase 4 — Usage tracking e limite semanal
+
+**Objetivo do guia:** "limite semanal (Standard 1x / Plus 2x / Premium
+3x) validado corretamente, com semana segunda-domingo."
+
+### Decisão de arquitetura (perguntada ao Carlos antes de codificar)
+
+A Fase 3 já tinha fechado `createSubscription` como Cloud Function
+(Admin SDK) em vez de transação client-side, por a validação precisar
+de percorrer um número variável de documentos. A Fase 4 tinha o mesmo
+dilema para `createBooking`/`cancelBooking` — e mais dois pontos sem
+resposta na documentação (`Firestore Data Model v1` §71, "o que ainda
+não está decidido"): onde vive a "antecedência mínima para cancelar", e
+o que acontece ao cancelar FORA dessa janela. Perguntei antes de
+implementar; respostas do Carlos:
+
+1. **`createBooking`/`cancelBooking` passam a Cloud Function** (Admin
+   SDK), não continuam como transação client-side da Fase 2. Motivo:
+   `Firestore Data Model v1` §52 pede explicitamente autoridade no
+   backend para limite semanal e antecedência mínima.
+2. **Antecedência mínima: um valor único por tenant**
+   (`tenants/{id}/config/bookingPolicy.minCancellationNoticeHours`),
+   não por Plan nem por Service.
+3. **Cancelar fora da janela: cancela na mesma (liberta a vaga), mas
+   NÃO devolve a utilização semanal** — funciona como penalização por
+   cancelar tarde.
+
+### O que foi acrescentado
+
+- **Domain:** `Usage` (`domain/entities/usage.dart`) — read model
+  derivado, sem `limit` guardado (evita ficar desatualizado se o
+  Gestor mudar a `UsageRule` depois). `Booking` ganhou `serviceId`/
+  `period` (nullable — `null` só em bookings de seed anteriores a esta
+  fase). Nova `UsageLimitReachedException`.
+- **`core/utils/iso_week.dart`** (+ equivalente TS em
+  `firebase/functions/src/lib/isoWeek.ts`, que É a versão que decide de
+  facto) — `isoWeekKey`/`isoWeekRange`, semana segunda 00:00 a domingo
+  23:59, formato `YYYY-Www`. Limitação documentada: cálculo em UTC, não
+  no timezone do tenant (não há biblioteca de timezone nas
+  dependências) — perto da fronteira segunda/domingo à meia-noite pode
+  desviar por causa do horário de verão.
+- **Cloud Functions novas** (`firebase/functions/src/`):
+  `createBooking.ts` (substitui a transação client-side da Fase 2:
+  valida elegibilidade, limite semanal via `usage/{memberId}_
+  {serviceId}_{period}`, capacidade, concorrência na última vaga —
+  tudo o que já existia mais o limite novo), `cancelBooking.ts`
+  (cancela sempre, devolve `usage` só dentro da janela configurada),
+  `recalculateUsage.ts` (Manager-only, recalcula `usage` a partir dos
+  `Booking`s reais — Firestore Data Model v1 §32/D13: usage nunca é a
+  fonte de verdade).
+- **`TenantRepository`** ganhou `getMinCancellationNoticeHours`/
+  `setMinCancellationNoticeHours` + `TenantSettingsScreen` (novo,
+  "Gestão → Definições") para o Gestor configurar isto — sem UI não
+  havia forma nenhuma de definir o valor.
+- **`firestore.rules`:** nova coleção `usage` (leitura ampla no tenant,
+  escrita sempre `false`). `sessionOccurrences`/`bookings` passam de
+  "o próprio membro pode escrever `activeBookingCount`/o seu booking
+  dentro de condições exatas" (Fase 2) para **escrita sempre `false`
+  para o cliente** — fecha, de vez, a lacuna que já estava documentada
+  (e aceite) no código antigo: "um cliente malicioso podia, em teoria,
+  enviar só o incremento do contador sem criar o booking". `config/
+  {configId}` passa de escrita ampla (Fase 1) para só Manager.
+- **`lib/infrastructure/firebase/firebase_booking_repository.dart`**
+  reescrito: já não faz `runTransaction` nenhuma, só chama
+  `createBooking`/`cancelBooking` via `cloud_functions` e traduz
+  `FirebaseFunctionsException` (código + `details.reason`) para as
+  exceções de domínio — mesmo padrão de
+  `firebase_subscription_repository.dart` (Fase 3).
+- **`UsageRepository`** (novo, só leitura) + `book_training_screen.dart`
+  ganhou uma barra "Esta semana: X/Y sessões de \<serviço\>" (story 7),
+  visível só quando a `UsageRule` aplicável é `limited`.
+- **Seed script:** o plano "Standard (teste)" passa de `unlimited` para
+  `limited` (1x/semana) em "Aula de Grupo", e há uma segunda
+  `sessionOccurrence` na mesma semana — sem isto não dava para testar o
+  bloqueio à mão com só uma sessão disponível.
+
+### Ainda em aberto / não verificado nesta sandbox
+
+1. **Testes de negócio das Cloud Functions não escritos.** O ficheiro
+   antigo `test/repositories/firebase_booking_repository_test.dart`
+   testava a transação client-side diretamente contra
+   `FakeFirebaseFirestore`; essa lógica mudou de sítio (agora vive em
+   `createBooking.ts`/`cancelBooking.ts`), e testá-la exigiria o
+   Firebase Functions Emulator (não montado neste projeto — só o
+   Firestore Emulator tem testes de Rules, em `firebase/tests`). Fica
+   sinalizado como lacuna real, não escondida. Os testes de ECRÃ
+   (`book_training_screen_test.dart`/`my_bookings_screen_test.dart`)
+   continuam a cobrir a reação da UI a sucesso/erro, através de um fake
+   de `BookingRepository` que simula no `FakeFirebaseFirestore` o que a
+   Cloud Function faria — não a lógica de negócio da função em si.
+2. **`firebase/tests/usage-rules.test.ts` (novo) não corri** — nem
+   Java (logo, nem o Firestore Emulator) nem uma instalação de
+   `node_modules` compatível com este SO (`esbuild`/`rollup`
+   instalados para outra plataforma) estavam disponíveis na sandbox
+   onde este código foi escrito. Mesma ressalva de sempre: confirma com
+   `firebase emulators:exec ... "npm --prefix firebase/tests test"`.
+3. ~~`recalculateUsage` não tem nenhum botão na UI~~ **Resolvido
+   (task #63, fora do plano de fases):** `MemberDetailScreen` mostra
+   agora "Recalcular utilização" em cada plano ativo do membro — chama
+   `UsageRepository.recalculateUsage` (novo método,
+   `firebase_usage_repository.dart`, via
+   `httpsCallable('recalculateUsage')`) para cada serviço a que a
+   subscription dá acesso (picker quando há mais do que um serviço) e
+   mostra o resultado (`período: usadas sessão(ões)`) num diálogo, ou
+   uma mensagem própria quando não há nada para recalcular. Coberto por
+   `member_detail_screen_test.dart` com o mesmo padrão de fake
+   repository (nunca mocka `cloud_functions` diretamente) — caso de
+   sucesso e caso "nada a recalcular".
+4. **Isolamento entre tenants na collectionGroup de `recalculateUsage`**
+   segue o mesmo raciocínio já aceite em `watchMyBookings` (um uid só
+   pertence a um tenant) — não repetido com um teste de isolamento
+   dedicado; `usage-rules.test.ts` cobre as Rules, não a Cloud Function.
+
+### Passos para verificar a Fase 4 localmente
+
+Comandos em PowerShell — sem `&&`; cada passo em linhas separadas.
+
+```powershell
+# 1. Confirmar que tudo continua a compilar/passar
+dart format --output=none --set-exit-if-changed .
+flutter analyze --fatal-infos
+flutter test
+
+# 2. Cloud Functions: build + lint (createBooking/cancelBooking/
+#    recalculateUsage são código novo desta fase)
+cd firebase/functions
+npm run build
+npm run lint
+cd ../..
+
+# 3. 🔴 Security Rules — isolamento + concorrência + plans/subscriptions
+#    + usage/bookings-fechados (Fase 4)
+cd firebase/tests
+npm install
+cd ../..
+firebase emulators:exec --project=demo-gym-saas-dev --only firestore "npm --prefix firebase/tests test"
+
+# 4. Seed (com o emulador completo a correr:
+#    firebase emulators:start --project=demo-gym-saas-dev) — se já
+#    tinhas semeado antes da Fase 4, corre outra vez: atualiza o plano
+#    "Standard (teste)" para 1x/semana e acrescenta a segunda sessão.
+cd firebase/scripts
+npm run seed
+cd ../..
+
+# 5. Testar o limite semanal como a Rita
+flutter run -t lib/main_development.dart
+# Login: nº "000001" / password "MemberPass123!". Em "Marcar", deve
+# aparecer já a barra "Esta semana: 0/1 sessões de Aula de Grupo" por
+# cima das duas sessões. Marca a PRIMEIRA — sucesso, a barra passa a
+# "1/1". Tenta marcar a SEGUNDA — bloqueado com "Já atingiste o limite
+# semanal deste serviço (1/1)".
+
+# 6. Testar a devolução de utilização ao cancelar
+# Em "Minhas marcações", cancela a marcação. Sem nenhuma antecedência
+# mínima configurada (default 0h = sem restrição), a barra em "Marcar"
+# deve voltar a "0/1" e a segunda sessão volta a ficar marcável.
+
+# 7. Testar a antecedência mínima
+# Login como Leo (Gestor) → "Gestão → Definições" → mete um valor alto
+# (ex.: 999999) em "Antecedência mínima (horas)" → Guardar. Login outra
+# vez como a Rita, marca e depois tenta cancelar: o cancelamento deve
+# continuar a funcionar (a vaga liberta-se), mas a barra de utilização
+# NÃO deve voltar a descer — a marcação continua a contar para o
+# limite semanal.
+```
+
+### Critério "Done" da Fase 4
+
+> um aluno Plus é bloqueado à 3ª tentativa de marcação na mesma semana,
+> e o contador reseta corretamente na segunda-feira seguinte.
+
+A primeira metade está feita e coberta pelo passo 5 acima (adaptado ao
+seed: 1x/semana em vez de 2x, mesmo mecanismo). A segunda metade (reset
+à segunda-feira) é uma consequência direta de `isoWeekKey`/
+`isoWeekRange` gerarem uma chave nova a cada semana ISO — não precisa
+de nenhum job/cron a "resetar" nada, o documento antigo simplesmente
+deixa de ser lido (fica como histórico). Não simulei a passagem de uma
+semana inteira num teste automatizado (exigiria mockar `DateTime.now()`
+tanto no Dart como no TS); fica sinalizado, não verificado ponta a
+ponta.
+
+### Extensão pedida: aviso antes de cancelar (fora do guia)
+
+Depois de testares a Fase 4 (limite semanal a funcionar), reparaste que
+cancelar uma marcação não avisava nada sobre a utilização — cancelava
+em silêncio, sem dizer se ia ou não devolver a vaga ao limite semanal.
+Acrescentado a `my_bookings_screen.dart`:
+
+- **Diálogo de confirmação antes de cancelar**, com texto diferente
+  consoante o caso: serviço sem limite ("A vaga fica livre para outro
+  membro"), dentro da janela de antecedência ("... e a utilização desta
+  semana é devolvida"), ou fora da janela (aviso mais forte, botão a
+  vermelho: "esta marcação continua a contar para o teu limite
+  semanal — a utilização NÃO é devolvida"). É uma PREVISÃO calculada no
+  cliente (`occurrenceProvider` + `minCancellationNoticeHoursProvider` +
+  `applicableUsageRuleProvider`) — a autoridade continua a ser
+  `cancelBooking.ts`.
+- **`cancelBooking.ts` passa a devolver `usageRefunded: boolean`** (era
+  só `{cancelled: true}`), para a mensagem final (SnackBar, depois do
+  cancelamento) refletir o que REALMENTE aconteceu, não a previsão do
+  diálogo. `BookingRepository.cancelBooking`/`CancelBookingUseCase`
+  propagam esse valor (`Future<bool>` em vez de `Future<void>`).
+- Novo `occurrenceProvider` (`.family`, `booking_providers.dart`) —
+  busca uma única `SessionOccurrence` por id; não existia nenhuma forma
+  de "Minhas marcações" saber a que horas é a sessão de uma marcação.
+
+**Não corri nada disto** — mesma ressalva de sempre. Testes
+atualizados: `my_bookings_screen_test.dart` agora confirma o diálogo
+antes de assumir que cancelar funciona; `cancel_booking_use_case_test.dart`
+ganhou um teste para o valor de retorno novo. Não escrevi um teste de
+widget para o caminho "fora da janela" (aviso a vermelho) — exigiria
+seed de subscription+plan+usage limited dentro do
+`FakeFirebaseFirestore` do teste só para chegar lá, e a lógica em si
+(qual mensagem aparece, `withinWindow`) é simples o suficiente para
+rever a olho; fica sinalizado, não escondido.
+
 ## Próximo passo
 
-Fase 4 do guia (`Technical/guia-desenvolvimento.md`) — ainda por
-consultar em detalhe.
+Fase 5 do guia (`Technical/guia-desenvolvimento.md`) — "Sessões
+recorrentes (séries)": Cloud Function agendada
+`generateRecurringOccurrences`, editar/cancelar uma ocorrência sem
+tocar na série, ecrãs "Criar aula/PT — recorrente" e "Ajustar uma
+semana da série". Ainda por consultar em detalhe.

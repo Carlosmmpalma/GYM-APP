@@ -3,15 +3,97 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gym_saas/application/providers/booking_providers.dart';
 import 'package:gym_saas/application/providers/firebase_providers.dart';
 import 'package:gym_saas/application/providers/tenant_context_providers.dart';
 import 'package:gym_saas/core/config/tenant_app_config.dart';
 import 'package:gym_saas/domain/entities/app_user.dart';
+import 'package:gym_saas/domain/entities/booking.dart';
 import 'package:gym_saas/domain/entities/role.dart';
 import 'package:gym_saas/presentation/screens/my_bookings_screen.dart';
+import 'package:gym_saas/repositories/booking_repository.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 const _tenantId = 'tenant_test';
+
+// Fase 4 — cancelBooking passou a Cloud Function (ver nota equivalente
+// em book_training_screen_test.dart sobre porque um fake que mexe
+// diretamente no FakeFirebaseFirestore é preferível a mockar
+// `cloud_functions` aqui).
+class _FakeBookingRepository implements BookingRepository {
+  _FakeBookingRepository(this._firestore, this._tenantId);
+
+  final FakeFirebaseFirestore _firestore;
+  final String _tenantId;
+
+  DocumentReference<Map<String, dynamic>> _occurrenceDoc(String occurrenceId) =>
+      _firestore
+          .collection('tenants')
+          .doc(_tenantId)
+          .collection('sessionOccurrences')
+          .doc(occurrenceId);
+
+  @override
+  Future<void> createBooking({
+    required String occurrenceId,
+    required String memberId,
+  }) async {
+    throw UnimplementedError('Não usado neste ecrã.');
+  }
+
+  @override
+  Future<bool> cancelBooking({
+    required String occurrenceId,
+    required String memberId,
+  }) async {
+    final occurrenceRef = _occurrenceDoc(occurrenceId);
+    final bookingRef = occurrenceRef.collection('bookings').doc(memberId);
+
+    final bookingSnap = await bookingRef.get();
+    if (!bookingSnap.exists || bookingSnap.data()?['status'] != 'booked') {
+      throw const BookingNotFoundException();
+    }
+    final occurrenceSnap = await occurrenceRef.get();
+    final activeCount =
+        (occurrenceSnap.data()?['activeBookingCount'] as num? ?? 0).toInt();
+
+    await bookingRef.update({'status': 'cancelled'});
+    await occurrenceRef.update({
+      'activeBookingCount': activeCount > 0 ? activeCount - 1 : 0,
+    });
+    // Booking de teste não tem serviceId/period (nunca havia nenhuma
+    // UsageRule limited envolvida aqui) — nunca haveria nada para
+    // devolver.
+    return false;
+  }
+
+  @override
+  Stream<List<Booking>> watchMyBookings(String memberId) {
+    // Mesma query da implementação real (`firebase_booking_repository.dart`)
+    // — só a escrita mudou para Cloud Function na Fase 4, a leitura
+    // continua direta ao Firestore.
+    return _firestore
+        .collectionGroup('bookings')
+        .where('memberId', isEqualTo: memberId)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) {
+              final data = doc.data();
+              final occurrenceId = doc.reference.parent.parent!.id;
+              return Booking(
+                id: doc.id,
+                occurrenceId: occurrenceId,
+                memberId: data['memberId'] as String,
+                status: (data['status'] as String) == 'booked'
+                    ? BookingStatus.booked
+                    : BookingStatus.cancelled,
+                source: BookingSource.self,
+                isExtra: data['isExtra'] as bool? ?? false,
+                createdAt:
+                    (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+              );
+            }).toList());
+  }
+}
 
 void main() {
   setUpAll(() async {
@@ -30,6 +112,9 @@ void main() {
             const TenantAppConfig(tenantId: _tenantId),
           ),
           firestoreProvider.overrideWithValue(firestore),
+          bookingRepositoryProvider.overrideWithValue(
+            _FakeBookingRepository(firestore, _tenantId),
+          ),
           currentAppUserProvider.overrideWith((ref) => Stream.value(appUser)),
         ],
         child: const MaterialApp(home: Scaffold(body: MyBookingsScreen())),
@@ -80,6 +165,9 @@ void main() {
             const TenantAppConfig(tenantId: _tenantId),
           ),
           firestoreProvider.overrideWithValue(firestore),
+          bookingRepositoryProvider.overrideWithValue(
+            _FakeBookingRepository(firestore, _tenantId),
+          ),
           currentAppUserProvider.overrideWith((ref) => Stream.value(appUser)),
         ],
         child: const MaterialApp(home: Scaffold(body: MyBookingsScreen())),
@@ -89,7 +177,19 @@ void main() {
 
     expect(find.textContaining('Marcação #'), findsOneWidget);
 
+    // Fase 4: "Cancelar" já não cancela direto — abre um diálogo de
+    // confirmação primeiro (aviso sobre a utilização, ver
+    // `my_bookings_screen.dart#_confirm`). Esta marcação não tem
+    // `serviceId` (não foi criada com uma UsageRule limited associada),
+    // por isso o diálogo mostra a mensagem simples, sem menção a
+    // utilização.
     await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cancelar marcação?'), findsOneWidget);
+    expect(find.text('A vaga fica livre para outro membro.'), findsOneWidget);
+
+    await tester.tap(find.text('Cancelar marcação'));
     await tester.pumpAndSettle();
 
     expect(find.text('Ainda não tens nenhuma marcação.'), findsOneWidget);

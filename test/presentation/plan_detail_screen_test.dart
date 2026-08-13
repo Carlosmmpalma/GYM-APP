@@ -56,8 +56,12 @@ void main() {
     expect(find.text('Aula de Grupo'), findsOneWidget);
     expect(find.text('Não incluído'), findsOneWidget);
 
+    // `find.byType(SwitchListTile)` sozinho já não é único: o ecrã
+    // ganhou um segundo switch ("Plano ativo", extensão pedida depois
+    // desta suite ter sido escrita — ver README). Localiza pelo texto
+    // do service para apanhar só o switch do "Aula de Grupo".
     final switchWidget = tester.widget<SwitchListTile>(
-      find.byType(SwitchListTile),
+      find.widgetWithText(SwitchListTile, 'Aula de Grupo'),
     );
     expect(switchWidget.value, isFalse);
   });
@@ -69,7 +73,7 @@ void main() {
     await tester.pumpWidget(buildApp(firestore));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(SwitchListTile));
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Aula de Grupo'));
     await tester.pumpAndSettle();
 
     // O diálogo abre com "Ilimitado" já selecionado por omissão.
@@ -99,7 +103,7 @@ void main() {
     await tester.pumpWidget(buildApp(firestore));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(SwitchListTile));
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Aula de Grupo'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Limitado'));

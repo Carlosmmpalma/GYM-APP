@@ -98,4 +98,19 @@ class FirebaseSubscriptionRepository implements SubscriptionRepository {
         .get();
     return snapshot.docs.isNotEmpty;
   }
+
+  @override
+  Future<String?> getGrantingPlanId({
+    required String memberId,
+    required String serviceId,
+  }) async {
+    final snapshot = await _subscriptions
+        .where('memberId', isEqualTo: memberId)
+        .where('status', isEqualTo: 'active')
+        .where('activeServiceIds', arrayContains: serviceId)
+        .limit(1)
+        .get();
+    if (snapshot.docs.isEmpty) return null;
+    return snapshot.docs.first.data()['planId'] as String?;
+  }
 }

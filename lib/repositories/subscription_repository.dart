@@ -30,4 +30,16 @@ abstract class SubscriptionRepository {
     required String memberId,
     required String serviceId,
   });
+
+  /// Fase 4 story 7 — só para MOSTRAR a barra "X/Y sessões esta
+  /// semana" (`book_training_screen.dart`); a autoridade sobre
+  /// elegibilidade/limite continua a ser sempre a Cloud Function
+  /// `createBooking`, que faz esta mesma pesquisa outra vez do lado do
+  /// servidor. Devolve o `planId` da subscription ativa que dá acesso
+  /// a [serviceId], ou `null` se não houver nenhuma (Domain Model v1
+  /// §15 garante que nunca há mais do que uma).
+  Future<String?> getGrantingPlanId({
+    required String memberId,
+    required String serviceId,
+  });
 }

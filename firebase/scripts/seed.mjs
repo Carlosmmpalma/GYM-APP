@@ -145,24 +145,35 @@ async function seedServiceAndOccurrence(tenantId) {
   );
   console.log(`✓ service "${serviceId}" (Aula de Grupo)`);
 
+  await seedOccurrence(tenantId, serviceId, 'occurrence_test_1', 1, 18);
+  // Fase 4 — uma segunda ocorrência na MESMA semana ISO (2 dias depois,
+  // quase sempre a mesma semana segunda-domingo, exceto se
+  // "occurrence_test_1" calhar num domingo — aceitável para dados de
+  // seed): sem isto não dava para testar o bloqueio de limite semanal
+  // (o plano de teste agora dá só 1x/semana — ver seedPlanAndSubscription)
+  // com só UMA sessão disponível para marcar.
+  await seedOccurrence(tenantId, serviceId, 'occurrence_test_2', 2, 19);
+}
+
+async function seedOccurrence(tenantId, serviceId, occurrenceId, daysFromNow, hour) {
   const occurrenceRef = firestore
     .collection('tenants')
     .doc(tenantId)
     .collection('sessionOccurrences')
-    .doc('occurrence_test_1');
+    .doc(occurrenceId);
 
   const existing = await occurrenceRef.get();
   if (existing.exists) {
     console.log(
-      `  já existe: sessionOccurrences/occurrence_test_1 — a saltar ` +
+      `  já existe: sessionOccurrences/${occurrenceId} — a saltar ` +
         `(para não sobrescrever activeBookingCount de bookings reais já feitos)`,
     );
     return;
   }
 
   const startAt = new Date();
-  startAt.setDate(startAt.getDate() + 1);
-  startAt.setHours(18, 0, 0, 0);
+  startAt.setDate(startAt.getDate() + daysFromNow);
+  startAt.setHours(hour, 0, 0, 0);
   const endAt = new Date(startAt.getTime() + 60 * 60 * 1000);
 
   await occurrenceRef.set({
@@ -175,7 +186,7 @@ async function seedServiceAndOccurrence(tenantId) {
     createdAt: FieldValue.serverTimestamp(),
   });
   console.log(
-    `✓ sessionOccurrence "occurrence_test_1" — ${startAt.toISOString()}, capacidade 2`,
+    `✓ sessionOccurrence "${occurrenceId}" — ${startAt.toISOString()}, capacidade 2`,
   );
 }
 
@@ -207,12 +218,20 @@ async function seedPlanAndSubscription(tenantId, memberId, serviceId) {
     },
     { merge: true },
   );
+  // Fase 4 — limited (1x/semana), não unlimited como até à Fase 3: sem
+  // isto não dava para testar o bloqueio de limite semanal sem editar
+  // manualmente o Plan em "Gestão → Planos" primeiro. Este `.set()`
+  // (sem `existing` check) corre sempre, mesmo com o emulador já
+  // semeado antes — por isso um `npm run seed` a repetir já atualiza a
+  // regra de um ambiente antigo.
   await planRef.collection('services').doc(serviceId).set({
     serviceId,
     enabled: true,
-    usage: { type: 'unlimited' },
+    usage: { type: 'limited', limit: 1, period: 'week' },
   });
-  console.log(`✓ plan "${planId}" (Standard) — inclui service "${serviceId}"`);
+  console.log(
+    `✓ plan "${planId}" (Standard) — inclui service "${serviceId}" (1x/semana)`,
+  );
 
   const subscriptionRef = firestore
     .collection('tenants')
@@ -271,12 +290,23 @@ async function main() {
       '(http://localhost:4000/firestore) que são documentos completamente ' +
       'separados, apesar do número igual (o isolamento é por tenantId, não ' +
       'pelo número em si).\n' +
-      '  - No separador "Marcar", a Rita já tem uma sessão de "Aula de ' +
-      'Grupo" amanhã às 18:00 com 2 vagas para testar o booking (Fase 2).\n' +
+      '  - No separador "Marcar", a Rita já tem DUAS sessões de "Aula de ' +
+      'Grupo" esta semana (amanhã às 18:00 e depois de amanhã às 19:00, ' +
+      'cada uma com 2 vagas) para testar o booking (Fase 2).\n' +
       '  - A Rita já tem uma subscription ativa ao plano "Standard (teste)", ' +
       'que dá acesso a "Aula de Grupo" — o booking não fica bloqueado pela ' +
-      'verificação de elegibilidade (Fase 3). Para testar o bloqueio, cria ' +
-      'outro membro sem subscription e tenta marcar.',
+      'verificação de elegibilidade (Fase 3). Para testar o bloqueio de ' +
+      'elegibilidade, cria outro membro sem subscription e tenta marcar.\n' +
+      '  - Fase 4: o plano "Standard (teste)" dá agora só 1x/semana a ' +
+      '"Aula de Grupo" (era ilimitado até à Fase 3). Marca a PRIMEIRA ' +
+      'sessão com a Rita — deve resultar em sucesso e a barra no topo do ' +
+      'ecrã "Marcar" deve passar a mostrar "1/1 sessões de Aula de ' +
+      'Grupo". Tenta marcar a SEGUNDA sessão — deve ser bloqueado com ' +
+      '"Já atingiste o limite semanal deste serviço (1/1)". Cancela a ' +
+      'primeira marcação em "Minhas marcações" (sem antecedência mínima ' +
+      'configurada em "Gestão → Definições", o cancelamento devolve ' +
+      'sempre a utilização) e confirma que a barra volta a "0/1" e a ' +
+      'segunda sessão volta a ficar marcável.',
   );
 }
 

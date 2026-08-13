@@ -5,7 +5,9 @@ class CancelBookingUseCase {
 
   final BookingRepository _repository;
 
-  Future<void> call({required String occurrenceId, required String memberId}) {
+  /// Devolve se a utilização semanal foi devolvida — ver
+  /// `BookingRepository.cancelBooking`.
+  Future<bool> call({required String occurrenceId, required String memberId}) {
     return _repository.cancelBooking(
       occurrenceId: occurrenceId,
       memberId: memberId,

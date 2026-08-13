@@ -23,4 +23,28 @@ class FirebaseTenantRepository implements TenantRepository {
           : TenantStatus.suspended,
     );
   }
+
+  DocumentReference<Map<String, dynamic>> _bookingPolicyDoc(String tenantId) =>
+      _firestore
+          .collection('tenants')
+          .doc(tenantId)
+          .collection('config')
+          .doc('bookingPolicy');
+
+  @override
+  Future<int> getMinCancellationNoticeHours(String tenantId) async {
+    final snapshot = await _bookingPolicyDoc(tenantId).get();
+    if (!snapshot.exists) return 0;
+    return (snapshot.data()?['minCancellationNoticeHours'] as num? ?? 0).toInt();
+  }
+
+  @override
+  Future<void> setMinCancellationNoticeHours({
+    required String tenantId,
+    required int hours,
+  }) async {
+    await _bookingPolicyDoc(tenantId).set({
+      'minCancellationNoticeHours': hours,
+    }, SetOptions(merge: true));
+  }
 }

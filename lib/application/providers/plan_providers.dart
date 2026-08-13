@@ -4,6 +4,8 @@ import '../../domain/entities/member_summary.dart';
 import '../../domain/entities/plan.dart';
 import '../../domain/entities/plan_service.dart';
 import '../../domain/entities/service.dart';
+import '../../domain/entities/subscription.dart';
+import '../../domain/entities/usage_rule.dart';
 import '../../infrastructure/firebase/firebase_member_repository.dart';
 import '../../infrastructure/firebase/firebase_plan_repository.dart';
 import '../../repositories/member_repository.dart';
@@ -52,4 +54,40 @@ final planServicesProvider =
 /// só adiciona a visão sem filtro que a gestão precisa.
 final servicesProvider = StreamProvider<List<Service>>((ref) {
   return ref.watch(serviceRepositoryProvider).watchServices();
+});
+
+/// Pedido pelo Carlos depois de testar a Fase 3: nem `AssignSubscriptionScreen`
+/// nem nenhum outro ecrã mostravam os planos que um membro já tem — só se
+/// descobria um conflito depois de tentar submeter. `subscriptionRepositoryProvider`
+/// já expõe `watchMemberSubscriptions()` desde a Fase 3 (é a mesma fonte
+/// usada por `isEligibleForService`); só faltava um provider Riverpod
+/// `.family` para o usar por `memberId` a partir da UI.
+final memberSubscriptionsProvider =
+    StreamProvider.family<List<Subscription>, String>((ref, memberId) {
+  return ref.watch(subscriptionRepositoryProvider).watchMemberSubscriptions(memberId);
+});
+
+/// Fase 4 story 7 — a [UsageRule] aplicável a um membro+serviço, para
+/// `book_training_screen.dart` decidir se mostra a barra "X/Y sessões
+/// esta semana" (só quando `!rule.isUnlimited`). Só para DISPLAY — não
+/// é a fonte de verdade da validação, que é sempre a Cloud Function
+/// `createBooking` (ver `subscription_repository.dart`,
+/// `getGrantingPlanId`). `null` quando o membro não tem nenhuma
+/// subscription ativa que dê acesso a este serviço (o mesmo caso que
+/// bloqueia o booking com `NotEligibleForServiceException`).
+final applicableUsageRuleProvider = FutureProvider.family<UsageRule?,
+    ({String memberId, String serviceId})>((ref, args) async {
+  final planId = await ref.watch(subscriptionRepositoryProvider).getGrantingPlanId(
+        memberId: args.memberId,
+        serviceId: args.serviceId,
+      );
+  if (planId == null) return null;
+
+  final planServices = await ref.watch(planRepositoryProvider).getPlanServices(planId);
+  for (final planService in planServices) {
+    if (planService.serviceId == args.serviceId && planService.enabled) {
+      return planService.usage;
+    }
+  }
+  return null;
 });
