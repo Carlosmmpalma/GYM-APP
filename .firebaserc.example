@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "development": "demo-gym-saas-dev",
+    "staging": "SUBSTITUIR-pelo-id-real-do-projeto-staging",
+    "production": "SUBSTITUIR-pelo-id-real-do-projeto-production"
+  }
+}

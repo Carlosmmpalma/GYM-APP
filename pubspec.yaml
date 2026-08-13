@@ -1,0 +1,43 @@
+name: gym_saas
+description: >
+  Gym SaaS — plataforma multi-tenant para ginásios.
+  Ver Technical/Platform Foundation — Gym SaaS.md para a arquitetura de referência.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Estado / DI (Platform Foundation §5, §10)
+  flutter_riverpod: ^2.5.1
+
+  # Firebase — infraestrutura de referência (Platform Foundation §5)
+  firebase_core: ^3.1.0
+  firebase_auth: ^5.1.0
+  cloud_firestore: ^5.0.1
+  cloud_functions: ^5.0.1
+  firebase_storage: ^12.1.0
+  firebase_messaging: ^15.0.1
+  firebase_app_check: ^0.3.1
+  firebase_crashlytics: ^4.0.1
+
+  # Utilitários
+  intl: ^0.19.0
+  equatable: ^2.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  mocktail: ^1.0.3
+  fake_cloud_firestore: ^3.0.3
+  firebase_auth_mocks: ^0.14.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// Regras da Fase 0: deny-all por omissão.
+//
+// A implementação real do isolamento por tenant (request.auth.token.tenantId
+// == tenantId, Platform Foundation §7) é trabalho da Fase 1 do guia de
+// desenvolvimento, não desta fase. Manter deny-all aqui até lá é
+// deliberado: um "hello world" que escreve em `_diagnostics/` só deve
+// funcionar contra o emulador (que, por omissão, não aplica Security
+// Rules a pedidos feitos com Admin SDK/testes, mas aplica-as a pedidos
+// normais do client SDK — por isso a regra abaixo permite explicitamente
+// só essa coleção de diagnóstico).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Sonda de diagnóstico da Fase 0 (ver lib/infrastructure/firebase/
+    // firebase_ping_repository.dart). Não faz parte do modelo de negócio.
+    match /_diagnostics/{docId} {
+      allow read, write: if true;
+    }
+
+    // Tudo o resto fica bloqueado até a Fase 1 definir o isolamento por
+    // tenant e a matriz de autorização por role.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

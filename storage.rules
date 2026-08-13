@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Deny-all por omissão — ver comentário em firestore.rules. O storage
+// path por tenant (tenants/{tenantId}/...) é definido em Platform
+// Foundation §19 e será implementado quando existir upload real (Fase 6+).
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
