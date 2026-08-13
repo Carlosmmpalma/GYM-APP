@@ -1,4 +1,5 @@
-import * as admin from 'firebase-admin';
+import { getAuth } from 'firebase-admin/auth';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
@@ -14,12 +15,11 @@ const inputSchema = z.object({
 /**
  * Cria uma conta de staff (instrutor e/ou gestor).
  *
- * ⚠️ Assunção explícita (não fechada em nenhum use case): ao contrário
- * de createMember (UC22, login por nº de sócio), staff usa o email real
+ * Decisão fechada (confirmada pelo Carlos, Fase 3): ao contrário de
+ * createMember (UC22, login por nº de sócio), staff usa o email real
  * para login — não faz parte do fluxo "nº de sócio" descrito no UC01,
- * que é especificamente sobre Alunos. Se isto estiver errado, é só
- * trocar `email` por um número gerado da mesma forma que
- * nextMemberNumber, tal como em createMember.ts.
+ * que é especificamente sobre Alunos. `login_screen.dart` aceita as
+ * duas coisas no mesmo campo (ver `firebase_auth_repository.dart`).
  *
  * Domain Model v1 §6: um instrutor pode também ser membro do ginásio —
  * isso é uma segunda chamada a createMember para a mesma pessoa (mesmo
@@ -35,8 +35,8 @@ export const createStaff = onCall(async (request) => {
   }
   const { name, email, roles } = parsed.data;
 
-  const firestore = admin.firestore();
-  const auth = admin.auth();
+  const firestore = getFirestore();
+  const auth = getAuth();
 
   const temporaryPassword = generateTemporaryPassword();
 
@@ -63,7 +63,7 @@ export const createStaff = onCall(async (request) => {
       roles,
       status: 'active',
       passwordTemporaria: true,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
       createdBy: caller.uid,
     });
 

@@ -128,6 +128,7 @@ async function seedMember({ tenantId, memberNumber, name, password }) {
   console.log(
     `✓ membro "${tenantId}" nº "${memberNumber}" / password "${password}" (uid=${user.uid})`,
   );
+  return user;
 }
 
 async function seedServiceAndOccurrence(tenantId) {
@@ -178,18 +179,79 @@ async function seedServiceAndOccurrence(tenantId) {
   );
 }
 
+// Fase 3 — um Plan de teste que dá acesso à Service semeada acima, e
+// uma Subscription ativa para a Rita. Sem isto, a query de
+// elegibilidade (`isEligibleForService`, Fase 3) bloqueava sempre o
+// booking manual em Chrome, porque nenhum membro tinha nenhuma
+// subscription. Escrita direta via Admin SDK (ignora Security Rules e
+// não passa pela Cloud Function `createSubscription` — aceitável aqui
+// porque é só um documento fixo, sem nenhuma outra subscription para
+// entrar em conflito).
+async function seedPlanAndSubscription(tenantId, memberId, serviceId) {
+  const planId = 'plan_test_standard';
+  const planRef = firestore
+    .collection('tenants')
+    .doc(tenantId)
+    .collection('plans')
+    .doc(planId);
+
+  await planRef.set(
+    {
+      name: 'Standard (teste)',
+      description: 'Plano de teste criado pelo seed script.',
+      currentPrice: 39.9,
+      currency: 'EUR',
+      active: true,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  await planRef.collection('services').doc(serviceId).set({
+    serviceId,
+    enabled: true,
+    usage: { type: 'unlimited' },
+  });
+  console.log(`✓ plan "${planId}" (Standard) — inclui service "${serviceId}"`);
+
+  const subscriptionRef = firestore
+    .collection('tenants')
+    .doc(tenantId)
+    .collection('subscriptions')
+    .doc('subscription_test_rita');
+
+  const existing = await subscriptionRef.get();
+  if (existing.exists) {
+    console.log('  já existe: subscriptions/subscription_test_rita — a saltar');
+    return;
+  }
+
+  await subscriptionRef.set({
+    memberId,
+    planId,
+    status: 'active',
+    startDate: FieldValue.serverTimestamp(),
+    agreedPrice: 39.9,
+    currency: 'EUR',
+    activeServiceIds: [serviceId],
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  console.log(`✓ subscription "subscription_test_rita" — Rita (${memberId}) → ${planId}`);
+}
+
 async function main() {
   console.log(`A semear contra o emulador (projectId=${PROJECT_ID})...\n`);
 
   await upsertTenant(REAL_TENANT_ID, 'NXT Performance Studio');
   await seedManager();
-  await seedMember({
+  const rita = await seedMember({
     tenantId: REAL_TENANT_ID,
     memberNumber: '000001',
     name: 'Rita Ferreira',
     password: 'MemberPass123!',
   });
   await seedServiceAndOccurrence(REAL_TENANT_ID);
+  await seedPlanAndSubscription(REAL_TENANT_ID, rita.uid, 'group_classes_test');
 
   console.log();
   await upsertTenant(GHOST_TENANT_ID, 'Ghost Gym (só para testes de isolamento)');
@@ -210,7 +272,11 @@ async function main() {
       'separados, apesar do número igual (o isolamento é por tenantId, não ' +
       'pelo número em si).\n' +
       '  - No separador "Marcar", a Rita já tem uma sessão de "Aula de ' +
-      'Grupo" amanhã às 18:00 com 2 vagas para testar o booking (Fase 2).',
+      'Grupo" amanhã às 18:00 com 2 vagas para testar o booking (Fase 2).\n' +
+      '  - A Rita já tem uma subscription ativa ao plano "Standard (teste)", ' +
+      'que dá acesso a "Aula de Grupo" — o booking não fica bloqueado pela ' +
+      'verificação de elegibilidade (Fase 3). Para testar o bloqueio, cria ' +
+      'outro membro sem subscription e tenta marcar.',
   );
 }
 

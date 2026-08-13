@@ -1,4 +1,5 @@
-import * as admin from 'firebase-admin';
+import { getAuth } from 'firebase-admin/auth';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
@@ -29,8 +30,8 @@ export const createMember = onCall(async (request) => {
   }
   const { name } = parsed.data;
 
-  const firestore = admin.firestore();
-  const auth = admin.auth();
+  const firestore = getFirestore();
+  const auth = getAuth();
 
   const memberNumber = await nextMemberNumber(firestore, caller.tenantId);
   const email = buildSyntheticEmail(caller.tenantId, memberNumber);
@@ -58,7 +59,7 @@ export const createMember = onCall(async (request) => {
       name,
       status: 'active',
       passwordTemporaria: true,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
       createdBy: caller.uid,
     });
 

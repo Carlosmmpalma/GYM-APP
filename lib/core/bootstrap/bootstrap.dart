@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -61,9 +62,15 @@ Future<void> bootstrap(Environment environment) async {
       config.authEmulatorHost,
       config.authEmulatorPort,
     );
-    // Cloud Functions e Storage emulados são ligados aqui também, à medida
-    // que os respetivos providers forem sendo criados (Fase 2+):
-    //   FirebaseFunctions.instance.useFunctionsEmulator(host, port);
+    // Fase 3 — createSubscription é a primeira Cloud Function chamada
+    // diretamente pela app (createMember/createStaff, da Fase 1, só são
+    // chamadas pelo seed script via Admin SDK, nunca pelo cliente).
+    FirebaseFunctions.instance.useFunctionsEmulator(
+      config.functionsEmulatorHost,
+      config.functionsEmulatorPort,
+    );
+    // Storage emulado liga-se aqui também, quando o respetivo provider
+    // for criado:
     //   FirebaseStorage.instance.useStorageEmulator(host, port);
   }
 

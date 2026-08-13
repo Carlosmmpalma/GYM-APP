@@ -6,13 +6,15 @@ import '../../application/providers/booking_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../domain/entities/booking.dart';
 import '../../domain/entities/session_occurrence.dart';
+import '../../domain/entities/subscription.dart';
 
 /// UC05/06/07 — versão mínima da Fase 2 (guia-desenvolvimento.md,
-/// Fase 2: "Ecrã 'Marcar treino' (versão mínima, uma sessão só)").
+/// Fase 2: "Ecrã 'Marcar treino' (versão mínima, uma sessão só)"),
+/// com a validação de elegibilidade da Fase 3 (UC06/07/08/09: só quem
+/// tem um plano ativo com acesso a este serviço pode marcar).
 ///
 /// Não faz seleção de serviço/modalidade (só existe uma Service de
-/// teste), não valida elegibilidade por plano contratado (isso é
-/// Fase 3), nem antecedência mínima (Fase 6). É deliberadamente o
+/// teste), nem antecedência mínima (Fase 6). É deliberadamente o
 /// caminho mais simples possível, para validar a transação de booking
 /// ponta a ponta antes de construir a UI completa.
 class BookTrainingScreen extends ConsumerWidget {
@@ -117,12 +119,15 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
       final useCase = ref.read(bookSessionUseCaseProvider);
       await useCase(
         occurrenceId: widget.occurrence.id,
+        serviceId: widget.occurrence.serviceId,
         memberId: widget.memberId,
       );
       // Ver nota em my_bookings_screen.dart#_cancel: invalidar força uma
       // nova subscrição/fetch imediata em vez de esperar pela propagação
       // do listener do Firestore.
       ref.invalidate(upcomingOccurrencesProvider(widget.occurrence.serviceId));
+    } on NotEligibleForServiceException catch (e) {
+      setState(() => _error = e.toString());
     } on BookingCapacityExceededException catch (e) {
       setState(() => _error = e.toString());
     } on AlreadyBookedException catch (e) {

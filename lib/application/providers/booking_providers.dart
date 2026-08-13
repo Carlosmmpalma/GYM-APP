@@ -6,9 +6,11 @@ import '../../domain/entities/session_occurrence.dart';
 import '../../infrastructure/firebase/firebase_booking_repository.dart';
 import '../../infrastructure/firebase/firebase_service_repository.dart';
 import '../../infrastructure/firebase/firebase_session_occurrence_repository.dart';
+import '../../infrastructure/firebase/firebase_subscription_repository.dart';
 import '../../repositories/booking_repository.dart';
 import '../../repositories/service_repository.dart';
 import '../../repositories/session_occurrence_repository.dart';
+import '../../repositories/subscription_repository.dart';
 import '../use_cases/book_session_use_case.dart';
 import '../use_cases/cancel_booking_use_case.dart';
 import 'firebase_providers.dart';
@@ -36,8 +38,21 @@ final bookingRepositoryProvider = Provider<BookingRepository>((ref) {
   );
 });
 
+/// Fase 3 — usado tanto para o `createSubscription` (ecrãs de gestão)
+/// como para a query de elegibilidade que bloqueia o booking.
+final subscriptionRepositoryProvider = Provider<SubscriptionRepository>((ref) {
+  return FirebaseSubscriptionRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(functionsProvider),
+    ref.watch(tenantAppConfigProvider).tenantId,
+  );
+});
+
 final bookSessionUseCaseProvider = Provider<BookSessionUseCase>((ref) {
-  return BookSessionUseCase(ref.watch(bookingRepositoryProvider));
+  return BookSessionUseCase(
+    ref.watch(bookingRepositoryProvider),
+    ref.watch(subscriptionRepositoryProvider),
+  );
 });
 
 final cancelBookingUseCaseProvider = Provider<CancelBookingUseCase>((ref) {

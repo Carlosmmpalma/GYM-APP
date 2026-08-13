@@ -12,11 +12,18 @@ abstract class AuthRepository {
   /// "não utilizável" em vez de deixar a app num estado inconsistente.
   Stream<AppUser?> authStateChanges();
 
-  /// UC01: login por número de sócio, não por email. A implementação
-  /// concreta é responsável por transformar `memberNumber` num
-  /// identificador aceite pelo Firebase Auth.
+  /// UC01: login por número de sócio, não por email — para Alunos. A
+  /// implementação concreta é responsável por transformar `memberNumber`
+  /// num identificador aceite pelo Firebase Auth.
   ///
-  /// Lança [InvalidCredentialsException] tanto para número de sócio
+  /// Fase 3: o mesmo parâmetro também aceita o email real de staff
+  /// (Gestor/Instrutor) — se contiver '@', é usado tal como está, sem
+  /// nenhuma transformação. Ver nota em `firebase_auth_repository.dart`.
+  /// O nome do método/parâmetro ficou por mudar para não gerar diffs
+  /// maiores do que o necessário; pensa nele como "identificador de
+  /// login", não literalmente "só número de sócio".
+  ///
+  /// Lança [InvalidCredentialsException] tanto para identificador
   /// inexistente como para password errada — nunca revela qual dos dois
   /// falhou (UC01: "mensagem genérica de erro").
   Future<void> signInWithMemberNumber({

@@ -30,7 +30,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Nº de sócio'), findsOneWidget);
+    expect(find.text('Nº de sócio ou email'), findsOneWidget);
   });
 
   testWidgets('sessão com password temporária força a troca (UC22)',

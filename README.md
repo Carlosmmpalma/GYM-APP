@@ -84,8 +84,10 @@ continua a passar antes de dares isto como resolvido.
 
 ### Ainda em aberto
 
-1. **`createStaff.ts` usa email real para login, não nº gerado** — ver
-   assunção acima; ainda não confirmaste se está correto.
+1. ~~`createStaff.ts` usa email real para login, não nº gerado —
+   ainda não confirmaste se está correto.~~ **Confirmado pelo Carlos
+   (Fase 3):** staff usa mesmo só o email, decisão fechada. Não é um
+   erro por corrigir — a assunção estava certa.
 2. **Sem `package-lock.json` commitado em `firebase/functions/`,** o job
    `functions` da CI (`.github/workflows/ci.yml`) vai falhar logo no
    passo de cache do `setup-node` — esse passo exige que o lockfile
@@ -93,17 +95,30 @@ continua a passar antes de dares isto como resolvido.
    commitar o `package-lock.json` gerado** para a CI passar a funcionar.
    O mesmo não se aplica a `firebase/scripts` e `firebase/tests` — esses
    jobs não usam cache do `setup-node`.
-3. Build+lint das Cloud Functions (`npm run build && npm run lint` em
-   `firebase/functions`) — não confirmado nesta conversa.
+3. ~~Build+lint das Cloud Functions — não confirmado nesta
+   conversa.~~ **Atualização (Fase 3):** confirmado, e revelou um bug
+   real que estava aqui desde o início — `createMember.ts`/
+   `createStaff.ts` usavam uma API do `firebase-admin` que não existe
+   na versão instalada (`^14.2.0`). Ver "Oitavo problema" na secção da
+   Fase 3 para o diagnóstico e a correção.
 
 ### Passos para verificar a Fase 1 localmente
 
-```bash
+Comandos em PowerShell — sem `&&`/`\` de continuação de linha (isso é
+sintaxe bash); cada passo é uma sequência de linhas separadas.
+
+```powershell
 # 1. Instalar as novas dependências das Cloud Functions (zod)
-cd firebase/functions && npm install && cd ../..
+cd firebase/functions
+npm install
+cd ../..
 
 # 2. Instalar dependências do seed script e dos testes de isolamento
-cd firebase/scripts && npm install && cd ../tests && npm install && cd ../..
+cd firebase/scripts
+npm install
+cd ../tests
+npm install
+cd ../..
 
 # 3. Confirmar que tudo continua a compilar/passar
 dart format --output=none --set-exit-if-changed .
@@ -111,14 +126,16 @@ flutter analyze --fatal-infos
 flutter test
 
 # 4. 🔴 Correr o teste crítico de isolamento entre tenants
-firebase emulators:exec --project=demo-gym-saas-dev --only firestore \
-  "npm --prefix firebase/tests test"
+firebase emulators:exec --project=demo-gym-saas-dev --only firestore "npm --prefix firebase/tests test"
 # Todos os testes têm de passar. Se algum "assertFails" passar a
 # "assertSucceeds", há uma fuga de isolamento — não avances sem
 # perceber porquê.
 
 # 5. Cloud Functions: build + lint
-cd firebase/functions && npm run build && npm run lint && cd ../..
+cd firebase/functions
+npm run build
+npm run lint
+cd ../..
 
 # 6. Seed manual — com o emulador completo a correr:
 #      firebase emulators:start --project=demo-gym-saas-dev
@@ -130,7 +147,9 @@ cd firebase/functions && npm run build && npm run lint && cd ../..
 #    seed continua a "funcionar" (fala diretamente com o projeto que lhe
 #    disseres via env vars), mas a UI do emulador mostra tudo vazio e o
 #    login na app falha, porque a app também usa demo-gym-saas-dev.
-cd firebase/scripts && npm run seed && cd ../..
+cd firebase/scripts
+npm run seed
+cd ../..
 
 # 7. Testar o login real na app (UC01)
 flutter run -t lib/main_development.dart
@@ -466,7 +485,7 @@ este ecrã agora carrega) continua por confirmar — sem acesso a
 
 ### Passos para verificar a Fase 2 localmente
 
-```bash
+```powershell
 # 1. Confirmar que tudo continua a compilar/passar (inclui os novos
 #    testes unitários/widget da Fase 2)
 dart format --output=none --set-exit-if-changed .
@@ -475,9 +494,10 @@ flutter test
 
 # 2. 🔴 Correr os testes de Security Rules — isolamento (Fase 1) +
 #    concorrência na última vaga (Fase 2), ambos em firebase/tests
-cd firebase/tests && npm install && cd ../..
-firebase emulators:exec --project=demo-gym-saas-dev --only firestore \
-  "npm --prefix firebase/tests test"
+cd firebase/tests
+npm install
+cd ../..
+firebase emulators:exec --project=demo-gym-saas-dev --only firestore "npm --prefix firebase/tests test"
 # O teste de concorrência corre o cenário de capacidade 1 CINCO vezes
 # seguidas — se overbooking fosse possível por race condition, é
 # provável que aparecesse nalguma das repetições. Confirma que os dois
@@ -486,7 +506,9 @@ firebase emulators:exec --project=demo-gym-saas-dev --only firestore \
 # 3. Seed (occurrence de teste amanhã às 18:00, capacidade 2)
 #    — com o emulador completo a correr (firebase emulators:start
 #    --project=demo-gym-saas-dev):
-cd firebase/scripts && npm run seed && cd ../..
+cd firebase/scripts
+npm run seed
+cd ../..
 
 # 4. Testar marcar/cancelar manualmente na app
 flutter run -t lib/main_development.dart
@@ -513,12 +535,398 @@ flutter run -t lib/main_development.dart
 > nunca resultam em mais bookings do que a capacidade permite; corre o
 > teste de concorrência várias vezes, não uma.
 
-O passo 2 acima é exactamente isto, automatizado e repetido 5x. Corre-o
-e confirma que passa antes de dares a Fase 2 por fechada; o passo 4/5
-confirma depois que o caminho Dart real (não só a reimplementação TS)
-se comporta da mesma forma.
+O passo 2 acima é exactamente isto, automatizado e repetido 5x — **e
+confirmado**, tal como o resto do critério: isolamento (8/8), booking/
+cancelamento/re-booking na app real contra o emulador em Chrome, tudo
+verificado por ti, não só por mim.
+
+### Resumo dos 7 bugs reais apanhados a fechar esta fase
+
+Fica aqui só a lista, para referência rápida — o raciocínio completo de
+cada um está nas secções acima:
+
+1. `BookTrainingScreen` lia o utilizador atual com `ref.read()` dentro
+   do handler do botão, não `ref.watch()` no `build()` — marcação
+   ignorada em silêncio nalguns testes.
+2. `MyBookingsScreen` não atualizava sozinha depois de cancelar no
+   teste (limitação do `fake_cloud_firestore` com `collectionGroup`,
+   não da app) — resolvido com `ref.invalidate(...)` depois de
+   mutações.
+3. `tenant-isolation.test.ts` e `booking-concurrency.test.ts`
+   partilhavam o mesmo `projectId`, e o vitest corre-os em paralelo —
+   `clearFirestore()` de um apagava os dados do outro a meio.
+4. Erro transitório do motor de Rules do **emulador** sob transações
+   verdadeiramente simultâneas (`evaluation error`, não `false`) —
+   mitigado com retry limitado no teste, não é um bug do código real.
+5. Faltava uma regra de Rules dedicada (`{path=**}`) para autorizar a
+   query `collectionGroup('bookings')` — sem ela, caía sempre no
+   bloqueio genérico do fim do ficheiro.
+6. A regra de `update` de bookings só permitia `booked → cancelled`,
+   nunca o inverso — impossível voltar a marcar depois de cancelar.
+7. Exceções de domínio lançadas de dentro do callback de
+   `runTransaction()` perdiam o tipo ao atravessar o interop JS do
+   Flutter Web — a UI caía sempre na mensagem de erro genérica, mesmo
+   nos casos "normais". Resolvido devolvendo um resultado do callback
+   e lançando a exceção certa só depois, em Dart puro.
+
+## Fase 3 — Planos, serviços e subscriptions
+
+**Objetivo:** um membro só consegue marcar-se num serviço se tiver uma
+subscription ativa que lhe dê acesso a esse serviço; um Gestor consegue
+criar Planos, definir que Services cada Plano inclui (com a respetiva
+regra de utilização), e atribuir um Plano a um membro.
+
+### O que foi acrescentado
+
+- **Domínio**: `UsageRule` (unlimited/limited com `limit`+`period`),
+  `Plan`, `PlanService` (a relação Plan↔Service, com a `UsageRule`
+  específica dessa combinação — Domain Model v1 §12/13), `Subscription`
+  (com `activeServiceIds` denormalizado, `agreedPrice` separado do
+  `currentPrice` do Plan, e `grantsAccessTo(serviceId)`), e duas
+  exceções: `NotEligibleForServiceException` (bloqueia o booking) e
+  `SubscriptionServiceConflictException` (bloqueia criar uma
+  subscription a conflitar com outra já ativa) (`lib/domain/entities/`).
+- **Repositories + infra**: `PlanRepository`/`SubscriptionRepository`/
+  `MemberRepository` (`lib/repositories/`) e as implementações Firebase
+  (`lib/infrastructure/firebase/`). `MemberRepository` é novo nesta
+  fase — não existia nenhum repositório de listagem de membros antes,
+  precisava dele para o picker do ecrã de atribuição.
+- **Decisão de arquitetura — `createSubscription` como Cloud Function,
+  ao contrário de `createBooking`/`cancelBooking` (Fase 2, que são
+  transação client-side)**: a regra "um membro não pode ter duas
+  subscriptions ativas que dão acesso ao mesmo serviço" (Domain Model
+  v1 §15) precisa de examinar TODAS as subscriptions ativas existentes
+  do membro — um número variável de documentos, não uma comparação
+  dentro de UM documento como o contador de vagas da Fase 2. Não há
+  forma direta de exprimir "nenhum documento nesta subcoleção
+  interseta X" em Security Rules sem repetir a mesma lógica em `get()`s
+  dentro da própria regra — frágil e caro. Uma Cloud Function com Admin
+  SDK faz essa validação em código normal (`firebase/functions/src/
+  createSubscription.ts`, mesmo padrão de `createMember`/`createStaff`
+  da Fase 1): confirma que o membro e o Plan existem e estão ativos,
+  lê os `PlanService` ativados desse Plan, cruza com
+  `activeServiceIds` de todas as subscriptions ativas já existentes do
+  membro, e só se não houver interseção escreve a nova subscription —
+  com `activeServiceIds` calculado a partir dos `PlanService`
+  ativados, para a leitura de elegibilidade não precisar de nenhum
+  `join` depois.
+- **Elegibilidade no booking (UC06/07/08/09)**:
+  `BookSessionUseCase` (`lib/application/use_cases/
+  book_session_use_case.dart`) passou a receber também o
+  `SubscriptionRepository`, e chama `isEligibleForService(memberId,
+  serviceId)` ANTES de sequer tentar a transação de booking da Fase 2
+  — lança `NotEligibleForServiceException` sem tocar no Firestore de
+  bookings se o membro não tiver acesso. `isEligibleForService` é uma
+  query direta (`memberId == X && status == 'active' &&
+  activeServiceIds array-contains serviceId`, `limit(1)`) — daí os dois
+  índices compostos novos em `firestore.indexes.json`.
+  `BookTrainingScreen` ganhou um `on NotEligibleForServiceException
+  catch` com mensagem própria, distinta de "sem vagas"/"já marcado".
+- **Security Rules** (`firestore.rules`): nova função `isManager(tenantId)`
+  (`belongsToTenant(tenantId) && 'manager' in
+  request.auth.token.roles` — mesmo formato de custom claims que
+  `requireManager()` usa nas Cloud Functions). `plans` e
+  `plans/{id}/services`: leitura ampla dentro do tenant, escrita só
+  Manager (ao contrário de `subscriptions`, isto é escrita direta do
+  cliente via `FirebasePlanRepository`, não passa por Cloud Function —
+  não há nenhuma invariante cross-documento a validar aqui, por isso
+  uma regra de role simples chega). `subscriptions`: leitura ampla
+  dentro do tenant (a query de elegibilidade e o Manager precisam de a
+  poder ler), `allow write: if false` sempre — mesmo um Manager
+  autenticado não pode escrever diretamente; a única via é a Cloud
+  Function, que corre com Admin SDK e ignora Rules.
+- **Ecrãs de Gestor** (`lib/presentation/screens/`):
+  `ManagePlansScreen` (lista de Planos + diálogo de criação
+  nome/descrição/preço/moeda) → `PlanDetailScreen` (dados do Plano +
+  um `SwitchListTile` por Service do tenant, ativar pede logo a
+  `UsageRule` num diálogo — ilimitado ou limitado com quantidade e
+  período). `AssignSubscriptionScreen` (picker de membro + picker de
+  Plano, preço acordado pré-preenchido com o `currentPrice` do Plano
+  mas editável, chama `createSubscription` e mostra a mensagem
+  específica de `SubscriptionServiceConflictException` em caso de
+  conflito). `ManagerScreen` é o hub com as duas entradas.
+  `HomeScreen` passou a `ConsumerStatefulWidget` e só mostra o ícone de
+  acesso a `ManagerScreen` na AppBar quando `AppUser.isManager` — só
+  UI, a fonte de verdade da autorização continua a ser as Security
+  Rules/Cloud Function do lado do servidor, não este `if`.
+- **Seed script**: `seedPlanAndSubscription` cria um Plan "Standard
+  (teste)" com o Service semeado na Fase 2 ativado (`UsageRule`
+  ilimitada), e uma subscription ativa da Rita a esse Plan — sem isto,
+  o booking manual em Chrome ficaria sempre bloqueado pela verificação
+  de elegibilidade nova. Idempotente (salta se a subscription de teste
+  já existir).
+- **🔴 Testes de Security Rules**
+  (`firebase/tests/plans-subscriptions-rules.test.ts`, ficheiro novo,
+  `projectId` próprio pelo mesmo motivo dos outros dois — ver Fase 2):
+  confirma que um membro lê mas não escreve `plans`/`plans.services`,
+  que um Manager do próprio tenant escreve mas um Manager doutro
+  tenant não, e que **ninguém** — nem um membro, nem um Manager
+  autenticado — consegue escrever ou apagar diretamente uma
+  `subscription`, só ler.
+- **Testes unitários novos**: `test/domain/usage_rule_test.dart`
+  (`describe()` para os 3 períodos, `UsagePeriod.fromValue`,
+  igualdade via `Equatable`) e `test/domain/subscription_test.dart`
+  (`grantsAccessTo` para os 4 estados possíveis,
+  `SubscriptionServiceConflictException.toString()`) — cobrem só a
+  lógica pura de domínio, sem precisar de Firebase.
+  `book_session_use_case_test.dart` e `book_training_screen_test.dart`
+  foram reescritos para injetar uma subscription repository fake
+  (unit) / mock do `FirebaseFunctions` (widget) — ver secção seguinte
+  sobre o que ficou e o que não ficou confirmado.
+
+### Ainda em aberto / não verificado nesta sandbox
+
+1. ~~Nada disto correu.~~ **Resolvido:** confirmaste `flutter test` a
+   passar (depois de dois bugs reais meus — ver "Nono" e "Décimo"
+   problema abaixo, e um erro de import em `manage_services_screen.dart`).
+2. **Widget tests parcialmente acrescentados.**
+   `manage_plans_screen_test.dart` (lista vazia, criar plano com
+   sucesso, criar sem nome fica bloqueado pela validação — confirma
+   inclusive que nada é escrito no Firestore quando a validação falha)
+   e `plan_detail_screen_test.dart` (service por incluir aparece
+   desligado, ligar o switch com "Ilimitado" grava
+   `enabled:true`+`usage.type:unlimited`, ligar com "Limitado" grava
+   `limit`/`period`) — ambos só dependem de Firestore
+   (`fake_cloud_firestore`), por isso escrevi-os com confiança alta.
+   **`AssignSubscriptionScreen` e `ManagerScreen` continuam sem teste
+   de widget** — `AssignSubscriptionScreen` chama `createSubscription`
+   através de `FirebaseFunctions.httpsCallable(...).call(...)`, e
+   mockar essa cadeia com `mocktail` (`HttpsCallable`/
+   `HttpsCallableResult` são tipos do pacote `cloud_functions`, cuja
+   forma exata — generics, comportamento por omissão — não tenho como
+   confirmar sem correr Flutter) é um risco real de escrever um teste
+   que "passa" mas não verifica o que diz verificar. Prefiro não
+   escrever isso às cegas; fica para quando puderes correr/rever tu.
+   `ManagerScreen` é só navegação (2-3 `ListTile`→`Navigator.push`)
+   sem lógica própria — baixo risco de bug, por isso também baixa
+   prioridade de teste automatizado.
+3. **Discrepância no critério "Done" do guia** (secção abaixo): o
+   texto do guia menciona um "picker de atribuição manual" que só deve
+   mostrar alunos elegíveis — isso é o picker de atribuição de sessões
+   (UC08-A/17/19), que ainda não existe na app (é ecrã de gestão de
+   sessões/séries, não construído em nenhuma fase até agora). A lista
+   de histórias da própria Fase 3 no guia só pede o ecrã de atribuir
+   Plano a membro (`AssignSubscriptionScreen`), que está feito. Não
+   sei se isto é um erro de wording no guia ou se o critério "Done"
+   pressupõe algo que devia ter sido pedido explicitamente como
+   história e não foi — continua sinalizado, deliberadamente não
+   implementado (é trabalho de gestão de sessões, Fase 5+, fora do
+   scope desta fase).
+4. ~~Preço acordado (`agreedPrice`) não é validado contra nada.~~
+   **Resolvido:** validador do formulário em
+   `AssignSubscriptionScreen` agora rejeita negativos, alinhado com o
+   schema zod da Cloud Function (`agreedPrice: z.number().nonnegative()`
+   — zero continua válido, ex.: uma promoção).
+
+### Oitavo problema: `admin.firestore()`/`admin.auth()` não existem no `firebase-admin` instalado
+
+Ao correres `npm run build` em `firebase/functions` pela primeira vez
+nesta conversa, deu 12 erros de TypeScript em `createMember.ts`,
+`createStaff.ts` e `createSubscription.ts` — todos do tipo
+`Property 'firestore'/'auth' does not exist on type 'typeof import
+(".../firebase-admin/lib/index")'`.
+
+Não é um erro de configuração local nem transitório: confirmei lendo
+`node_modules/firebase-admin/lib/index.d.ts` diretamente (tenho acesso
+a Node/npm no meu sandbox, ao contrário do Flutter) — a versão
+instalada é `firebase-admin@14.2.0`, e o módulo raiz `firebase-admin`
+nessa versão só exporta `initializeApp`/`getApp`/`getApps`/`deleteApp`
+e afins (App lifecycle). A API antiga em estilo namespace
+(`admin.firestore()`, `admin.auth()`, `admin.firestore.FieldValue`,
+`admin.firestore.FieldPath`) que `createMember.ts`/`createStaff.ts`
+usavam desde a Fase 1 **nunca chegou a existir nesta versão** — não é
+uma remoção recente, é assim desde sempre no v14. `lib/memberNumber.ts`
+e `firebase/scripts/seed.mjs` já usavam a forma modular correta
+(`import { getFirestore } from 'firebase-admin/firestore'`), por isso
+nunca deram este erro — só os três ficheiros que ainda tinham o
+`import * as admin from 'firebase-admin'` antigo.
+
+Isto explica também o item "Build+lint das Cloud Functions — não
+confirmado nesta conversa" que ficou em aberto na Fase 1: nunca tinha
+mesmo sido corrido até agora, e estava partido desde o primeiro commit
+de `createMember.ts`/`createStaff.ts`.
+
+Corrigido nos três ficheiros e em `index.ts` (que só usava
+`admin.initializeApp()`, também modernizado por consistência, embora
+esse em concreto já compilasse): troquei para imports modulares —
+`getFirestore`/`FieldValue`/`FieldPath` de `'firebase-admin/firestore'`,
+`getAuth` de `'firebase-admin/auth'`, `initializeApp` de
+`'firebase-admin/app'`. **Corri `npx tsc` e `npx eslint --ext .ts src`
+a sério no meu sandbox depois da correção — ambos passam sem erros
+nem avisos.** Isto é diferente do resto desta fase (que só pude
+confirmar por leitura cuidadosa do código, não por execução real) —
+aqui tenho Node disponível, por isso esta parte está genuinamente
+verificada, não só revista.
+
+### Nono problema: não havia forma de o Gestor entrar na app
+
+Ao testares os ecrãs de Gestor novos, o login com
+`leo@nxtperformancestudio.pt` (o email real do Leo, criado pelo seed
+como Gestor) falhou com "Número de sócio ou password inválidos.". Não
+é bug de credenciais nem de Rules: era um gap conhecido e já
+documentado desde a Fase 1 — o comentário no topo de
+`login_screen.dart` dizia literalmente "staff faz login com o email
+real... um segundo ecrã de login para staff fica para quando for
+pedido". Até agora nunca tinha sido pedido, porque nenhum ecrã exigia
+que um Gestor autenticado na APP (não só via Cloud Function) existisse
+— a Fase 3 é a primeira a introduzir ecrãs só-Gestor.
+
+`FirebaseAuthRepository.signInWithMemberNumber` convertia sempre o
+texto introduzido num email sintético
+(`buildSyntheticEmail(tenantId, memberNumber)`), mesmo quando esse
+texto já era um email real — por isso `leo@nxtperformancestudio.pt`
+virava algo como
+`member-leo@nxtperformancestudio.pt@nxt_performance_studio.gymsaas.internal`,
+que não corresponde a nenhuma conta.
+
+Corrigido sem criar um segundo ecrã: o mesmo campo agora aceita as
+duas coisas — um identificador com `'@'` é usado tal como está (email
+real de staff); sem `'@'`, continua a ser um nº de sócio, convertido
+no email sintético de sempre (não há ambiguidade possível, nenhum nº
+de sócio pode conter `'@'`). Alterado em
+`firebase_auth_repository.dart` (a lógica), `auth_repository.dart`
+(doc do contrato) e `login_screen.dart` (label do campo passou a "Nº
+de sócio (ou email, se és staff)", teclado deixou de estar restrito a
+números). `test/presentation/login_screen_test.dart` tinha uma
+asserção que dependia do texto exato da mensagem de validação
+("Introduz o teu nº de sócio") — atualizada para o novo texto
+("Introduz o teu nº de sócio ou email"); os outros dois testes desse
+ficheiro não mudam de comportamento. **Não escrevi um teste novo para
+a deteção do `'@'` em si** (a lógica que decide entre email real e
+email sintético): isso vive dentro de `FirebaseAuthRepository`, que
+fala com `FirebaseAuth` a sério — teria de usar `firebase_auth_mocks`
+(já é dev dependency, mas nunca usada neste projeto) e não tenho forma
+de confirmar a API exata desse pacote sem correr Flutter, por isso
+prefiro não adivinhar um teste que pareça verificar isto mas possa
+estar errado. Fica como verificação manual: confirma que entrar com
+`leo@nxtperformancestudio.pt` funciona agora.
+
+(Pequeno ajuste a seguir a feedback: o label do campo simplificou de
+"Nº de sócio (ou email, se és staff)" para só "Nº de sócio ou email" —
+mais curto, mesma informação. `auth_gate_test.dart` tinha uma asserção
+com o texto exato do label, também atualizada.)
+
+### Décimo problema: nunca havia forma de CRIAR um Service, só associá-lo a um Plan
+
+Ao testares, reportaste "não sei onde está o botão para criar planos
+ou serviços" e, depois de encontrares `ManagePlansScreen`, "consigo
+criar planos mas não devia ser também possível criar serviços?". Tens
+razão — isto era um erro meu de leitura do âmbito da fase, não um bug
+de execução. O guia pede explicitamente "Ecrã Gestor: criar/editar
+Plans **e Services** (UC26)"; eu só construí a segunda metade de
+"Services" (a relação Plan↔Service — `PlanDetailScreen`, o switch +
+`UsageRule`), e assumi, incorretamente, que os Services em si (o
+catálogo do ginásio — "Aula de Grupo", "Pilates", etc.) já estavam
+todos resolvidos desde a Fase 2. Não estavam: a Fase 2 só criou UM
+Service, à mão, pelo seed script, e nunca existiu nenhum ecrã para
+criar outro. `firestore.rules` ainda tinha `services` com
+`allow write: if false`, com um comentário meu literalmente a dizer
+"ainda sem ecrã de gestão (Fase 3)" — ou seja, já sabia que faltava
+isto e não fechei o ciclo.
+
+Isto explica também, ao mesmo tempo, o erro persistente "Este plano
+ainda não tem nenhum serviço associado" ao atribuir o "Standard
+(teste)": não cheguei a confirmar a causa exata (pedi para verificares
+na UI do emulador e não chegaste a responder), mas com este ecrã novo
+já dá para veres e corrigires diretamente — abre o Plano, confirma se
+o switch de "Aula de Grupo" está ligado, e ativa-o se não estiver.
+
+Acrescentado:
+- `ServiceRepository`: `watchServices()` (todos os Services, ativos e
+  inativos — `getActiveServices()` da Fase 2 mantém-se, é o que o
+  booking usa), `createService({name})`, `setServiceActive(...)`.
+  Implementado em `FirebaseServiceRepository`.
+- `firestore.rules`: `services` passou de `allow write: if false` para
+  `allow write: if isManager(tenantId)` — mesmo padrão de `plans`.
+- `ManageServicesScreen` (ecrã novo): lista todos os Services com um
+  `SwitchListTile` (ativo/inativo), FAB "+" para criar um novo (só
+  nome — `active: true` por omissão). Erros de escrita mostrados num
+  SnackBar, mesmo padrão do nono problema/correção anterior.
+- `ManagerScreen`: terceiro cartão "Serviços", antes de "Planos".
+- `PlanDetailScreen`: a lista de Services elegíveis para associar a um
+  Plano deixou de ser um `FutureProvider` isolado
+  (`getActiveServices()`, uma leitura única) e passou a observar o
+  novo `servicesProvider` (`StreamProvider`, filtrado para ativos no
+  próprio ecrã) — sem isto, criar um Service em `ManageServicesScreen`
+  não apareceria em `PlanDetailScreen` sem um `ref.invalidate()`
+  manual que não havia como disparar entre dois ecrãs diferentes.
+- **🔴 Testes de Security Rules**
+  (`plans-subscriptions-rules.test.ts`): novo bloco `describe` para
+  `services` — membro lê mas não escreve, Manager do tenant cria e
+  desativa, Manager de outro tenant não consegue.
+
+### Passos para verificar a Fase 3 localmente
+
+Comandos em PowerShell — sem `&&`; cada passo em linhas separadas.
+
+```powershell
+# 1. Confirmar que tudo continua a compilar/passar
+dart format --output=none --set-exit-if-changed .
+flutter analyze --fatal-infos
+flutter test
+
+# 2. 🔴 Correr os testes de Security Rules — isolamento (Fase 1) +
+#    concorrência (Fase 2) + plans/subscriptions (Fase 3)
+cd firebase/tests
+npm install
+cd ../..
+firebase emulators:exec --project=demo-gym-saas-dev --only firestore "npm --prefix firebase/tests test"
+
+# 3. Cloud Functions: build + lint (createSubscription é código novo;
+#    createMember/createStaff tinham um bug de imports do firebase-admin
+#    v14 nunca antes detetado — ver "Oitavo problema" acima)
+cd firebase/functions
+npm run build
+npm run lint
+cd ../..
+
+# 4. Seed — com o emulador completo a correr
+#    (firebase emulators:start --project=demo-gym-saas-dev):
+cd firebase/scripts
+npm run seed
+cd ../..
+# Confirma no output que aparece "plan_test_standard" e
+# "subscription_test_rita".
+
+# 5. Testar como Gestor (Leo / leo@nxtperformancestudio.pt / DevPass123!,
+#    entra no mesmo campo "Nº de sócio ou email")
+flutter run -t lib/main_development.dart
+# Deve aparecer o ícone de "Gestão" na AppBar (só para o Leo, não para
+# a Rita). Em "Gestão → Serviços", confirma que "Aula de Grupo" (do
+# seed) aparece ativo, e cria um Service novo (ex.: "Pilates"). Em
+# "Gestão → Planos", cria um Plano novo, ativa um Service com uma
+# UsageRule limitada (ex.: 2x/semana), confirma que fica guardado ao
+# voltar ao ecrã. Atribui esse Plano a um membro sem subscription e
+# confirma que aparece sucesso; tenta atribuir OUTRO plano que dê
+# acesso ao MESMO service a esse membro e confirma que aparece a
+# mensagem de conflito. Se atribuir "Standard (teste)" (do seed) ainda
+# der "este plano ainda não tem nenhum serviço associado", abre esse
+# Plano em "Gestão → Planos" e confirma/ativa o switch de "Aula de
+# Grupo" à mão — ver "Décimo problema" acima.
+
+# 6. Testar como membro sem plano — bloqueio de booking
+# Cria (via UI do Gestor ou Cloud Function createMember direta) um
+# membro que NÃO tenha nenhuma subscription, faz login com ele, e
+# tenta marcar "Aula de Grupo". Deve aparecer a mensagem específica de
+# "não tens um plano ativo", sem sequer tentar a transação de booking.
+
+# 7. Testar como a Rita (já tem subscription do seed) — confirma que
+#    marcar continua a funcionar normalmente (regressão da Fase 2).
+```
+
+### Critério "Done" da Fase 3
+
+> um aluno sem o serviço contratado é bloqueado ao tentar marcar-se; o
+> picker de atribuição manual só mostra alunos elegíveis.
+
+A primeira metade está feita e coberta (passo 6 acima +
+`NotEligibleForServiceException` + teste unitário de
+`BookSessionUseCase`). A segunda metade — ver ponto 3 de "Ainda em
+aberto" acima — refere-se a um picker de sessões que não faz parte da
+lista de histórias desta fase nem existe ainda na app; sinalizada, não
+implementada às escondidas nem ignorada em silêncio.
 
 ## Próximo passo
 
-Fase 3 do guia (ver `Technical/guia-desenvolvimento.md`) — por
-enquanto não analisada em detalhe nesta conversa.
+Fase 4 do guia (`Technical/guia-desenvolvimento.md`) — ainda por
+consultar em detalhe.

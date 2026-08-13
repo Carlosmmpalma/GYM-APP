@@ -4,12 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../repositories/auth_repository.dart';
 
-/// UC01 — login por nº de sócio + password (não email). O mockup
-/// (nxt-studio-screens.html) mostra isto especificamente para o Aluno;
-/// staff faz login com o email real (ver assunção documentada em
-/// firebase/functions/src/createStaff.ts) — este ecrã cobre o caso do
-/// mockup. Um segundo ecrã de login para staff fica para quando for
-/// pedido.
+/// UC01 — login por nº de sócio + password (não email) para o Aluno,
+/// tal como o mockup (nxt-studio-screens.html) mostra. Staff faz login
+/// com o email real (ver assunção documentada em
+/// firebase/functions/src/createStaff.ts) — desde a Fase 3, o MESMO
+/// campo/ecrã aceita as duas coisas (ver
+/// `firebase_auth_repository.dart`): quem digita um email entra como
+/// staff, quem digita um número entra como Aluno. Continua a não haver
+/// um ecrã de login separado para staff — deixou de ser necessário.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -83,13 +85,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   TextFormField(
                     controller: _memberNumberController,
                     decoration: const InputDecoration(
-                      labelText: 'Nº de sócio',
+                      labelText: 'Nº de sócio ou email',
                     ),
-                    keyboardType: TextInputType.number,
+                    // Não restrito a números: staff entra com o email
+                    // real neste mesmo campo (Fase 3) — ver
+                    // firebase_auth_repository.dart.
+                    keyboardType: TextInputType.text,
                     autofillHints: const [AutofillHints.username],
                     validator: (value) =>
                         (value == null || value.trim().isEmpty)
-                            ? 'Introduz o teu nº de sócio'
+                            ? 'Introduz o teu nº de sócio ou email'
                             : null,
                   ),
                   const SizedBox(height: 16),

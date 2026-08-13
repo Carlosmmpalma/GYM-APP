@@ -55,7 +55,7 @@ void main() {
     await tester.tap(find.text('Entrar'));
     await tester.pump();
 
-    expect(find.text('Introduz o teu nº de sócio'), findsOneWidget);
+    expect(find.text('Introduz o teu nº de sócio ou email'), findsOneWidget);
     expect(find.text('Introduz a tua password'), findsOneWidget);
     expect(authRepo.lastMemberNumber, isNull);
   });

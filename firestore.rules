@@ -24,6 +24,16 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.tenantId == tenantId;
     }
 
+    // Fase 3 — primeira regra que distingue Manager de outros roles.
+    // `roles` é um array nos custom claims (mesmo formato usado pelo
+    // `requireManager()` das Cloud Functions — ver
+    // `firebase/functions/src/lib/callerContext.ts`), por isso o
+    // próprio token já traz esta informação sem precisar de nenhum
+    // `get()` extra a Firestore.
+    function isManager(tenantId) {
+      return belongsToTenant(tenantId) && 'manager' in request.auth.token.roles;
+    }
+
     // Sonda de diagnóstico da Fase 0. Não faz parte do modelo de negócio.
     match /_diagnostics/{docId} {
       allow read, write: if true;
@@ -50,13 +60,16 @@ service cloud.firestore {
       allow read, write: if belongsToTenant(tenantId);
     }
 
-    // --- Services (Fase 2) ---
-    // Leitura para qualquer utilizador do tenant; escrita só por staff/
-    // admin — ainda sem ecrã de gestão (Fase 3), por isso fica negada a
-    // todos por agora (mais seguro que abrir sem necessidade real).
+    // --- Services (Fase 2, escrita liberada na Fase 3) ---
+    // Leitura ampla dentro do tenant; escrita só Manager, agora que
+    // `ManageServicesScreen` (Fase 3, UC26) existe. Mesmo padrão de
+    // `plans` logo abaixo — escrita direta do cliente, sem Cloud
+    // Function, porque não há nenhuma invariante cross-documento a
+    // validar (criar/ativar/desativar um Service é uma escrita
+    // isolada a UM documento).
     match /tenants/{tenantId}/services/{serviceId} {
       allow read: if belongsToTenant(tenantId);
-      allow write: if false;
+      allow write: if isManager(tenantId);
     }
 
     // --- Sessions / Bookings (Fase 2) ---
@@ -126,6 +139,41 @@ service cloud.firestore {
               (resource.data.status == 'cancelled' && isValidNewBooking())
             );
       }
+    }
+
+    // --- Plans / PlanServices (Fase 3, UC26) ---
+    //
+    // Leitura ampla dentro do tenant (qualquer membro precisa de ver os
+    // planos para, no futuro, os poder contratar/consultar); escrita
+    // só para Manager. Ao contrário de `bookings`, isto é escrita
+    // direta do cliente (`FirebasePlanRepository`), não passa por
+    // Cloud Function — não há nenhuma invariante cross-documento a
+    // validar aqui (ao contrário de `createSubscription`), por isso uma
+    // regra simples de role chega.
+    match /tenants/{tenantId}/plans/{planId} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if isManager(tenantId);
+
+      match /services/{serviceId} {
+        allow read: if belongsToTenant(tenantId);
+        allow write: if isManager(tenantId);
+      }
+    }
+
+    // --- Subscriptions (Fase 3) ---
+    //
+    // Leitura ampla dentro do tenant: `isEligibleForService()`
+    // (`firebase_subscription_repository.dart`) faz uma query direta a
+    // esta coleção como o próprio membro, e um Manager também precisa
+    // de a poder consultar. Escrita SEMPRE negada ao cliente — a única
+    // via é a Cloud Function `createSubscription`, que corre com Admin
+    // SDK e por isso ignora estas regras (ver nota de arquitetura em
+    // `firebase_subscription_repository.dart` sobre porque a validação
+    // "um serviço não pode estar em duas subscriptions ativas do mesmo
+    // membro" não dá para exprimir aqui).
+    match /tenants/{tenantId}/subscriptions/{subscriptionId} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if false;
     }
 
     // --- Leitura de "bookings" via collectionGroup (Fase 2) ---

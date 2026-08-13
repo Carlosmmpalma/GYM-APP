@@ -34,7 +34,7 @@ jobs:
       # precisa de um device/simulador, não só do SDK. Ver README.md.
 
   rules-isolation:
-    name: 🔴 Security Rules (isolamento entre tenants + concorrência de bookings)
+    name: 🔴 Security Rules (isolamento + concorrência de bookings + plans/subscriptions)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +57,8 @@ jobs:
 
       # Corre TODOS os *.test.ts em firebase/tests (vitest apanha-os
       # automaticamente): isolamento entre tenants (Fase 1) +
-      # concorrência na última vaga de uma marcação (Fase 2).
+      # concorrência na última vaga de uma marcação (Fase 2) + rules de
+      # plans/subscriptions (Fase 3).
       - name: Correr testes de Security Rules contra o emulador do Firestore
         run: |
           firebase emulators:exec --project=demo-gym-saas-dev --only firestore \

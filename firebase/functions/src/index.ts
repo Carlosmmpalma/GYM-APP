@@ -1,7 +1,7 @@
-import * as admin from 'firebase-admin';
+import { initializeApp } from 'firebase-admin/app';
 import { onCall } from 'firebase-functions/v2/https';
 
-admin.initializeApp();
+initializeApp();
 
 /**
  * Função de diagnóstico da Fase 0 — confirma que a base de Cloud Functions
@@ -22,3 +22,6 @@ export const healthCheck = onCall((request) => {
 // Fase 1 — Identidade, Tenant e isolamento.
 export { createMember } from './createMember';
 export { createStaff } from './createStaff';
+
+// Fase 3 — Planos, serviços e subscriptions.
+export { createSubscription } from './createSubscription';

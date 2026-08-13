@@ -53,8 +53,20 @@ class FirebaseAuthRepository implements AuthRepository {
     required String memberNumber,
     required String password,
   }) async {
-    final email =
-        buildSyntheticEmail(tenantId: tenantId, memberNumber: memberNumber);
+    // Fase 3: este era, até agora, só o caminho do Aluno (UC01) — mas a
+    // Fase 3 introduziu os primeiros ecrãs que só um Gestor consegue
+    // usar, e nunca tinha existido nenhuma forma de um Gestor entrar na
+    // app (createStaff.ts usa o email real para login do staff, não um
+    // nº gerado — ver comentário nesse ficheiro). Em vez de um segundo
+    // ecrã de login, o mesmo campo passa a aceitar as duas coisas: um
+    // identificador com '@' é tratado como email real de staff; sem
+    // '@', continua a ser um nº de sócio, convertido no email sintético
+    // de sempre. Não há ambiguidade possível — nenhum nº de sócio pode
+    // conter '@'.
+    final identifier = memberNumber.trim();
+    final email = identifier.contains('@')
+        ? identifier
+        : buildSyntheticEmail(tenantId: tenantId, memberNumber: identifier);
     try {
       await _auth.signInWithEmailAndPassword(
         email: email,

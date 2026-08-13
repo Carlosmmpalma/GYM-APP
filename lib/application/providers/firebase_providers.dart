@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/environment.dart';
@@ -19,6 +20,16 @@ final environmentConfigProvider = Provider<EnvironmentConfig>((ref) {
 
 final firestoreProvider = Provider<FirebaseFirestore>((ref) {
   return FirebaseFirestore.instance;
+});
+
+/// Fase 3 — `createSubscription` corre como Cloud Function (Admin SDK),
+/// não como transação client-side como em Fase 2: a validação "este
+/// membro já tem outra subscription ativa que dá acesso a um destes
+/// serviços" precisa de percorrer TODAS as subscriptions ativas do
+/// membro, o que não dá para exprimir com a mesma robustez em Security
+/// Rules (ver nota em firebase_subscription_repository.dart).
+final functionsProvider = Provider<FirebaseFunctions>((ref) {
+  return FirebaseFunctions.instance;
 });
 
 /// Repository Pattern (Platform Foundation §12): a camada acima só conhece
