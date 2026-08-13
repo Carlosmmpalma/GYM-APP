@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import '../../app.dart';
 import '../../application/providers/firebase_providers.dart';
@@ -43,6 +44,11 @@ Future<void> bootstrap(Environment environment) async {
     Environment.staging => TenantAppConfig.staging,
     Environment.production => TenantAppConfig.production,
   };
+
+  // Necessário antes de qualquer DateFormat com locale 'pt_PT' (ver
+  // presentation/screens/book_training_screen.dart) — sem isto, o intl
+  // lança LocaleDataException em runtime na primeira formatação de data.
+  await initializeDateFormatting('pt_PT');
 
   await Firebase.initializeApp(options: firebaseOptions);
 

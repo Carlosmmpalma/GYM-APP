@@ -1,14 +1,18 @@
 rules_version = '2';
 
-// Regras da Fase 1 — isolamento entre tenants (Platform Foundation §7).
+// Fase 1 — isolamento entre tenants (Platform Foundation §7).
+// Fase 2 — regras específicas de booking (contador de vagas + ownership).
 //
-// Objetivo ÚNICO desta fase: "um utilizador só consegue aceder aos
-// dados do seu próprio tenant" (guia-desenvolvimento.md). A matriz fina
-// de autorização por role (o que um Instructor pode fazer vs. um
-// Manager, ownership de documentos, etc.) é trabalho do documento
-// "06 — Security & Business Rules" e das fases 3+ — de propósito NÃO
-// está aqui ainda. Qualquer utilizador autenticado do tenant correto
-// tem, por agora, acesso de leitura/escrita a todo o seu tenant.
+// A matriz fina de autorização por role (o que um Instructor pode
+// fazer vs. um Manager, etc.) continua a ser trabalho do documento
+// "06 — Security & Business Rules" e das fases 3+. Até lá, dentro do
+// próprio tenant, qualquer utilizador autenticado tem leitura/escrita
+// ampla — EXCETO em sessionOccurrences/bookings, onde a Fase 2 exige
+// regras mais apertadas (não dá para ter aqui uma regra ampla que
+// cubra tudo: no Firestore, se QUALQUER regra que faça match permitir
+// a operação, ela é permitida — por isso sessionOccurrences/bookings
+// têm de ficar FORA do wildcard genérico, não só "sobrepostas" por uma
+// regra mais restrita).
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -20,24 +24,154 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.tenantId == tenantId;
     }
 
-    // Sonda de diagnóstico da Fase 0 (ver lib/infrastructure/firebase/
-    // firebase_ping_repository.dart). Não faz parte do modelo de negócio;
-    // fica deliberadamente aberta só para o "hello world".
+    // Sonda de diagnóstico da Fase 0. Não faz parte do modelo de negócio.
     match /_diagnostics/{docId} {
       allow read, write: if true;
     }
 
-    // Isolamento por tenant: só quem tem request.auth.token.tenantId
-    // igual ao tenantId do path é que sequer entra aqui. Isto cobre
-    // tenants/{tenantId} (config do tenant) e todas as subcollections
-    // (members, staff, ...), incluindo as que ainda não existem —
-    // {document=**} é recursivo.
-    match /tenants/{tenantId}/{document=**} {
+    // --- Dados de configuração/identidade do tenant (Fase 1) ---
+    // Leitura/escrita ampla para qualquer utilizador do próprio tenant.
+    // Ver nota no topo do ficheiro sobre porque isto não pode incluir
+    // sessionOccurrences/bookings.
+
+    match /tenants/{tenantId} {
       allow read, write: if belongsToTenant(tenantId);
     }
 
-    // Tudo o resto (paths fora de tenants/{tenantId}/... e fora de
-    // _diagnostics/) fica bloqueado.
+    match /tenants/{tenantId}/members/{memberId} {
+      allow read, write: if belongsToTenant(tenantId);
+    }
+
+    match /tenants/{tenantId}/staff/{staffId} {
+      allow read, write: if belongsToTenant(tenantId);
+    }
+
+    match /tenants/{tenantId}/config/{configId} {
+      allow read, write: if belongsToTenant(tenantId);
+    }
+
+    // --- Services (Fase 2) ---
+    // Leitura para qualquer utilizador do tenant; escrita só por staff/
+    // admin — ainda sem ecrã de gestão (Fase 3), por isso fica negada a
+    // todos por agora (mais seguro que abrir sem necessidade real).
+    match /tenants/{tenantId}/services/{serviceId} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if false;
+    }
+
+    // --- Sessions / Bookings (Fase 2) ---
+    //
+    // sessionOccurrences: leitura ampla (para mostrar vagas disponíveis
+    // a qualquer membro do tenant); a única escrita permitida a um
+    // cliente é a atualização de `activeBookingCount`, e só nas
+    // condições exatas de um booking (+1) ou cancelamento (-1) válido.
+    // Criar/cancelar a ocorrência em si (capacidade, horário, status)
+    // fica para quando existir o ecrã de gestão de aulas (Fase 5+).
+    match /tenants/{tenantId}/sessionOccurrences/{occurrenceId} {
+      allow read: if belongsToTenant(tenantId);
+      allow create, delete: if false;
+      allow update: if belongsToTenant(tenantId) && isValidBookingCounterChange();
+
+      function isValidBookingCounterChange() {
+        let onlyCounterChanged = request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['activeBookingCount']);
+        let newCount = request.resource.data.activeBookingCount;
+        let oldCount = resource.data.activeBookingCount;
+        let capacity = resource.data.capacity;
+        let isBookingIncrement = newCount == oldCount + 1 && newCount <= capacity;
+        let isCancellationDecrement = newCount == oldCount - 1 && newCount >= 0;
+        return onlyCounterChanged && (isBookingIncrement || isCancellationDecrement);
+      }
+
+      // bookings: só o próprio membro cria/cancela a própria marcação.
+      // O id do documento é sempre o uid do membro (ver
+      // firebase_booking_repository.dart) — por isso "és dono deste
+      // documento" e "o id do documento é o teu uid" são a mesma
+      // verificação.
+      match /bookings/{bookingId} {
+        allow read: if belongsToTenant(tenantId);
+        allow delete: if false; // soft-cancel só (histórico preservado)
+
+        // Usada tanto no "create" (primeira marcação) como no "update"
+        // que reaproveita o mesmo documento para voltar a marcar depois
+        // de uma cancelação — ver nota em "allow update" abaixo.
+        function isValidNewBooking() {
+          return bookingId == request.auth.uid
+              && request.resource.data.memberId == request.auth.uid
+              && request.resource.data.status == 'booked';
+        }
+
+        allow create: if belongsToTenant(tenantId) && isValidNewBooking();
+
+        // Bug apanhado a testar em Chrome: como o id do documento é
+        // sempre == uid, depois de UMA cancelação o documento já
+        // existe (soft-cancel, nunca é apagado) — voltar a marcar
+        // chega ao Firestore como "update", não "create", mesmo sendo
+        // um `tx.set()` completo do lado do repository. A primeira
+        // versão desta regra só permitia a transição booked→cancelled,
+        // nunca o inverso, por isso re-marcar ficava permanentemente
+        // bloqueado depois do primeiro cancelamento. Agora o "update"
+        // cobre as duas transições válidas.
+        allow update: if belongsToTenant(tenantId)
+            && bookingId == request.auth.uid
+            && (
+              // Cancelar uma marcação ativa.
+              (resource.data.status == 'booked'
+                  && resource.data.memberId == request.auth.uid
+                  && request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly(['status', 'cancelledAt'])
+                  && request.resource.data.status == 'cancelled')
+              ||
+              // Voltar a marcar depois de cancelada.
+              (resource.data.status == 'cancelled' && isValidNewBooking())
+            );
+      }
+    }
+
+    // --- Leitura de "bookings" via collectionGroup (Fase 2) ---
+    //
+    // watchMyBookings() (firebase_booking_repository.dart) usa
+    // `firestore.collectionGroup('bookings').where('memberId', ...)`
+    // para mostrar as marcações do membro em TODAS as sessões, sem
+    // saber de antemão em que sessionOccurrence cada uma está.
+    //
+    // O match aninhado acima (`tenants/{tenantId}/sessionOccurrences/
+    // {occurrenceId}/bookings/{bookingId}`) só cobre pedidos a uma
+    // profundidade EXATA — get/list numa subcoleção concreta. Uma
+    // collectionGroup query não tem esse caminho fixo (varre TODAS as
+    // subcoleções chamadas "bookings", a qualquer profundidade), e o
+    // Firestore só autoriza esse tipo de pedido através de uma regra
+    // com wildcard recursivo `{path=**}` dedicada — não reaproveita a
+    // regra aninhada, mesmo que as condições sejam idênticas. Sem isto,
+    // o pedido cai no bloqueio genérico do fim do ficheiro (foi o que
+    // aconteceu: "false for 'list' @ L112" em vez de ser avaliado
+    // contra a regra de `bookings` lá de cima).
+    //
+    // Só `read` (get+list) — criar/atualizar uma booking continua a
+    // passar sempre pelo caminho completo e conhecido
+    // (`sessionOccurrences/{occurrenceId}/bookings/{bookingId}`, nunca
+    // por collectionGroup), por isso essa regra aninhada continua a ser
+    // a única fonte de verdade para escrita; esta aqui não adiciona
+    // nenhuma permissão de escrita nova.
+    match /{path=**}/bookings/{bookingId} {
+      // Duas tentativas anteriores tentaram extrair o tenantId do
+      // próprio `path` capturado por {path=**} (path.size(), depois
+      // path[0]/path[1]) — ambas deram erros de avaliação em runtime
+      // (a API exata de indexação de `path` não está a comportar-se
+      // como a documentação sugere, pelo menos nesta versão do
+      // emulador). Em vez de continuar a adivinhar essa sintaxe,
+      // simplifiquei para o que realmente importa aqui: só o dono da
+      // marcação a pode ler. Isto não depende de path nenhum — só do
+      // campo `memberId` do próprio documento vs. quem está
+      // autenticado. É equivalente em termos de segurança ao
+      // isolamento por tenant (um booking só é criado com
+      // memberId == uid de quem o cria, dentro do próprio tenant desse
+      // uid — ver "allow create" abaixo — por isso nunca há forma de um
+      // uid corresponder a um booking de outro tenant) e mais simples.
+      allow read: if isSignedIn() && resource.data.memberId == request.auth.uid;
+    }
+
+    // Tudo o resto fica bloqueado.
     match /{document=**} {
       allow read, write: if false;
     }

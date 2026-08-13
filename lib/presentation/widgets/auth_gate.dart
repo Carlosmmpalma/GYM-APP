@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/tenant_context_providers.dart';
 import '../screens/force_password_change_screen.dart';
-import '../screens/hello_world_screen.dart';
+import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
 
 /// Decide qual ecrã mostrar consoante o estado de autenticação
@@ -12,8 +12,9 @@ import '../screens/login_screen.dart';
 ///
 ///   sem sessão              → LoginScreen (UC01)
 ///   sessão + password temp. → ForcePasswordChangeScreen (UC22)
-///   sessão normal            → HelloWorldScreen (placeholder até haver
-///                               um ecrã "Início" real — Fase 2+)
+///   sessão normal            → HomeScreen (Marcar treino / Minhas
+///                               marcações — Fase 2; o diagnóstico da
+///                               Fase 0 continua acessível a partir daí)
 class AuthGate extends ConsumerWidget {
   const AuthGate({super.key});
 
@@ -56,7 +57,7 @@ class AuthGate extends ConsumerWidget {
             if (hasTemporaryPassword) {
               return ForcePasswordChangeScreen(user: appUser);
             }
-            return const HelloWorldScreen();
+            return const HomeScreen();
           },
         );
       },

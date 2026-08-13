@@ -37,7 +37,16 @@ let testEnv: RulesTestEnvironment;
 
 beforeAll(async () => {
   testEnv = await initializeTestEnvironment({
-    projectId: 'demo-gym-saas-dev',
+    // projectId distinto de booking-concurrency.test.ts DE PROPÓSITO: o
+    // vitest corre ficheiros de teste em paralelo por omissão, e os dois
+    // ficheiros chamam testEnv.clearFirestore() em cada teste. Se
+    // partilhassem o mesmo projectId, estariam a apagar o Firestore
+    // emulado um ao outro a meio da execução (foi isto que causou
+    // "Transaction lock timeout" aqui e marcações "rejeitadas" sem
+    // motivo de negócio no outro ficheiro). O emulador do Firestore
+    // aceita qualquer projectId `demo-*` sem credenciais, por isso isto
+    // não tem custo nenhum — só isola os dois ficheiros um do outro.
+    projectId: 'demo-gym-saas-dev-isolation-test',
     firestore: {
       rules: readFileSync(RULES_PATH, 'utf8'),
       host: 'localhost',

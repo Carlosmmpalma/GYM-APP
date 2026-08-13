@@ -75,6 +75,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Escrever + ler no Firestore'), findsOneWidget);
+    // "Marcar treino" é o título do AppBar (tab inicial); os dois
+    // destinos da bottom nav estão sempre visíveis, independentemente
+    // do tab ativo.
+    expect(find.text('Marcar treino'), findsOneWidget);
+    expect(find.text('Marcar'), findsOneWidget);
+    expect(find.text('Marcações'), findsOneWidget);
   });
 }

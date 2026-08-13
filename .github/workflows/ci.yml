@@ -34,7 +34,7 @@ jobs:
       # precisa de um device/simulador, não só do SDK. Ver README.md.
 
   rules-isolation:
-    name: 🔴 Isolamento entre tenants (Security Rules)
+    name: 🔴 Security Rules (isolamento entre tenants + concorrência de bookings)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +55,10 @@ jobs:
         working-directory: firebase/tests
         run: npm ci || npm install
 
-      - name: Correr testes de isolamento contra o emulador do Firestore
+      # Corre TODOS os *.test.ts em firebase/tests (vitest apanha-os
+      # automaticamente): isolamento entre tenants (Fase 1) +
+      # concorrência na última vaga de uma marcação (Fase 2).
+      - name: Correr testes de Security Rules contra o emulador do Firestore
         run: |
           firebase emulators:exec --project=demo-gym-saas-dev --only firestore \
             "npm --prefix firebase/tests test"

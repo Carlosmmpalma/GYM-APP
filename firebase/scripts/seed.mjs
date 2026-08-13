@@ -5,6 +5,8 @@
 //   2. Um tenant fantasma, só para testes manuais de isolamento
 //      (guia-desenvolvimento.md, Fase 1: "Cria um segundo 'tenant
 //      fantasma' só para os testes de isolamento tentarem invadir").
+//   3. Uma Service ("Aula de Grupo") + uma SessionOccurrence de teste
+//      com capacidade 2, para testar o ecrã "Marcar treino" (Fase 2).
 //
 // Usa o Admin SDK, que ignora Security Rules — por isso funciona mesmo
 // antes de existir nenhuma regra de isolamento escrita.
@@ -128,6 +130,54 @@ async function seedMember({ tenantId, memberNumber, name, password }) {
   );
 }
 
+async function seedServiceAndOccurrence(tenantId) {
+  const serviceId = 'group_classes_test';
+  const serviceRef = firestore
+    .collection('tenants')
+    .doc(tenantId)
+    .collection('services')
+    .doc(serviceId);
+
+  await serviceRef.set(
+    { name: 'Aula de Grupo', active: true, createdAt: FieldValue.serverTimestamp() },
+    { merge: true },
+  );
+  console.log(`✓ service "${serviceId}" (Aula de Grupo)`);
+
+  const occurrenceRef = firestore
+    .collection('tenants')
+    .doc(tenantId)
+    .collection('sessionOccurrences')
+    .doc('occurrence_test_1');
+
+  const existing = await occurrenceRef.get();
+  if (existing.exists) {
+    console.log(
+      `  já existe: sessionOccurrences/occurrence_test_1 — a saltar ` +
+        `(para não sobrescrever activeBookingCount de bookings reais já feitos)`,
+    );
+    return;
+  }
+
+  const startAt = new Date();
+  startAt.setDate(startAt.getDate() + 1);
+  startAt.setHours(18, 0, 0, 0);
+  const endAt = new Date(startAt.getTime() + 60 * 60 * 1000);
+
+  await occurrenceRef.set({
+    serviceId,
+    startAt,
+    endAt,
+    capacity: 2,
+    status: 'scheduled',
+    activeBookingCount: 0,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  console.log(
+    `✓ sessionOccurrence "occurrence_test_1" — ${startAt.toISOString()}, capacidade 2`,
+  );
+}
+
 async function main() {
   console.log(`A semear contra o emulador (projectId=${PROJECT_ID})...\n`);
 
@@ -139,6 +189,7 @@ async function main() {
     name: 'Rita Ferreira',
     password: 'MemberPass123!',
   });
+  await seedServiceAndOccurrence(REAL_TENANT_ID);
 
   console.log();
   await upsertTenant(GHOST_TENANT_ID, 'Ghost Gym (só para testes de isolamento)');
@@ -157,7 +208,9 @@ async function main() {
       'password diferente — confirma na UI do emulador ' +
       '(http://localhost:4000/firestore) que são documentos completamente ' +
       'separados, apesar do número igual (o isolamento é por tenantId, não ' +
-      'pelo número em si).',
+      'pelo número em si).\n' +
+      '  - No separador "Marcar", a Rita já tem uma sessão de "Aula de ' +
+      'Grupo" amanhã às 18:00 com 2 vagas para testar o booking (Fase 2).',
   );
 }
 
