@@ -1,26 +1,43 @@
 rules_version = '2';
 
-// Regras da Fase 0: deny-all por omissão.
+// Regras da Fase 1 — isolamento entre tenants (Platform Foundation §7).
 //
-// A implementação real do isolamento por tenant (request.auth.token.tenantId
-// == tenantId, Platform Foundation §7) é trabalho da Fase 1 do guia de
-// desenvolvimento, não desta fase. Manter deny-all aqui até lá é
-// deliberado: um "hello world" que escreve em `_diagnostics/` só deve
-// funcionar contra o emulador (que, por omissão, não aplica Security
-// Rules a pedidos feitos com Admin SDK/testes, mas aplica-as a pedidos
-// normais do client SDK — por isso a regra abaixo permite explicitamente
-// só essa coleção de diagnóstico).
+// Objetivo ÚNICO desta fase: "um utilizador só consegue aceder aos
+// dados do seu próprio tenant" (guia-desenvolvimento.md). A matriz fina
+// de autorização por role (o que um Instructor pode fazer vs. um
+// Manager, ownership de documentos, etc.) é trabalho do documento
+// "06 — Security & Business Rules" e das fases 3+ — de propósito NÃO
+// está aqui ainda. Qualquer utilizador autenticado do tenant correto
+// tem, por agora, acesso de leitura/escrita a todo o seu tenant.
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function belongsToTenant(tenantId) {
+      return isSignedIn() && request.auth.token.tenantId == tenantId;
+    }
+
     // Sonda de diagnóstico da Fase 0 (ver lib/infrastructure/firebase/
-    // firebase_ping_repository.dart). Não faz parte do modelo de negócio.
+    // firebase_ping_repository.dart). Não faz parte do modelo de negócio;
+    // fica deliberadamente aberta só para o "hello world".
     match /_diagnostics/{docId} {
       allow read, write: if true;
     }
 
-    // Tudo o resto fica bloqueado até a Fase 1 definir o isolamento por
-    // tenant e a matriz de autorização por role.
+    // Isolamento por tenant: só quem tem request.auth.token.tenantId
+    // igual ao tenantId do path é que sequer entra aqui. Isto cobre
+    // tenants/{tenantId} (config do tenant) e todas as subcollections
+    // (members, staff, ...), incluindo as que ainda não existem —
+    // {document=**} é recursivo.
+    match /tenants/{tenantId}/{document=**} {
+      allow read, write: if belongsToTenant(tenantId);
+    }
+
+    // Tudo o resto (paths fora de tenants/{tenantId}/... e fora de
+    // _diagnostics/) fica bloqueado.
     match /{document=**} {
       allow read, write: if false;
     }

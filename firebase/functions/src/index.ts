@@ -18,3 +18,7 @@ export const healthCheck = onCall((request) => {
     timestamp: new Date().toISOString(),
   };
 });
+
+// Fase 1 — Identidade, Tenant e isolamento.
+export { createMember } from './createMember';
+export { createStaff } from './createStaff';

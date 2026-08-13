@@ -10,10 +10,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../app.dart';
 import '../../application/providers/firebase_providers.dart';
+import '../../application/providers/tenant_context_providers.dart';
 import '../../infrastructure/config/firebase_options_development.dart';
 import '../../infrastructure/config/firebase_options_production.dart';
 import '../../infrastructure/config/firebase_options_staging.dart';
 import '../config/environment.dart';
+import '../config/tenant_app_config.dart';
 
 /// Ponto de entrada único, chamado por main_development.dart,
 /// main_staging.dart e main_production.dart (guia-desenvolvimento.md,
@@ -34,6 +36,12 @@ Future<void> bootstrap(Environment environment) async {
     Environment.development => DevelopmentFirebaseOptions.currentPlatform,
     Environment.staging => StagingFirebaseOptions.currentPlatform,
     Environment.production => ProductionFirebaseOptions.currentPlatform,
+  };
+
+  final tenantAppConfig = switch (environment) {
+    Environment.development => TenantAppConfig.development,
+    Environment.staging => TenantAppConfig.staging,
+    Environment.production => TenantAppConfig.production,
   };
 
   await Firebase.initializeApp(options: firebaseOptions);
@@ -72,6 +80,7 @@ Future<void> bootstrap(Environment environment) async {
       ProviderScope(
         overrides: [
           environmentConfigProvider.overrideWithValue(config),
+          tenantAppConfigProvider.overrideWithValue(tenantAppConfig),
         ],
         child: const GymSaasApp(),
       ),
