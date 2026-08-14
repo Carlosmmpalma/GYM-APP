@@ -28,7 +28,8 @@ class _FakeBookingRepository implements BookingRepository {
       false;
 
   @override
-  Stream<List<Booking>> watchMyBookings(String memberId) => const Stream.empty();
+  Stream<List<Booking>> watchMyBookings(String memberId) =>
+      const Stream.empty();
 }
 
 class _FakeSubscriptionRepository implements SubscriptionRepository {
@@ -59,10 +60,15 @@ class _FakeSubscriptionRepository implements SubscriptionRepository {
     required String serviceId,
   }) async =>
       null;
+
+  @override
+  Stream<Set<String>> watchEligibleMemberIds(String serviceId) =>
+      const Stream.empty();
 }
 
 void main() {
-  test('delega no repository de booking com os parâmetros corretos quando elegível',
+  test(
+      'delega no repository de booking com os parâmetros corretos quando elegível',
       () async {
     final bookingRepo = _FakeBookingRepository();
     final subscriptionRepo = _FakeSubscriptionRepository();
@@ -78,7 +84,8 @@ void main() {
     expect(bookingRepo.lastMemberId, 'member_1');
   });
 
-  test('lança NotEligibleForServiceException e nunca chega a chamar o booking repository '
+  test(
+      'lança NotEligibleForServiceException e nunca chega a chamar o booking repository '
       'quando o membro não é elegível', () async {
     final bookingRepo = _FakeBookingRepository();
     final subscriptionRepo = _FakeSubscriptionRepository()..eligible = false;

@@ -42,4 +42,12 @@ abstract class SubscriptionRepository {
     required String memberId,
     required String serviceId,
   });
+
+  /// Fase 5 (UC08-A fechado) — TODOS os memberIds com uma subscription
+  /// ativa que dá acesso a [serviceId]. Usado pelo picker de
+  /// pré-atribuição em `ManageSeriesScreen`/criação de série ou
+  /// ocorrência, para só mostrar quem já tem o serviço contratado —
+  /// a mesma regra que já bloqueava a marcação, aplicada agora à
+  /// pesquisa em vez de só ao bloquear depois de escolhido.
+  Stream<Set<String>> watchEligibleMemberIds(String serviceId);
 }

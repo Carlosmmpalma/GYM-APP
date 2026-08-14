@@ -1,17 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/booking.dart';
-import '../../domain/entities/service.dart';
 import '../../domain/entities/session_occurrence.dart';
+import '../../domain/entities/session_series.dart';
 import '../../domain/entities/usage.dart';
 import '../../infrastructure/firebase/firebase_booking_repository.dart';
 import '../../infrastructure/firebase/firebase_service_repository.dart';
 import '../../infrastructure/firebase/firebase_session_occurrence_repository.dart';
+import '../../infrastructure/firebase/firebase_session_series_repository.dart';
 import '../../infrastructure/firebase/firebase_subscription_repository.dart';
 import '../../infrastructure/firebase/firebase_usage_repository.dart';
 import '../../repositories/booking_repository.dart';
 import '../../repositories/service_repository.dart';
 import '../../repositories/session_occurrence_repository.dart';
+import '../../repositories/session_series_repository.dart';
 import '../../repositories/subscription_repository.dart';
 import '../../repositories/usage_repository.dart';
 import '../use_cases/book_session_use_case.dart';
@@ -30,6 +32,7 @@ final sessionOccurrenceRepositoryProvider =
     Provider<SessionOccurrenceRepository>((ref) {
   return FirebaseSessionOccurrenceRepository(
     ref.watch(firestoreProvider),
+    ref.watch(functionsProvider),
     ref.watch(tenantAppConfigProvider).tenantId,
   );
 });
@@ -57,8 +60,8 @@ final usageRepositoryProvider = Provider<UsageRepository>((ref) {
 /// sempre `isoWeekKey(DateTime.now())` como período (a semana ATUAL, não
 /// a semana da sessão sendo marcada: a barra mostra "quanto já usei esta
 /// semana", não uma projeção por sessão).
-final usageProvider = StreamProvider.family<
-    Usage?, ({String memberId, String serviceId, String period})>((ref, args) {
+final usageProvider = StreamProvider.family<Usage?,
+    ({String memberId, String serviceId, String period})>((ref, args) {
   return ref.watch(usageRepositoryProvider).watchUsage(
         memberId: args.memberId,
         serviceId: args.serviceId,
@@ -87,20 +90,19 @@ final cancelBookingUseCaseProvider = Provider<CancelBookingUseCase>((ref) {
   return CancelBookingUseCase(ref.watch(bookingRepositoryProvider));
 });
 
-/// Fase 2 é deliberadamente single-service: em vez de hardcodar o id do
-/// serviço de teste no código Dart (o que violaria Platform Foundation
-/// §13 — nada de configuração de negócio hardcoded), vamos buscar o
-/// primeiro serviço ativo. Isto deixa de fazer sentido a partir do
-/// momento em que existir mais do que um serviço e um ecrã para
-/// escolher entre eles (Fase 3+).
-final primaryServiceProvider = FutureProvider<Service?>((ref) async {
-  final services = await ref.watch(serviceRepositoryProvider).getActiveServices();
-  return services.isEmpty ? null : services.first;
-});
-
-final upcomingOccurrencesProvider =
-    StreamProvider.family<List<SessionOccurrence>, String>((ref, serviceId) {
-  return ref.watch(sessionOccurrenceRepositoryProvider).watchUpcomingOccurrences(serviceId);
+/// `BookTrainingScreen` mostrava só as ocorrências do "primeiro serviço
+/// ativo" (era o único jeito de a Fase 2 evitar hardcodar um id de
+/// serviço, Platform Foundation §13). Desde a Fase 5, um tenant pode
+/// ter várias séries em serviços diferentes — filtrar por um só
+/// escondia sessões reais sem nenhum aviso (bug real, reportado depois
+/// de a Fase 5 tornar isto visível). `BookTrainingScreen` passou a usar
+/// `allUpcomingOccurrencesProvider`, abaixo; este provider (e o
+/// `Service?` que devolvia) deixou de ter consumidor.
+final allUpcomingOccurrencesProvider =
+    StreamProvider<List<SessionOccurrence>>((ref) {
+  return ref
+      .watch(sessionOccurrenceRepositoryProvider)
+      .watchUpcomingOccurrencesAllServices();
 });
 
 /// Fase 4 — usado por `my_bookings_screen.dart` para saber a que horas
@@ -111,7 +113,9 @@ final upcomingOccurrencesProvider =
 /// vivo.
 final occurrenceProvider = FutureProvider.family<SessionOccurrence?, String>(
   (ref, occurrenceId) {
-    return ref.watch(sessionOccurrenceRepositoryProvider).getOccurrence(occurrenceId);
+    return ref
+        .watch(sessionOccurrenceRepositoryProvider)
+        .getOccurrence(occurrenceId);
   },
 );
 
@@ -119,4 +123,43 @@ final myBookingsProvider = StreamProvider<List<Booking>>((ref) {
   final appUser = ref.watch(currentAppUserProvider).valueOrNull;
   if (appUser == null) return const Stream.empty();
   return ref.watch(bookingRepositoryProvider).watchMyBookings(appUser.uid);
+});
+
+/// Fase 5 — sessões recorrentes (séries).
+final sessionSeriesRepositoryProvider =
+    Provider<SessionSeriesRepository>((ref) {
+  return FirebaseSessionSeriesRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(functionsProvider),
+    ref.watch(tenantAppConfigProvider).tenantId,
+  );
+});
+
+final seriesProvider = StreamProvider<List<SessionSeries>>((ref) {
+  return ref.watch(sessionSeriesRepositoryProvider).watchSeries();
+});
+
+/// "Ajustar uma semana da série" (`SeriesDetailScreen`) — todas as
+/// ocorrências já materializadas a partir de uma série.
+final seriesOccurrencesProvider =
+    StreamProvider.family<List<SessionOccurrence>, String>((ref, seriesId) {
+  return ref
+      .watch(sessionOccurrenceRepositoryProvider)
+      .watchOccurrencesForSeries(seriesId);
+});
+
+/// UC25 — "Visão global" do Gestor: ocorrências (qualquer serviço) dos
+/// próximos 7 dias, para calcular ocupação agregada. Não é `.family`
+/// por intervalo (ao contrário de `seriesOccurrencesProvider`) porque
+/// só há um consumidor (`GestorDashboardScreen`), sempre com a mesma
+/// janela — não há necessidade de generalizar já.
+final upcomingWeekOccurrencesProvider =
+    StreamProvider<List<SessionOccurrence>>((ref) {
+  final now = DateTime.now();
+  return ref
+      .watch(sessionOccurrenceRepositoryProvider)
+      .watchOccurrencesStartingBetween(
+        now,
+        now.add(const Duration(days: 7)),
+      );
 });

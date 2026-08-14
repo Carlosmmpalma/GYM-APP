@@ -258,6 +258,45 @@ async function seedPlanAndSubscription(tenantId, memberId, serviceId) {
   console.log(`✓ subscription "subscription_test_rita" — Rita (${memberId}) → ${planId}`);
 }
 
+// Fase 5 — uma série ativa de exemplo ("Hyrox — Segundas 18:00"), com
+// a Rita já pré-atribuída (modelo híbrido, UC17/UC19 fechado): sem
+// isto, "Gestão → Aulas/Horários" ficaria vazio depois do seed, e não
+// havia forma de ver a auto-atribuição a funcionar sem criar tudo à
+// mão na app primeiro. Só um membro pré-atribuído (o único semeado até
+// agora) — a série gera as próprias ocorrências quando chamares
+// "Gerar agora" (não faz nada sozinha até lá).
+async function seedRecurringSeries(tenantId, serviceId, memberId) {
+  const seriesId = 'series_test_hyrox_mon';
+  const seriesRef = firestore
+    .collection('tenants')
+    .doc(tenantId)
+    .collection('sessionSeries')
+    .doc(seriesId);
+
+  const existing = await seriesRef.get();
+  if (existing.exists) {
+    console.log(`  já existe: sessionSeries/${seriesId} — a saltar`);
+    return;
+  }
+
+  await seriesRef.set({
+    serviceId,
+    instructorId: null,
+    dayOfWeek: 1, // segunda-feira (DateTime.monday, mesma convenção do Dart)
+    startTime: '18:00',
+    durationMinutes: 60,
+    capacity: 6,
+    startDate: new Date(),
+    preAssignedMemberIds: [memberId],
+    status: 'active',
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  console.log(
+    `✓ sessionSeries "${seriesId}" — Segundas 18:00, capacidade 6, Rita pré-atribuída ` +
+      '(sem ocorrências ainda — usa "Gerar agora" na app ou espera pelo cron diário)',
+  );
+}
+
 async function main() {
   console.log(`A semear contra o emulador (projectId=${PROJECT_ID})...\n`);
 
@@ -271,6 +310,7 @@ async function main() {
   });
   await seedServiceAndOccurrence(REAL_TENANT_ID);
   await seedPlanAndSubscription(REAL_TENANT_ID, rita.uid, 'group_classes_test');
+  await seedRecurringSeries(REAL_TENANT_ID, 'group_classes_test', rita.uid);
 
   console.log();
   await upsertTenant(GHOST_TENANT_ID, 'Ghost Gym (só para testes de isolamento)');
@@ -306,7 +346,12 @@ async function main() {
       'primeira marcação em "Minhas marcações" (sem antecedência mínima ' +
       'configurada em "Gestão → Definições", o cancelamento devolve ' +
       'sempre a utilização) e confirma que a barra volta a "0/1" e a ' +
-      'segunda sessão volta a ficar marcável.',
+      'segunda sessão volta a ficar marcável.\n' +
+      '  - Fase 5: existe uma série "Hyrox — Segundas 18:00" (Gestão → ' +
+      'Aulas/Horários), com a Rita já pré-atribuída, mas AINDA SEM ' +
+      'ocorrências geradas. Abre-a e usa "Gerar agora" — devem aparecer ' +
+      'várias segundas-feiras futuras, cada uma já com a Rita marcada ' +
+      'automaticamente (confirma em "Minhas marcações" dela).',
   );
 }
 

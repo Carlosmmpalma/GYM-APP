@@ -110,7 +110,8 @@ class _FakeBookingRepository implements BookingRepository {
   }
 
   @override
-  Stream<List<Booking>> watchMyBookings(String memberId) => const Stream.empty();
+  Stream<List<Booking>> watchMyBookings(String memberId) =>
+      const Stream.empty();
 }
 
 void main() {
@@ -137,7 +138,8 @@ void main() {
         .doc('occ_1')
         .set({
       'serviceId': 'service_1',
-      'startAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 1))),
+      'startAt':
+          Timestamp.fromDate(DateTime.now().add(const Duration(days: 1))),
       'endAt': Timestamp.fromDate(
           DateTime.now().add(const Duration(days: 1, hours: 1))),
       'capacity': capacity,
@@ -187,11 +189,16 @@ void main() {
   testWidgets('mostra a sessão com vagas e permite marcar quando elegível',
       (tester) async {
     final firestore = await seedFirestore(capacity: 1);
-    const appUser = AppUser(uid: 'member_1', tenantId: _tenantId, roles: {Role.member});
+    const appUser =
+        AppUser(uid: 'member_1', tenantId: _tenantId, roles: {Role.member});
 
     await tester.pumpWidget(buildApp(firestore, appUser));
     await tester.pumpAndSettle();
 
+    // Fase 5: mostra o nome do serviço em cada cartão — sem isto não
+    // dava para perceber que treino era, com várias sessões possíveis
+    // de serviços diferentes na mesma lista (bug reportado).
+    expect(find.text('Aula de Grupo'), findsOneWidget);
     expect(find.text('1 vaga(s) de 1'), findsOneWidget);
     expect(find.text('Marcar'), findsOneWidget);
 
@@ -205,7 +212,8 @@ void main() {
       'bloqueia a marcação com mensagem própria quando o membro não é elegível',
       (tester) async {
     final firestore = await seedFirestore(capacity: 1, memberIsEligible: false);
-    const appUser = AppUser(uid: 'member_1', tenantId: _tenantId, roles: {Role.member});
+    const appUser =
+        AppUser(uid: 'member_1', tenantId: _tenantId, roles: {Role.member});
 
     await tester.pumpWidget(buildApp(firestore, appUser));
     await tester.pumpAndSettle();
@@ -220,5 +228,43 @@ void main() {
     // A ocorrência continua com a vaga livre — o bloqueio acontece antes
     // de sequer tentar a transação de booking.
     expect(find.text('1 vaga(s) de 1'), findsOneWidget);
+  });
+
+  testWidgets(
+      'mostra sessões de TODOS os serviços, não só do primeiro (bug corrigido)',
+      (tester) async {
+    // Até à Fase 5, `primaryServiceProvider` só mostrava o "primeiro
+    // serviço ativo" — uma segunda série num serviço diferente ficava
+    // invisível, sem nenhum aviso. Este teste prova a correção.
+    final firestore = await seedFirestore(capacity: 1);
+    await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('services')
+        .doc('service_2')
+        .set({'name': 'Pilates', 'active': true});
+    await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('sessionOccurrences')
+        .doc('occ_2')
+        .set({
+      'serviceId': 'service_2',
+      'startAt':
+          Timestamp.fromDate(DateTime.now().add(const Duration(days: 2))),
+      'endAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(days: 2, hours: 1))),
+      'capacity': 4,
+      'status': 'scheduled',
+      'activeBookingCount': 0,
+    });
+
+    const appUser =
+        AppUser(uid: 'member_1', tenantId: _tenantId, roles: {Role.member});
+    await tester.pumpWidget(buildApp(firestore, appUser));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Aula de Grupo'), findsOneWidget);
+    expect(find.text('Pilates'), findsOneWidget);
   });
 }

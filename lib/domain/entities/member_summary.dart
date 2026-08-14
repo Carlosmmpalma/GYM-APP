@@ -14,6 +14,8 @@ class MemberSummary extends Equatable {
     required this.memberNumber,
     required this.name,
     required this.active,
+    this.phone = '',
+    this.email = '',
   });
 
   final String uid;
@@ -21,6 +23,13 @@ class MemberSummary extends Equatable {
   final String name;
   final bool active;
 
+  /// UC02 — contacto real do membro, editável por ele próprio
+  /// (`MyProfileScreen`). Distinto do email SINTÉTICO usado só para
+  /// login (`login_identifier.dart`) — esse nunca é mostrado nem
+  /// editável aqui. `''` quando o membro ainda não preencheu.
+  final String phone;
+  final String email;
+
   @override
-  List<Object?> get props => [uid, memberNumber, name, active];
+  List<Object?> get props => [uid, memberNumber, name, active, phone, email];
 }

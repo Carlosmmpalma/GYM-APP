@@ -1,185 +1,204 @@
-// 🔴 Teste crítico da Fase 2 (guia-desenvolvimento.md):
+// 🔴 Teste crítico da Fase 2 (guia-desenvolvimento.md), reescrito na
+// Fase 5 depois de detetado partido:
 //
 //   "Teste de concorrência: simula duas marcações simultâneas na
 //    última vaga e confirma que só uma é aceite... corre-o várias
 //    vezes, não uma."
 //
-// Este teste NÃO chama o código Dart (não é possível correr Flutter
-// aqui) — reimplementa em JS exatamente a mesma transação que
-// lib/infrastructure/firebase/firebase_booking_repository.dart faz
-// (ler ocorrência + booking, validar capacidade/duplicado, escrever
-// booking + incrementar contador), contra o MESMO emulador e as
-// MESMAS Security Rules. Isto prova que o mecanismo (Firestore
-// Transactions + Rules com `isValidBookingCounterChange`) impede
-// overbooking; não prova, por si só, que o ficheiro Dart não tem um
-// bug de transcrição. Ver README.md, secção Fase 2, para o que falta
-// verificar diretamente em Flutter.
+// Versão original (Fase 2): reimplementava em TS a transação
+// client-side que `firebase_booking_repository.dart` fazia na altura,
+// contra o Firestore Emulator + Security Rules diretamente
+// (`@firebase/rules-unit-testing`). A Fase 4 moveu `createBooking`
+// para uma Cloud Function (Admin SDK) e fechou `sessionOccurrences`/
+// `bookings` para escrita de QUALQUER cliente (`firestore.rules`) —
+// desde então este ficheiro testava um caminho morto: as duas
+// tentativas de escrita direta caíam sempre em `PERMISSION_DENIED`
+// antes de chegar a testar concorrência nenhuma. Ninguém tinha
+// reparado porque ninguém tinha corrido isto de facto até à Fase 5
+// (ver `app/README.md`, secção Fase 5, "Décimo terceiro problema").
 //
+// Esta versão chama a Cloud Function `createBooking` A SÉRIO, através
+// do Functions Emulator, autenticado como dois membros distintos com
+// um custom token (claims `tenantId`/`roles` embutidas diretamente no
+// token — técnica documentada pela Firebase para testes, evita ter de
+// criar utilizadores reais no Auth Emulator só para isto). A
+// concorrência na última vaga é agora garantida pela transação dentro
+// de `lib/bookingLogic.ts#runBookingTransaction` (Admin SDK) — é essa
+// transação que este teste está a exercitar, não mais uma reimplementação
+// paralela dela.
+//
+// Precisa de TRÊS emuladores (Firestore + Functions + Auth) — ao
+// contrário dos outros ficheiros deste diretório, que só precisam do
+// Firestore. E precisa que `firebase/functions` esteja compilado
+// (`lib/index.js`), porque é isso que o Functions Emulator carrega.
 // Corre com, a partir da raiz do projeto:
-//   firebase emulators:exec --only firestore "npm --prefix firebase/tests test"
+//
+//   cd firebase/functions
+//   npm run build
+//   cd ../..
+//   firebase emulators:exec --project=demo-gym-saas-dev --only firestore,functions,auth "npm --prefix firebase/tests test"
+//
+// (Os outros 4 ficheiros deste diretório continuam a passar
+// normalmente com os emuladores extra ligados — só não precisam deles.)
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
+import { initializeApp as initializeAdminApp } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
+import { FieldValue, Timestamp, getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { deleteApp, initializeApp as initializeClientApp, type FirebaseApp } from 'firebase/app';
+import { connectAuthEmulator, getAuth, signInWithCustomToken } from 'firebase/auth';
 import {
-  initializeTestEnvironment,
-  RulesTestEnvironment,
-} from '@firebase/rules-unit-testing';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+  connectFunctionsEmulator,
+  getFunctions,
+  httpsCallable,
+  type Functions,
+} from 'firebase/functions';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const RULES_PATH = path.resolve(__dirname, '../../firestore.rules');
-
-const TENANT_ID = 'tenant_booking_test';
+// AO CONTRÁRIO dos outros ficheiros deste diretório, este NÃO pode usar
+// um projectId próprio: uma Cloud Function a correr no emulador está
+// SEMPRE ligada ao projeto passado em `--project` a
+// `emulators:exec`/`emulators:start` (aqui, `demo-gym-saas-dev` —
+// `initializeApp()` sem argumentos em `firebase/functions/src/index.ts`
+// resolve o projeto a partir do ambiente do runtime, não de nada que
+// este ficheiro controle). Descoberto ao correr isto pela primeira vez:
+// com um projectId próprio, `createBooking` respondia sempre
+// `not-found` — a função lia/escrevia sob `demo-gym-saas-dev`, o teste
+// semeava sob outro projeto completamente separado dentro do mesmo
+// emulador. Isolamento fica só ao nível do tenant (`TENANT_ID` abaixo,
+// nunca usado por `firebase/scripts/seed.mjs` nem pelos outros
+// ficheiros de teste), não do projeto.
+const PROJECT_ID = 'demo-gym-saas-dev';
+const TENANT_ID = 'tenant_booking_fn_test';
+const SERVICE_ID = 'service_1';
 const OCCURRENCE_ID = 'occurrence_1';
 
-let testEnv: RulesTestEnvironment;
+process.env.FIRESTORE_EMULATOR_HOST ??= 'localhost:8080';
+process.env.FIREBASE_AUTH_EMULATOR_HOST ??= 'localhost:9099';
+
+const adminApp = initializeAdminApp({ projectId: PROJECT_ID }, 'admin-booking-fn-test');
+const adminAuth = getAdminAuth(adminApp);
+const adminFirestore = getAdminFirestore(adminApp);
+
+const clientApps: FirebaseApp[] = [];
+
+/**
+ * Assina um custom token com `tenantId`/`roles` como "additional
+ * claims" e troca-o por uma sessão autenticada num client SDK próprio
+ * (uma app nomeada por membro, para os dois poderem chamar em
+ * simultâneo sem pisarem a sessão um do outro). As additional claims
+ * de um custom token propagam-se diretamente para o ID token
+ * resultante — é assim que `requireAuthenticated`
+ * (`lib/callerContext.ts`) as vai encontrar em
+ * `request.auth.token.tenantId`/`roles`, exatamente como aconteceria
+ * com custom claims reais definidas via `setCustomUserClaims` (que a
+ * app de produção usa, `createMember.ts`/`createStaff.ts`).
+ */
+async function signedInFunctionsClient(
+  appName: string,
+  uid: string,
+  claims: { tenantId: string; roles: string[] },
+): Promise<Functions> {
+  const app = initializeClientApp(
+    { projectId: PROJECT_ID, apiKey: 'demo-api-key' },
+    appName,
+  );
+  clientApps.push(app);
+
+  const auth = getAuth(app);
+  connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+  const customToken = await adminAuth.createCustomToken(uid, claims);
+  await signInWithCustomToken(auth, customToken);
+
+  const functions = getFunctions(app);
+  connectFunctionsEmulator(functions, 'localhost', 5001);
+  return functions;
+}
+
+async function resetOccurrence(capacity: number) {
+  const occurrenceRef = adminFirestore.doc(
+    `tenants/${TENANT_ID}/sessionOccurrences/${OCCURRENCE_ID}`,
+  );
+  // Admin SDK ignora Security Rules — não precisa de nenhum
+  // `withSecurityRulesDisabled` equivalente (isso era só necessário
+  // com `@firebase/rules-unit-testing`, que este ficheiro já não usa).
+  await adminFirestore.recursiveDelete(occurrenceRef).catch(() => undefined);
+  await occurrenceRef.set({
+    serviceId: SERVICE_ID,
+    startAt: Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+    endAt: Timestamp.fromDate(new Date(Date.now() + 25 * 60 * 60 * 1000)),
+    capacity,
+    status: 'scheduled',
+    activeBookingCount: 0,
+  });
+}
 
 beforeAll(async () => {
-  testEnv = await initializeTestEnvironment({
-    // projectId distinto de tenant-isolation.test.ts — ver o comentário
-    // equivalente nesse ficheiro. Correr os dois ficheiros com o MESMO
-    // projectId causava clearFirestore() de um a apagar os dados do
-    // outro a meio da execução (o vitest corre ficheiros em paralelo por
-    // omissão), o que explicava tanto marcações "rejeitadas" aqui sem
-    // nenhum motivo de capacidade real, como um "Transaction lock
-    // timeout" no outro ficheiro.
-    projectId: 'demo-gym-saas-dev-booking-test',
-    firestore: {
-      rules: readFileSync(RULES_PATH, 'utf8'),
-      host: 'localhost',
-      port: 8080,
-    },
+  await adminFirestore.doc(`tenants/${TENANT_ID}`).set({ name: 'Tenant de teste (Fase 5)' });
+  await adminFirestore.doc(`tenants/${TENANT_ID}/services/${SERVICE_ID}`).set({
+    name: 'Aula de Grupo (teste)',
+    active: true,
   });
+  // `createBooking.ts` (via `resolveEligibility`, `lib/bookingLogic.ts`)
+  // exige uma subscription ativa antes de sequer chegar à transação de
+  // capacidade — sem isto, as duas tentativas seriam sempre rejeitadas
+  // com "não elegível", nunca testando concorrência nenhuma. Não existe
+  // `plans/{planId}/services/{serviceId}` — `resolveEligibility`
+  // assume `unlimited` quando esse documento não existe, o que é
+  // exatamente o que este teste quer (isolar só a variável de
+  // capacidade, sem o limite semanal da Fase 4 a interferir).
+  for (const memberId of ['member_a', 'member_b']) {
+    await adminFirestore
+      .doc(`tenants/${TENANT_ID}/subscriptions/sub_${memberId}`)
+      .set({
+        memberId,
+        planId: 'plan_test',
+        status: 'active',
+        startDate: FieldValue.serverTimestamp(),
+        agreedPrice: 0,
+        currency: 'EUR',
+        activeServiceIds: [SERVICE_ID],
+      });
+  }
 });
 
 afterAll(async () => {
-  await testEnv.cleanup();
+  await Promise.all(clientApps.map((app) => deleteApp(app)));
+  await adminApp.delete();
 });
 
-async function seedOccurrence(capacity: number) {
-  await testEnv.clearFirestore();
-  await testEnv.withSecurityRulesDisabled(async (context) => {
-    const db = context.firestore();
-    await db.doc(`tenants/${TENANT_ID}`).set({ name: 'Tenant de teste' });
-    await db.doc(`tenants/${TENANT_ID}/sessionOccurrences/${OCCURRENCE_ID}`).set({
-      serviceId: 'service_1',
-      capacity,
-      status: 'scheduled',
-      activeBookingCount: 0,
+async function attemptBooking(functions: Functions, memberId: string): Promise<'booked' | 'rejected'> {
+  try {
+    await httpsCallable(functions, 'createBooking')({
+      occurrenceId: OCCURRENCE_ID,
+      memberId,
     });
-  });
-}
-
-/**
- * Reimplementação em JS da transação de
- * firebase_booking_repository.dart#createBooking — ver nota no topo
- * do ficheiro.
- *
- * Nota sobre a retentativa abaixo (descoberta ao correr este teste, não
- * suposição): quando duas transações verdadeiramente simultâneas (via
- * `Promise.all`) tentam escrever o MESMO documento, o Firestore
- * resolve isso normalmente por concorrência otimista — a segunda
- * commit falha e o SDK repete-a automaticamente lendo dados frescos.
- * Mas contra o EMULADOR, quando a segunda transação colide, a
- * avaliação das Security Rules (`isValidBookingCounterChange`, que usa
- * `resource.data.diff(...)`) por vezes rebenta a meio com um erro do
- * motor de regras ("evaluation error"), que chega ao cliente como
- * `PERMISSION_DENIED` (código 7) — não como `ABORTED`. O SDK só repete
- * automaticamente erros `ABORTED`/de contenção; um `PERMISSION_DENIED`
- * é tratado como definitivo e não é repetido, mesmo sendo, neste caso,
- * um efeito colateral transitório da corrida, não uma negação real.
- * Confirmado correndo o teste com logging do erro: a mensagem inclui
- * sempre "evaluation error", nunca aparece nas rejeições de negócio
- * legítimas (essas vêm como Error('capacity-exceeded') lançado pelo
- * próprio código acima, nunca chegam a tocar o Firestore). Por isso só
- * repetimos quando a mensagem tem esta assinatura específica — uma
- * rejeição de negócio genuína nunca entra neste retry.
- */
-async function attemptBooking(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  db: any,
-  memberId: string,
-): Promise<'booked' | 'rejected'> {
-  const occurrenceRef = db.doc(
-    `tenants/${TENANT_ID}/sessionOccurrences/${OCCURRENCE_ID}`,
-  );
-  const bookingRef = occurrenceRef.collection('bookings').doc(memberId);
-
-  const maxAttempts = 4;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      await db.runTransaction(async (tx) => {
-        const occSnap = await tx.get(occurrenceRef);
-        const bookingSnap = await tx.get(bookingRef);
-
-        const data = occSnap.data() as {
-          status: string;
-          capacity: number;
-          activeBookingCount: number;
-        };
-
-        if (data.status !== 'scheduled') {
-          throw new Error('not-bookable');
-        }
-        if (bookingSnap.exists && bookingSnap.data()?.status === 'booked') {
-          throw new Error('already-booked');
-        }
-        if (data.activeBookingCount >= data.capacity) {
-          throw new Error('capacity-exceeded');
-        }
-
-        tx.set(bookingRef, {
-          memberId,
-          status: 'booked',
-          source: 'self',
-          isExtra: false,
-        });
-        tx.update(occurrenceRef, {
-          activeBookingCount: data.activeBookingCount + 1,
-        });
-      });
-      return 'booked';
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const isTransientRulesEngineGlitch = message.includes('evaluation error');
-
-      if (isTransientRulesEngineGlitch && attempt < maxAttempts) {
-        // Backoff curto e com jitter para não repetir instantaneamente
-        // contra o mesmo conflito.
-        await new Promise((resolve) =>
-          setTimeout(resolve, 15 + Math.random() * 35),
-        );
-        continue;
-      }
-
-      // eslint-disable-next-line no-console
-      console.error(
-        `[attemptBooking:${memberId}] rejeitado (tentativa ${attempt}) — motivo:`,
-        message,
-      );
-      return 'rejected';
-    }
+    return 'booked';
+  } catch (err) {
+    const code = (err as { code?: string } | undefined)?.code ?? 'unknown';
+    const message = err instanceof Error ? err.message : String(err);
+    // eslint-disable-next-line no-console
+    console.error(`[attemptBooking:${memberId}] rejeitado — código: ${code} — ${message}`);
+    return 'rejected';
   }
-  // Inatingível — o loop sempre faz return ou continue.
-  return 'rejected';
 }
 
-describe('Concorrência na última vaga (Fase 2, 🔴 crítico)', () => {
+describe('Concorrência na última vaga (Fase 2, 🔴 crítico — via Cloud Function real, Fase 5)', () => {
   it('duas marcações simultâneas numa ocorrência de capacidade 1 — só uma vence, repetido 5x', async () => {
-    for (let attempt = 1; attempt <= 5; attempt++) {
-      await seedOccurrence(1);
+    const functionsA = await signedInFunctionsClient('client-a-cap1', 'member_a', {
+      tenantId: TENANT_ID,
+      roles: ['member'],
+    });
+    const functionsB = await signedInFunctionsClient('client-b-cap1', 'member_b', {
+      tenantId: TENANT_ID,
+      roles: ['member'],
+    });
 
-      const memberA = testEnv
-        .authenticatedContext('member_a', { tenantId: TENANT_ID, roles: ['member'] })
-        .firestore();
-      const memberB = testEnv
-        .authenticatedContext('member_b', { tenantId: TENANT_ID, roles: ['member'] })
-        .firestore();
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await resetOccurrence(1);
 
       const [resultA, resultB] = await Promise.all([
-        attemptBooking(memberA, 'member_a'),
-        attemptBooking(memberB, 'member_b'),
+        attemptBooking(functionsA, 'member_a'),
+        attemptBooking(functionsB, 'member_b'),
       ]);
 
       const outcomes = [resultA, resultB];
@@ -192,43 +211,39 @@ describe('Concorrência na última vaga (Fase 2, 🔴 crítico)', () => {
       ).toBe(1);
       expect(rejectedCount).toBe(1);
 
-      // Confirma que o contador reflete exatamente 1, nunca 2 — é isto
-      // que prova que não houve overbooking, não só que uma promise
-      // rejeitou por outro motivo qualquer.
-      await testEnv.withSecurityRulesDisabled(async (context) => {
-        const occSnap = await context
-          .firestore()
-          .doc(`tenants/${TENANT_ID}/sessionOccurrences/${OCCURRENCE_ID}`)
-          .get();
-        expect(occSnap.data()?.activeBookingCount).toBe(1);
-      });
+      // Confirma que o contador reflete exatamente 1, nunca 2 — prova
+      // que não houve overbooking, não só que uma chamada falhou por
+      // outro motivo qualquer.
+      const occSnap = await adminFirestore
+        .doc(`tenants/${TENANT_ID}/sessionOccurrences/${OCCURRENCE_ID}`)
+        .get();
+      expect(occSnap.data()?.activeBookingCount).toBe(1);
     }
-  });
+  }, 30_000);
 
   it('capacidade 2 com duas marcações simultâneas — ambas vencem', async () => {
-    await seedOccurrence(2);
+    await resetOccurrence(2);
 
-    const memberA = testEnv
-      .authenticatedContext('member_a', { tenantId: TENANT_ID, roles: ['member'] })
-      .firestore();
-    const memberB = testEnv
-      .authenticatedContext('member_b', { tenantId: TENANT_ID, roles: ['member'] })
-      .firestore();
+    const functionsA = await signedInFunctionsClient('client-a-cap2', 'member_a', {
+      tenantId: TENANT_ID,
+      roles: ['member'],
+    });
+    const functionsB = await signedInFunctionsClient('client-b-cap2', 'member_b', {
+      tenantId: TENANT_ID,
+      roles: ['member'],
+    });
 
     const [resultA, resultB] = await Promise.all([
-      attemptBooking(memberA, 'member_a'),
-      attemptBooking(memberB, 'member_b'),
+      attemptBooking(functionsA, 'member_a'),
+      attemptBooking(functionsB, 'member_b'),
     ]);
 
     expect(resultA).toBe('booked');
     expect(resultB).toBe('booked');
 
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      const occSnap = await context
-        .firestore()
-        .doc(`tenants/${TENANT_ID}/sessionOccurrences/${OCCURRENCE_ID}`)
-        .get();
-      expect(occSnap.data()?.activeBookingCount).toBe(2);
-    });
-  });
+    const occSnap = await adminFirestore
+      .doc(`tenants/${TENANT_ID}/sessionOccurrences/${OCCURRENCE_ID}`)
+      .get();
+    expect(occSnap.data()?.activeBookingCount).toBe(2);
+  }, 15_000);
 });

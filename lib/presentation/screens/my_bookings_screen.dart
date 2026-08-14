@@ -8,15 +8,16 @@ import '../../application/providers/tenant_context_providers.dart';
 import '../../domain/entities/booking.dart';
 import '../../domain/entities/session_occurrence.dart';
 
-/// UC10 — "Minhas marcações" (versão mínima da Fase 2). Mostra as
-/// marcações ativas do próprio membro e permite cancelar.
+/// UC10 — "Minhas marcações". Mostra as marcações ativas do próprio
+/// membro e permite cancelar.
 ///
-/// Não mostra ainda o nome/horário da sessão associada (isso exigiria
-/// juntar dados de `sessionOccurrences`, que não está a ser feito aqui
-/// de propósito — Fase 2 só prova a transação; enriquecer a UI fica
-/// para a próxima iteração). Fase 4: mostra sim, mas só o suficiente
-/// para calcular o aviso de cancelamento abaixo — nome/horário
-/// completos continuam por fazer.
+/// Até à Fase 5 mostrava só "Marcação #abc123" + a data em que foi
+/// FEITA a marcação — nunca o nome do serviço nem a hora da SESSÃO em
+/// si (a Fase 4 já lia a ocorrência associada, mas só internamente,
+/// para calcular o aviso de cancelamento; nunca chegou a mostrar-se).
+/// Bug real, ficou muito mais visível com várias séries possíveis
+/// desde a Fase 5 — corrigido: cada cartão mostra agora o nome do
+/// serviço e a data/hora da sessão.
 class MyBookingsScreen extends ConsumerWidget {
   const MyBookingsScreen({super.key});
 
@@ -28,9 +29,10 @@ class MyBookingsScreen extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stack) => Center(child: Text('Erro: $error')),
       data: (bookings) {
-        final active =
-            bookings.where((b) => b.status == BookingStatus.booked).toList()
-              ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        final active = bookings
+            .where((b) => b.status == BookingStatus.booked)
+            .toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
         if (active.isEmpty) {
           return const Center(
@@ -80,7 +82,8 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
     final serviceId = widget.booking.serviceId;
     final SessionOccurrence? occurrence =
         await ref.read(occurrenceProvider(widget.booking.occurrenceId).future);
-    final minNoticeHours = await ref.read(minCancellationNoticeHoursProvider.future);
+    final minNoticeHours =
+        await ref.read(minCancellationNoticeHoursProvider.future);
     final rule = serviceId == null
         ? null
         : await ref.read(
@@ -196,12 +199,31 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
 
   @override
   Widget build(BuildContext context) {
-    final dateFormat = DateFormat('d MMM HH:mm', 'pt_PT');
+    final dateFormat = DateFormat('EEE, d MMM · HH:mm', 'pt_PT');
+    final occurrenceAsync =
+        ref.watch(occurrenceProvider(widget.booking.occurrenceId));
+    final servicesAsync = ref.watch(servicesProvider);
+
+    final occurrence = occurrenceAsync.valueOrNull;
+    final servicesById = {
+      for (final s in servicesAsync.valueOrNull ?? const []) s.id: s,
+    };
+    final serviceName = occurrence == null
+        ? null
+        : servicesById[occurrence.serviceId]?.name ?? occurrence.serviceId;
+
+    final subtitleText = occurrenceAsync.isLoading
+        ? 'A carregar…'
+        : occurrence == null
+            ? 'Sessão já não disponível'
+            : dateFormat.format(occurrence.startAt);
+
     return Card(
       child: ListTile(
-        title: Text('Marcação #${widget.booking.id.substring(0, 6)}'),
-        subtitle: Text('Feita em ${dateFormat.format(widget.booking.createdAt)}'
-            '${_error != null ? '\n$_error' : ''}'),
+        title: Text(serviceName ?? 'Marcação'),
+        subtitle: Text(
+          '$subtitleText${_error != null ? '\n$_error' : ''}',
+        ),
         isThreeLine: _error != null,
         trailing: _isCancelling
             ? const SizedBox(

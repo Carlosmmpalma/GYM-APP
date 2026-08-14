@@ -48,8 +48,21 @@ service cloud.firestore {
       allow read, write: if belongsToTenant(tenantId);
     }
 
+    // Fase 5 (UC02) — até aqui, `allow read, write: if belongsToTenant`
+    // deixava QUALQUER membro autenticado do tenant escrever no
+    // documento de QUALQUER OUTRO membro (incluindo `memberNumber`/
+    // `status`) — nunca explorado por nenhum ecrã, mas uma lacuna real
+    // de autorização, não só de UI. Escrita ampla continua só para
+    // Manager; o próprio membro só pode atualizar `phone`/`email` no
+    // SEU PRÓPRIO documento (`MyProfileScreen`) — `memberNumber`/
+    // `status`/`name` continuam exclusivos do Gestor.
     match /tenants/{tenantId}/members/{memberId} {
-      allow read, write: if belongsToTenant(tenantId);
+      allow read: if belongsToTenant(tenantId);
+      allow write: if isManager(tenantId);
+      allow update: if belongsToTenant(tenantId)
+        && request.auth.uid == memberId
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['phone', 'email', 'updatedAt']);
     }
 
     match /tenants/{tenantId}/staff/{staffId} {
@@ -91,22 +104,49 @@ service cloud.firestore {
     // membro, etc.), o mesmo motivo que já tinha levado
     // `createSubscription` a ser Cloud Function na Fase 3.
     //
-    // Consequência: leitura continua ampla (mostrar vagas/marcações a
-    // qualquer membro do tenant), mas ESCRITA fica `false` para o
-    // cliente em ambos — só a Cloud Function (Admin SDK, ignora estas
-    // regras) escreve. Isto fecha, de vez, a lacuna que já estava
-    // documentada (e aceite) no código antigo: "um cliente malicioso
-    // podia, em teoria, enviar só o incremento do contador sem criar o
-    // booking" — agora não consegue, porque não consegue escrever
-    // nenhum dos dois diretamente.
+    // Fase 5: o Gestor volta a poder escrever aqui diretamente — criar
+    // uma ocorrência ad-hoc ("só esta data") ou ajustar uma ocorrência
+    // já gerada por uma série (hora/capacidade/instrutor/cancelar) sem
+    // tocar na série. Mas `activeBookingCount` continua exclusivo das
+    // Cloud Functions de booking (createBooking/cancelBooking/
+    // generateRecurringOccurrences/assignMembersToOccurrence, todas
+    // Admin SDK): `create` exige que nasça a 0, `update` exige que o
+    // valor não mude nesta escrita — fecha a mesma lacuna já fechada na
+    // Fase 4 ("um cliente malicioso podia, em teoria, enviar só o
+    // incremento do contador"), agora também para um Manager.
     match /tenants/{tenantId}/sessionOccurrences/{occurrenceId} {
       allow read: if belongsToTenant(tenantId);
-      allow write: if false;
+      allow create: if isManager(tenantId)
+        && request.resource.data.activeBookingCount == 0;
+      allow update: if isManager(tenantId)
+        && request.resource.data.activeBookingCount == resource.data.activeBookingCount;
+      allow delete: if false;
 
+      // Bookings continuam SEMPRE fora do alcance do cliente, mesmo
+      // Manager — criar/atribuir passa sempre por createBooking/
+      // assignMembersToOccurrence/generateRecurringOccurrences
+      // (Admin SDK, ignora estas regras), nunca por escrita direta.
       match /bookings/{bookingId} {
         allow read: if belongsToTenant(tenantId);
         allow write: if false;
       }
+    }
+
+    // --- Session Series (Fase 5, UC17/UC19) ---
+    //
+    // Escrita direta do cliente pelo Gestor — mesmo padrão de `plans`/
+    // `services` logo abaixo: criar/editar/cancelar uma série é uma
+    // escrita isolada a UM documento, sem nenhuma invariante
+    // cross-documento a validar aqui (ao contrário de `createSubscription`
+    // ou da geração de ocorrências, que continuam Cloud Function). A
+    // materialização em `sessionOccurrences` e a auto-atribuição de
+    // `preAssignedMemberIds` continuam sempre a passar por
+    // `generateRecurringOccurrences`/`assignMembersToOccurrence`
+    // (Admin SDK) — guardar a lista aqui não escreve bookings nenhuns
+    // por si só.
+    match /tenants/{tenantId}/sessionSeries/{seriesId} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if isManager(tenantId);
     }
 
     // --- Usage tracking (Fase 4) ---

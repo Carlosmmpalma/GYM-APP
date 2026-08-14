@@ -6,6 +6,7 @@ import 'book_training_screen.dart';
 import 'hello_world_screen.dart';
 import 'manager_screen.dart';
 import 'my_bookings_screen.dart';
+import 'my_profile_screen.dart';
 
 /// Ecrã principal pós-login (substitui o HelloWorldScreen como destino
 /// do AuthGate a partir da Fase 2). O diagnóstico da Fase 0 continua
@@ -39,8 +40,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isManager =
-        ref.watch(currentAppUserProvider).valueOrNull?.isManager ?? false;
+    final appUser = ref.watch(currentAppUserProvider).valueOrNull;
+    final isManager = appUser?.isManager ?? false;
 
     return Scaffold(
       appBar: AppBar(
@@ -52,6 +53,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               icon: const Icon(Icons.admin_panel_settings_outlined),
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ManagerScreen()),
+              ),
+            ),
+          // UC02 é especificamente o perfil do Aluno — `MyProfileScreen`
+          // lê `members/{uid}`, que não existe para quem só tem
+          // `staff/{uid}` (Leo, um Gestor sem ser também membro, por
+          // exemplo). Staff que também é membro (Domain Model v1 §6 —
+          // "instrutor que também é membro") continua a ver isto
+          // normalmente, `isMember` cobre esse caso.
+          if (appUser != null && appUser.isMember)
+            IconButton(
+              tooltip: 'Perfil',
+              icon: const Icon(Icons.person_outline),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => MyProfileScreen(memberId: appUser.uid),
+                ),
               ),
             ),
           IconButton(

@@ -36,6 +36,14 @@ final membersProvider = StreamProvider<List<MemberSummary>>((ref) {
   return ref.watch(memberRepositoryProvider).watchMembers();
 });
 
+/// UC02 — o próprio membro a ver/editar o seu perfil (`MyProfileScreen`).
+/// `.family` por uid em vez de derivar de `currentAppUserProvider`
+/// diretamente: mantém o provider testável sem depender de sessão real.
+final memberProfileProvider =
+    StreamProvider.family<MemberSummary?, String>((ref, uid) {
+  return ref.watch(memberRepositoryProvider).watchMember(uid);
+});
+
 /// `FutureProvider.family`, não `StreamProvider` — a lista de serviços
 /// de um Plan (Fase 3) não precisa de atualização em tempo real ao
 /// nível da UI de gestão; um `ref.invalidate(planServicesProvider(id))`
@@ -64,7 +72,9 @@ final servicesProvider = StreamProvider<List<Service>>((ref) {
 /// `.family` para o usar por `memberId` a partir da UI.
 final memberSubscriptionsProvider =
     StreamProvider.family<List<Subscription>, String>((ref, memberId) {
-  return ref.watch(subscriptionRepositoryProvider).watchMemberSubscriptions(memberId);
+  return ref
+      .watch(subscriptionRepositoryProvider)
+      .watchMemberSubscriptions(memberId);
 });
 
 /// Fase 4 story 7 — a [UsageRule] aplicável a um membro+serviço, para
@@ -75,19 +85,43 @@ final memberSubscriptionsProvider =
 /// `getGrantingPlanId`). `null` quando o membro não tem nenhuma
 /// subscription ativa que dê acesso a este serviço (o mesmo caso que
 /// bloqueia o booking com `NotEligibleForServiceException`).
-final applicableUsageRuleProvider = FutureProvider.family<UsageRule?,
-    ({String memberId, String serviceId})>((ref, args) async {
-  final planId = await ref.watch(subscriptionRepositoryProvider).getGrantingPlanId(
-        memberId: args.memberId,
-        serviceId: args.serviceId,
-      );
+final applicableUsageRuleProvider =
+    FutureProvider.family<UsageRule?, ({String memberId, String serviceId})>(
+        (ref, args) async {
+  final planId =
+      await ref.watch(subscriptionRepositoryProvider).getGrantingPlanId(
+            memberId: args.memberId,
+            serviceId: args.serviceId,
+          );
   if (planId == null) return null;
 
-  final planServices = await ref.watch(planRepositoryProvider).getPlanServices(planId);
+  final planServices =
+      await ref.watch(planRepositoryProvider).getPlanServices(planId);
   for (final planService in planServices) {
     if (planService.serviceId == args.serviceId && planService.enabled) {
       return planService.usage;
     }
   }
   return null;
+});
+
+/// Fase 5 (UC08-A fechado) — membros elegíveis para um serviço (têm uma
+/// subscription ativa que dá acesso a ele), para o picker de
+/// pré-atribuição em `ManageSeriesScreen`. Cruza
+/// `watchEligibleMemberIds` (só ids) com `membersProvider` (para
+/// mostrar nomes) — mesmo raciocínio de `memberSubscriptionsProvider`
+/// acima: nenhum ecrã anterior precisava disto, por isso não existia
+/// nenhum provider que já desse a lista de membros filtrada por
+/// elegibilidade a um serviço.
+final eligibleMembersProvider =
+    StreamProvider.family<List<MemberSummary>, String>((ref, serviceId) {
+  final eligibleIdsAsync = ref
+      .watch(subscriptionRepositoryProvider)
+      .watchEligibleMemberIds(serviceId);
+  final membersAsync = ref.watch(membersProvider);
+
+  return eligibleIdsAsync.map((eligibleIds) {
+    final members = membersAsync.valueOrNull ?? const <MemberSummary>[];
+    return members.where((m) => eligibleIds.contains(m.uid)).toList();
+  });
 });

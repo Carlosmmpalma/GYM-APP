@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,8 +14,18 @@ import 'package:gym_saas/domain/entities/role.dart';
 import 'package:gym_saas/presentation/screens/my_bookings_screen.dart';
 import 'package:gym_saas/repositories/booking_repository.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:mocktail/mocktail.dart';
 
 const _tenantId = 'tenant_test';
+
+// Fase 5 — `sessionOccurrenceRepositoryProvider` (usado por
+// `occurrenceProvider`, que este ecrã já lia desde a Fase 4 para saber
+// a que horas é a sessão de uma marcação) passou a exigir
+// `functionsProvider` no construtor (`assignMembers`, novo nesta
+// fase) — mesma justificação de `book_training_screen_test.dart`: um
+// mock nunca invocado chega, o ecrã não chama nenhuma Cloud Function
+// de atribuição.
+class _MockFirebaseFunctions extends Mock implements FirebaseFunctions {}
 
 // Fase 4 — cancelBooking passou a Cloud Function (ver nota equivalente
 // em book_training_screen_test.dart sobre porque um fake que mexe
@@ -88,8 +99,8 @@ class _FakeBookingRepository implements BookingRepository {
                     : BookingStatus.cancelled,
                 source: BookingSource.self,
                 isExtra: data['isExtra'] as bool? ?? false,
-                createdAt:
-                    (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ??
+                    DateTime.now(),
               );
             }).toList());
   }
@@ -112,6 +123,7 @@ void main() {
             const TenantAppConfig(tenantId: _tenantId),
           ),
           firestoreProvider.overrideWithValue(firestore),
+          functionsProvider.overrideWithValue(_MockFirebaseFunctions()),
           bookingRepositoryProvider.overrideWithValue(
             _FakeBookingRepository(firestore, _tenantId),
           ),
@@ -127,6 +139,12 @@ void main() {
 
   testWidgets('mostra uma marcação ativa e permite cancelar', (tester) async {
     final firestore = FakeFirebaseFirestore();
+    await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('services')
+        .doc('service_1')
+        .set({'name': 'Aula de Grupo', 'active': true});
     await firestore
         .collection('tenants')
         .doc(_tenantId)
@@ -165,6 +183,7 @@ void main() {
             const TenantAppConfig(tenantId: _tenantId),
           ),
           firestoreProvider.overrideWithValue(firestore),
+          functionsProvider.overrideWithValue(_MockFirebaseFunctions()),
           bookingRepositoryProvider.overrideWithValue(
             _FakeBookingRepository(firestore, _tenantId),
           ),
@@ -175,7 +194,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Marcação #'), findsOneWidget);
+    // Fase 5: mostra o nome do serviço, não mais "Marcação #abc123" —
+    // sem isto não dava para perceber que treino era (bug reportado).
+    expect(find.text('Aula de Grupo'), findsOneWidget);
 
     // Fase 4: "Cancelar" já não cancela direto — abre um diálogo de
     // confirmação primeiro (aviso sobre a utilização, ver

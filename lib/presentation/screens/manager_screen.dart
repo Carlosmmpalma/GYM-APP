@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'assign_subscription_screen.dart';
+import 'gestor_dashboard_screen.dart';
 import 'manage_members_screen.dart';
 import 'manage_plans_screen.dart';
+import 'manage_series_screen.dart';
 import 'manage_services_screen.dart';
 import 'manage_staff_screen.dart';
 import 'tenant_settings_screen.dart';
@@ -27,9 +29,23 @@ class ManagerScreen extends StatelessWidget {
         children: [
           Card(
             child: ListTile(
+              leading: const Icon(Icons.dashboard_outlined),
+              title: const Text('Visão global'),
+              subtitle: const Text('Membros, séries e ocupação da semana'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const GestorDashboardScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
               leading: const Icon(Icons.fitness_center_outlined),
               title: const Text('Serviços'),
-              subtitle: const Text('Criar e ativar/desativar os serviços do ginásio'),
+              subtitle:
+                  const Text('Criar e ativar/desativar os serviços do ginásio'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ManageServicesScreen()),
@@ -41,7 +57,8 @@ class ManagerScreen extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.card_membership_outlined),
               title: const Text('Planos'),
-              subtitle: const Text('Criar/editar planos, associar serviços já criados'),
+              subtitle: const Text(
+                  'Criar/editar planos, associar serviços já criados'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ManagePlansScreen()),
@@ -53,7 +70,8 @@ class ManagerScreen extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.people_outline),
               title: const Text('Membros'),
-              subtitle: const Text('Ver os planos e o histórico de cada membro'),
+              subtitle:
+                  const Text('Ver os planos e o histórico de cada membro'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ManageMembersScreen()),
@@ -65,10 +83,24 @@ class ManagerScreen extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.badge_outlined),
               title: const Text('Staff'),
-              subtitle: const Text('Instrutores e Gestores — criar, ver, desativar'),
+              subtitle:
+                  const Text('Instrutores e Gestores — criar, ver, desativar'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ManageStaffScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.event_repeat_outlined),
+              title: const Text('Aulas / Horários'),
+              subtitle:
+                  const Text('Séries recorrentes e sessões "só esta data"'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ManageSeriesScreen()),
               ),
             ),
           ),
@@ -80,7 +112,8 @@ class ManagerScreen extends StatelessWidget {
               subtitle: const Text('Criar uma subscription para um membro'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AssignSubscriptionScreen()),
+                MaterialPageRoute(
+                    builder: (_) => const AssignSubscriptionScreen()),
               ),
             ),
           ),
@@ -89,7 +122,8 @@ class ManagerScreen extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.settings_outlined),
               title: const Text('Definições'),
-              subtitle: const Text('Antecedência mínima para cancelar (Fase 4)'),
+              subtitle:
+                  const Text('Antecedência mínima para cancelar (Fase 4)'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const TenantSettingsScreen()),

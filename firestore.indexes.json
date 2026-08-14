@@ -42,12 +42,37 @@
         { "fieldPath": "memberId", "order": "ASCENDING" },
         { "fieldPath": "serviceId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "sessionOccurrences",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "seriesId", "order": "ASCENDING" },
+        { "fieldPath": "startAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "subscriptions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "activeServiceIds", "arrayConfig": "CONTAINS" }
+      ]
     }
   ],
   "fieldOverrides": [
     {
       "collectionGroup": "bookings",
       "fieldPath": "memberId",
+      "ttl": false,
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    },
+    {
+      "collectionGroup": "sessionSeries",
+      "fieldPath": "status",
       "ttl": false,
       "indexes": [
         { "order": "ASCENDING", "queryScope": "COLLECTION" },

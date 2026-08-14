@@ -1277,10 +1277,468 @@ seed de subscription+plan+usage limited dentro do
 (qual mensagem aparece, `withinWindow`) é simples o suficiente para
 rever a olho; fica sinalizado, não escondido.
 
+## Fase 5 — Sessões recorrentes (séries)
+
+**Objetivo do guia:** "aulas/PT 'todas as semanas a esta hora', com
+exceções pontuais sem quebrar a série."
+
+### Decisões de arquitetura (perguntadas ao Carlos antes de codificar)
+
+O guia lista "modelo híbrido: atribuição manual + vagas abertas na
+mesma ocorrência" como story da fase, mas o UC19 dá um exemplo concreto
+(Leo pré-atribui 5 alunas fixas a um "PT de grupo" recorrente) que
+deixava em aberto uma decisão de arquitetura real: essas alunas ficam
+marcadas automaticamente em CADA semana gerada, ou só na ocorrência que
+já existir no momento? Perguntei antes de implementar; respostas do
+Carlos:
+
+1. **Auto-atribuição em cada semana gerada.** A série guarda
+   `preAssignedMemberIds`; sempre que a Cloud Function materializa uma
+   ocorrência nova a partir dela, esses membros são marcados
+   automaticamente, com a mesma validação de elegibilidade/limite/
+   capacidade de um booking normal (`source: manager`). Implica
+   partilhar a lógica de validação entre `createBooking.ts` e a função
+   de geração — ver refactor abaixo.
+2. **Só o Gestor gere isto por agora**, dentro de "Gestão" (mesmo
+   padrão de Planos/Serviços/Staff/Membros). Uma área própria para o
+   Instrutor fica marcada, deliberadamente não construída — é
+   literalmente o que a Fase 6 do guia já lista ("Operações do dia a
+   dia — Instrutor/Gestor").
+
+`Modality` (Domain Model v1 §8-9) continua fora de âmbito — nenhuma
+story da Fase 5 pede isto, e não existe nenhuma implementação dela na
+app; sinalizado, não esquecido.
+
+### O que foi acrescentado
+
+- **Domínio**: `SessionSeries` (`lib/domain/entities/session_series.dart`)
+  — `dayOfWeek` (convenção `DateTime.weekday`, segunda=1…domingo=7,
+  igual à já usada em `iso_week.dart`), `startTime` ("HH:mm"),
+  `durationMinutes`, `capacity`, `startDate`, `preAssignedMemberIds`,
+  `status`. `capacityLabel` calcula Individual/Duo/Trio/Grupo(N) a
+  partir de `capacity` — nunca um enum persistido (UC19). `SessionOccurrence`
+  ganhou `seriesId`/`instructorId` (nullable, `null` em ocorrências
+  ad-hoc ou anteriores a esta fase — mesmo padrão de
+  `Booking.serviceId`/`period` desde a Fase 4).
+- **Refactor em `firebase/functions/src/` (comportamento inalterado
+  para o caminho self-service):** a lógica de elegibilidade e a
+  transação de booking saíram de `createBooking.ts` para
+  `lib/bookingLogic.ts` (`resolveEligibility`/`runBookingTransaction`,
+  parametrizado por `source`). Motivo: a mesma regra de negócio
+  (capacidade, duplicação, limite semanal) passou a ser reutilizada
+  por mais dois caminhos — duplicá-la arriscaria divergir.
+  `createBooking.ts` ficou mais curto, chamando isto com `source:
+  'self'`.
+- **`generateRecurringOccurrences.ts`** (novo): materializa as
+  próximas **8 semanas** de cada série `active` (`collectionGroup`
+  quando corre para todos os tenants), com id determinístico
+  `{seriesId}_{YYYY-MM-DD}` (idempotente — correr duas vezes nunca
+  duplica), e auto-atribui `preAssignedMemberIds` a cada ocorrência
+  nova via `runBookingTransaction` (`source: manager`) — a falha de UM
+  membro (sem plano, sem vaga) não bloqueia os outros nem a criação da
+  ocorrência. `export const generateRecurringOccurrences = onSchedule(
+  'every day 03:00', ...)` para produção; `generateRecurringOccurrencesNow`
+  (callable, `requireManager`) é o caminho principal para testar isto
+  localmente — o Functions Emulator não dispara `onSchedule` por
+  temporizador — e também ferramenta operacional, mesmo padrão de
+  `recalculateUsage` (Fase 4).
+- **`assignMembersToOccurrence.ts`** (novo, `requireManager`): atribui
+  manualmente um ou mais membros a UMA ocorrência concreta (mesma
+  validação partilhada, `source: manager`), devolvendo um resumo por
+  membro (não falha o pedido inteiro por causa de um só). Fecha a
+  lacuna sinalizada desde a Fase 3 ("picker de atribuição manual
+  UC08-A... Fase 5+").
+- **`firestore.rules`**: `sessionOccurrences` deixa de ser `allow
+  write: if false` sempre (Fase 4) — Manager volta a poder
+  criar/editar uma ocorrência (ad-hoc ou ajuste pontual de uma gerada
+  por série), mas `create` exige `activeBookingCount == 0` e `update`
+  exige que esse campo não mude nessa escrita — `bookings` continua
+  **sempre** `allow write: if false`, mesmo para Manager; só as Cloud
+  Functions (Admin SDK) escrevem aí. Nova coleção `sessionSeries`:
+  leitura ampla no tenant, escrita só Manager (mesmo padrão de
+  `plans`/`services` — escrita direta do cliente, sem invariante
+  cross-documento a proteger aqui).
+- **Índices novos** (`firestore.indexes.json`): `sessionOccurrences`
+  (`seriesId`+`startAt`, para "ajustar uma semana da série");
+  `sessionSeries.status` com `fieldOverride` `COLLECTION_GROUP` (a
+  função agendada varre todos os tenants); `subscriptions`
+  (`status`+`activeServiceIds` array-contains, sem `memberId` — para
+  listar TODOS os membros elegíveis a um serviço, não só verificar um).
+- **Repositórios Dart**: `SessionSeriesRepository`/
+  `FirebaseSessionSeriesRepository` (`watchSeries`, `createSeries`,
+  `updateSeries`, `cancelSeries` — `WriteBatch` que marca a série E
+  todas as suas ocorrências futuras `cancelled` na mesma escrita
+  atómica, ocorrências passadas intocadas; `generateNow`).
+  `SessionOccurrenceRepository` ganhou `createOccurrence` (ad-hoc, "só
+  esta data"), `updateOccurrence`, `cancelOccurrence`,
+  `watchOccurrencesForSeries`, `assignMembers` (chama
+  `assignMembersToOccurrence`). `SubscriptionRepository` ganhou
+  `watchEligibleMemberIds(serviceId)` — todos os membros com uma
+  subscription ativa que dá acesso a um serviço (não só "este membro é
+  elegível?" como já existia).
+- **Ecrãs**: `ManageSeriesScreen` ("Gestão → Aulas/Horários", novo card
+  em `ManagerScreen`) — lista de séries. `CreateSeriesScreen` — toggle
+  "Só esta data"/"Semanal, fixa", serviço, instrutor opcional
+  (`staffProvider` filtrado a `Role.instructor`), dia da semana ou
+  data, hora, duração, capacidade (chips de preset
+  Individual/Duo/Trio/Grupo que só pré-preenchem o número, nunca um
+  enum), e picker opcional de pré-atribuição (`eligibleMembersProvider`,
+  bloqueado a não exceder a capacidade). `SeriesDetailScreen`
+  ("ajustar uma semana da série") — resumo, botões "Gerar agora"/
+  "Cancelar série" (com confirmação), e por ocorrência: editar (só
+  essa semana, texto explícito a dizer isso), cancelar só essa, ou
+  adicionar membro.
+- **Seed script**: `seedRecurringSeries` — série "Hyrox — Segundas
+  18:00" (capacidade 6, Rita pré-atribuída), sem ocorrências ainda
+  (Gestão → Aulas/Horários → "Gerar agora" materializa-as).
+
+### Verificado desta vez — pela primeira vez com ferramentas reais disponíveis
+
+Ao contrário de todas as fases anteriores (que terminavam sempre com
+"não corri nada disto — sem acesso a Flutter/Node/Java nesta sandbox"),
+desta vez tive `flutter`, `node`/`npm`, `java` e o `firebase` CLI
+disponíveis. Corri, a sério, não só revi:
+
+- `dart format` nos ficheiros desta fase, `flutter analyze
+  --fatal-infos` (0 avisos) e **`flutter test` — 65/65 testes a
+  passar**, incluindo os 12 novos desta fase (`session_series_test.dart`,
+  `manage_series_screen_test.dart`).
+- `npm run build` + `npm run lint` em `firebase/functions` — 0 erros,
+  0 avisos, incluindo o refactor de `createBooking.ts`.
+- 🔴 `firebase emulators:exec --only firestore,functions,auth "npm
+  --prefix firebase/tests test"` — **53/53 testes de Security
+  Rules/Functions a passar**, incluindo os 14 novos de
+  `session-series-rules.test.ts` (`sessionSeries` Manager-only,
+  `sessionOccurrences` create/update sem poder tocar
+  `activeBookingCount`, `bookings` continua fechado mesmo a Manager) e
+  `booking-concurrency.test.ts` reescrito (ver "Décimo terceiro
+  problema" abaixo).
+
+Três problemas reais apanhados ao correr isto de verdade — fica aqui o
+registo, como nas fases anteriores:
+
+**Décimo segundo problema — `sessionOccurrenceRepositoryProvider`
+partiu um teste da Fase 4.** Adicionar `FirebaseFunctions` ao
+construtor de `FirebaseSessionOccurrenceRepository` (necessário para o
+novo `assignMembers`) fez `my_bookings_screen_test.dart` falhar — esse
+teste nunca tinha precisado de mockar `functionsProvider` porque
+`occurrenceProvider` (usado desde a Fase 4 para saber a que horas é
+uma sessão) só tocava no Firestore. Sem o mock, `functionsProvider`
+resolve para `FirebaseFunctions.instance` real, que não tem nenhuma
+app Firebase inicializada neste teste. Corrigido acrescentando o mesmo
+mock nunca invocado já usado em `book_training_screen_test.dart`.
+Confirmei que nenhum outro ficheiro de teste tinha o mesmo problema
+(`grep` por `occurrenceProvider`/`sessionOccurrenceRepositoryProvider`
+sem `functionsProvider`).
+
+**Décimo terceiro problema — `booking-concurrency.test.ts` (Fase 2)
+estava partido desde a Fase 4, ninguém tinha reparado — corrigido
+nesta fase, a pedido do Carlos.** Ao correr os testes de Rules pela
+primeira vez de facto, os 2 testes deste ficheiro falhavam sempre com
+`PERMISSION_DENIED`. Não era nada desta fase — o ficheiro simulava a
+marcação como transação **client-side** direta contra o Firestore (era
+assim que funcionava até à Fase 2), mas a Fase 4 fechou
+`sessionOccurrences`/`bookings` para escrita de qualquer cliente (só
+Cloud Functions escrevem, Admin SDK). Confirmei com `git stash` que
+isto já falhava antes de qualquer alteração desta fase — não era uma
+regressão minha, era uma lacuna de verificação da própria Fase 4 (que
+também nunca tinha corrido isto). Consequência séria: a proteção
+contra overbooking — a garantia mais crítica do guia inteiro — não
+tinha NENHUM teste automatizado a passar desde a Fase 4.
+
+Reescrito para chamar `createBooking` a sério, através do Functions
+Emulator, em vez de reimplementar a transação em paralelo:
+autenticado como dois membros distintos via `signInWithCustomToken`
+(as claims `tenantId`/`roles` embutidas no custom token propagam-se
+para o ID token — técnica documentada da Firebase para testes, evita
+ter de criar utilizadores reais no Auth Emulator só para isto), chama
+`httpsCallable(functions, 'createBooking')` a sério, com Admin SDK só
+para semear os dados de teste (bypassa Rules diretamente, sem
+`@firebase/rules-unit-testing`). **Duas armadilhas descobertas ao
+fazer isto, não assumidas:**
+
+1. `createBooking` exige elegibilidade (Fase 3) antes de chegar à
+   transação de capacidade — sem seed de uma `subscription` ativa por
+   membro, as duas tentativas eram sempre rejeitadas por "não
+   elegível", nunca testando concorrência nenhuma.
+2. **Uma Cloud Function a correr no emulador está SEMPRE ligada ao
+   projeto passado em `--project`** (aqui, `demo-gym-saas-dev`) — não
+   a nenhum `projectId` que o ficheiro de teste escolha. A primeira
+   tentativa usou um `projectId` próprio (mesmo padrão dos outros 4
+   ficheiros deste diretório) e `createBooking` respondia sempre
+   `not-found`: a função lia/escrevia sob `demo-gym-saas-dev`, o teste
+   semeava sob um projeto completamente separado dentro do mesmo
+   emulador. Corrigido usando `demo-gym-saas-dev` como `PROJECT_ID`
+   deste ficheiro (único dos 5 que precisa disto) — o isolamento fica
+   só ao nível do `tenantId` (`tenant_booking_fn_test`, nunca usado
+   pelo seed script nem pelos outros ficheiros de teste), não do
+   projeto.
+
+Depois destas duas correções, os 2 testes passam de forma repetível —
+o output confirma, em cada uma das 5 repetições da primeira story,
+exatamente 1 marcação aceite e a outra rejeitada com
+`resource-exhausted`/"Já não há vagas", a garantia real a ser
+provada, agora contra a transação que corre em produção
+(`lib/bookingLogic.ts#runBookingTransaction`), não uma reimplementação
+paralela dela. **Precisa de mais um passo antes de correr** (ver passo
+2 abaixo): o Functions Emulator carrega `firebase/functions/lib/
+index.js`, por isso `npm run build` tem de correr ANTES do emulador
+arrancar — sem isto, a função nem chega a ficar registada.
+
+**O que continua por verificar manualmente** (não tenho como correr
+`flutter run` + clicar na app a partir daqui): todo o fluxo em Chrome —
+criar série, "Gerar agora", confirmar ocorrências + auto-atribuição no
+emulador, editar/cancelar uma ocorrência isolada, cancelar a série. Os
+passos abaixo cobrem exatamente isto.
+
+### Passos para verificar a Fase 5 localmente
+
+Comandos em PowerShell — sem `&&`; cada passo em linhas separadas.
+
+```powershell
+# 1. Confirmar que tudo continua a compilar/passar
+dart format --output=none --set-exit-if-changed .
+flutter analyze --fatal-infos
+flutter test
+
+# 2. Cloud Functions: build + lint (bookingLogic.ts, generateRecurringOccurrences.ts,
+#    assignMembersToOccurrence.ts são código novo/refatorado desta fase)
+cd firebase/functions
+npm run build
+npm run lint
+cd ../..
+
+# 3. 🔴 Security Rules + concorrência real via Cloud Function —
+#    isolamento + plans/subscriptions + usage/bookings-fechados +
+#    sessionSeries (Fase 5) + booking-concurrency (reescrito nesta
+#    fase). PRECISA de firestore,functions,auth (não só firestore como
+#    nas fases anteriores) — booking-concurrency.test.ts chama
+#    createBooking a sério através do Functions Emulator. O passo 2
+#    acima (`npm run build`) já deixou `firebase/functions/lib/`
+#    pronto, que é o que o Functions Emulator carrega.
+cd firebase/tests
+npm install
+cd ../..
+firebase emulators:exec --project=demo-gym-saas-dev --only firestore,functions,auth "npm --prefix firebase/tests test"
+# Espera 53/53.
+
+# 4. Seed (com o emulador completo a correr:
+#    firebase emulators:start --project=demo-gym-saas-dev)
+cd firebase/scripts
+npm run seed
+cd ../..
+# Confirma no output que aparece "sessionSeries/series_test_hyrox_mon".
+
+# 5. Testar como o Leo (Gestor)
+flutter run -t lib/main_development.dart
+# Login "leo@nxtperformancestudio.pt" / "DevPass123!". Gestão → Aulas/
+# Horários → deve aparecer "Hyrox" (Segunda · 18:00 · Grupo (6)). Abre-a,
+# confirma "Ainda não há ocorrências geradas", carrega "Gerar agora".
+
+# 6. Confirmar a geração + auto-atribuição na UI do emulador
+# (localhost:4000/firestore) — tenants/nxt_performance_studio/
+# sessionOccurrences deve ter várias novas segundas-feiras futuras
+# (até 8 semanas), cada uma com seriesId preenchido e
+# activeBookingCount == 1 (a Rita). Confirma também que existe o
+# booking dela em sessionOccurrences/{id}/bookings/{uid da Rita},
+# source: "manager".
+
+# 7. Confirmar do lado da Rita
+# Login "000001" / "MemberPass123!" → "Marcações" deve já mostrar as
+# sessões de Hyrox das próximas segundas, sem ela ter marcado nada.
+
+# 8. Editar/cancelar uma ocorrência isolada sem afetar as outras
+# Como o Leo, na série → escolhe uma ocorrência → "Editar esta
+# ocorrência" (muda a hora ou capacidade) → confirma que só essa
+# ocorrência muda (as outras segundas-feiras continuam iguais). Depois,
+# noutra ocorrência, "Cancelar só esta" → confirma que desaparece de
+# "Marcar treino" mas as restantes continuam disponíveis.
+
+# 9. Cancelar a série inteira
+# "Cancelar série" (com confirmação) → confirma na UI do emulador que
+# TODAS as ocorrências futuras passam a status "cancelled", mas
+# qualquer ocorrência já passada (se houver) fica intocada. "Gerar
+# agora" deixa de fazer nada (série já não está ativa).
+
+# 10. Criar uma sessão "só esta data" com pré-atribuição
+# Gestão → Aulas/Horários → "+" → "Só esta data" → escolhe serviço,
+# data/hora, capacidade, e pré-atribui a Rita no picker → "Criar".
+# Confirma que a sessão aparece já com a Rita marcada (sem passar por
+# "Gerar agora" — isto é atribuição imediata, não recorrente).
+```
+
+### Critério "Done" da Fase 5
+
+> consegues criar uma série semanal, ver as próximas 4-8 semanas
+> geradas automaticamente, editar só uma sem afetar as outras, e
+> cancelar a série sem apagar ocorrências passadas.
+
+Os passos 5-9 acima cobrem exatamente isto — horizonte de 8 semanas
+(dentro do intervalo pedido), edição isolada confirmada por não afetar
+as restantes, cancelamento de série confirmado por só afetar futuras.
+**Continua por confirmar manualmente por ti** (ver "O que continua por
+verificar" acima) — o mecanismo está implementado e os testes
+automatizados (Dart + Rules) passam, mas ninguém clicou ainda na app a
+sério para esta fase.
+
+### Extensão pedida: gerar automaticamente ao criar a série (fora do guia)
+
+Depois de testares o fluxo, perguntaste se fazia sentido o Gestor ter
+de carregar num botão "Gerar agora" separado logo a seguir a criar uma
+série — não fazia. `CreateSeriesScreen` passou a chamar `generateNow()`
+automaticamente a seguir a `createSeries()` ter sucesso, para as
+próximas ocorrências já aparecerem sem passo extra. O cron diário
+(`generateRecurringOccurrences.ts`) continua necessário a seguir a
+isto — só resolve o momento da criação, não o horizonte de 8 semanas a
+continuar a avançar com o tempo. O botão "Gerar agora" em
+`SeriesDetailScreen` mantém-se como ferramenta de apoio (ex.: se esta
+chamada falhar, ou se o cron falhar nalgum dia) — falha aqui não desfaz
+a série, só mostra uma mensagem a dizer para usares o botão manual.
+
+### Extensão pedida: auditoria dos documentos funcionais (fora do guia)
+
+Pediste para verificar se havia algum ponto da documentação funcional
+(mockups em `Functional/nxt-studio-screens.html`, decisões fechadas em
+`Functional/use-cases-update.md`) referente a esta fase ou às
+anteriores que já devesse ter sido implementado. Cruzei os 40+ ecrãs
+do mockup (cada um com a sua referência UC) e todas as decisões
+fechadas contra as 11 fases do `guia-desenvolvimento.md` e o código
+atual. A esmagadora maioria do que falta está corretamente arrumada em
+fases futuras (Fase 6 em diante). Encontrei 4 pontos que existem nos
+documentos funcionais mas nunca tinham sido atribuídos a NENHUMA fase
+do guia técnico — não é "ainda não chegou a vez", caíram na fenda
+entre os dois documentos. Dois foram implementados agora (ver secções
+seguintes); dois ficaram documentados no próprio
+`guia-desenvolvimento.md` (Fase 6), com a razão de não terem sido
+feitos agora:
+
+1. **UC01-A — recuperar password self-service**: precisa de enviar SMS/
+   email de facto (nenhuma fase monta essa infraestrutura ainda) —
+   ficou como story nova da Fase 6, com nota explícita.
+2. **UC02 — perfil do aluno**: implementado agora, versão sem foto (ver
+   abaixo).
+3. **UC25 — visão global do Gestor**: implementado agora, versão sem
+   "por modalidade" (ver abaixo).
+4. **`Modality`** (Domain Model v1 §8-9): nunca foi modelada em
+   nenhuma fase, apesar de ser pré-requisito do UC20 ("calendário do
+   instrutor... por modalidade", já pedido explicitamente na Fase 6) e
+   da decisão fechada do UC12/22 ("instrutor pode ter várias
+   modalidades"). Ficou como primeira story nova da Fase 6, com nota
+   explícita a dizer que o calendário não fica completo sem isto.
+
+### Extensão pedida: UC02 — Perfil do Aluno (fora do guia)
+
+Versão sem foto de perfil — precisaria de integrar Firebase Storage
+(upload de imagem, `storage.rules`, picker), infraestrutura ainda não
+tocada em nenhuma fase; sinalizado, não escondido. O que ficou:
+
+- `MemberSummary` ganhou `phone`/`email` (contacto real, distinto do
+  email SINTÉTICO usado só para login — esse nunca aparece aqui).
+  `MemberRepository` ganhou `watchMember(uid)` e `updateOwnContact(...)`.
+- **Lacuna de segurança real, apanhada ao construir isto — não só de
+  UI**: `firestore.rules` tinha `members/{memberId}: allow read, write:
+  if belongsToTenant(tenantId)` desde a Fase 1 — qualquer membro
+  autenticado do tenant podia escrever no documento de QUALQUER OUTRO
+  membro, incluindo `memberNumber`/`status`. Nunca explorado por
+  nenhum ecrã existente, mas era uma autorização real a menos, não só
+  uma omissão de UI. Corrigido: escrita ampla continua só Manager; o
+  próprio membro só pode atualizar `phone`/`email` (+`updatedAt`) no
+  SEU PRÓPRIO documento — `request.resource.data.diff(resource.data)
+  .affectedKeys().hasOnly([...])` garante que nenhum outro campo muda
+  nessa via, mesmo que o cliente tente.
+- `MyProfileScreen` (novo): nome/nº de sócio em leitura, telefone/email
+  editáveis. Acessível por um ícone novo na AppBar de `HomeScreen`, só
+  quando `AppUser.isMember` (staff que não seja também membro, como o
+  Leo, não tem `members/{uid}` — o ícone fica escondido para não levar
+  a um beco sem saída).
+- Testes: `my_profile_screen_test.dart` (mostra dados, guarda
+  contacto, estado de erro sem documento) + 5 testes novos de Security
+  Rules em `session-series-rules.test.ts` (próprio consegue,
+  memberNumber/status bloqueados, outro membro bloqueado, Manager
+  continua livre, Manager de outro tenant bloqueado).
+
+### Extensão pedida: UC25 — Visão global do Gestor (fora do guia)
+
+Versão mínima, sem "aulas/horários de todas as modalidades" do
+mockup — depende de `Modality`, que não existe (ver acima). Agrega o
+que já dá para agregar sem essa peça:
+
+- `SessionOccurrenceRepository` ganhou
+  `watchOccurrencesStartingBetween(from, to)` — ao contrário de
+  `watchUpcomingOccurrences`, não filtra por `serviceId` (percorre
+  todos os serviços do tenant).
+- `GestorDashboardScreen` (novo, "Gestão → Visão global", primeiro
+  card do hub): membros ativos, séries ativas, sessões agendadas nos
+  próximos 7 dias, ocupação média nesse período.
+- Teste: `gestor_dashboard_screen_test.dart` — confirma os 4 números
+  com dados semeados propositadamente distintos (inclui uma ocorrência
+  cancelada dentro da janela e uma fora da janela, para confirmar que
+  nenhuma das duas entra na contagem/ocupação).
+
+### Bug reportado: "dá para ver o horário/vagas mas não que treino é"
+
+Reportaste que, em "Marcar treino", conseguias ver hora e vagas mas
+não havia forma de saber a que serviço/aula cada sessão pertencia. Não
+era só uma UI incompleta — eram dois bugs reais, um deles bastante
+sério, ambos existentes desde fases anteriores e só agora visíveis a
+sério por causa da Fase 5 (várias séries, potencialmente em serviços
+diferentes, a coexistirem):
+
+1. **`BookTrainingScreen` só mostrava ocorrências de UM serviço.**
+   `primaryServiceProvider` ("o primeiro serviço ativo") era um hack
+   deliberado da Fase 2, para não hardcodar um id de serviço quando só
+   existia um. Ninguém o corrigiu quando a Fase 3 trouxe múltiplos
+   serviços — funcionava por coincidência enquanto só havia sessões de
+   um serviço de cada vez. Com a Fase 5 a permitir séries em serviços
+   diferentes, isto passou a esconder sessões REAIS do aluno, em
+   silêncio, sem nenhum aviso — o aluno nunca saberia que essas sessões
+   existiam. Corrigido: `SessionOccurrenceRepository` ganhou
+   `watchUpcomingOccurrencesAllServices()` (sem filtro de serviço);
+   `primaryServiceProvider`/`upcomingOccurrencesProvider(serviceId)`
+   ficaram sem consumidores e foram removidos.
+2. **Nenhum cartão mostrava o nome do serviço.** Cada cartão em
+   "Marcar treino" tinha só hora + vagas; a barra "X/Y sessões esta
+   semana" (Fase 4) era única, fixa no topo, presumindo sempre o mesmo
+   serviço. Corrigido: cada cartão mostra agora o nome do serviço (e
+   do instrutor, quando definido); a barra de utilização deixou de ser
+   global e passou a ser uma linha por cartão, com o serviço DESSA
+   sessão.
+3. **"Minhas marcações" nunca mostrou nada disto — nem sequer a
+   hora.** Desde a Fase 2 ("fica para a próxima iteração") passando
+   pela Fase 4 ("mostra sim, mas só o suficiente para calcular o aviso
+   de cancelamento" — ou seja, os dados já eram lidos internamente,
+   nunca mostrados), o ecrã mostrava literalmente só "Marcação
+   #abc123" + a data em que a marcação tinha sido FEITA. Corrigido:
+   cada cartão mostra agora o nome do serviço e a data/hora da SESSÃO
+   (lida via `occurrenceProvider`, que já existia desde a Fase 4 —
+   só nunca tinha chegado a aparecer no ecrã).
+
+Testes atualizados/novos: `book_training_screen_test.dart` ganhou um
+teste dedicado (duas séries, dois serviços diferentes, confirma que
+AMBOS aparecem — a prova direta da correção do bug #1) e passou a
+confirmar o nome do serviço no cartão; `my_bookings_screen_test.dart`
+passou a semear um `services/service_1` e a confirmar o nome no
+cartão, em vez de "Marcação #".
+
+**Verificado**: `flutter analyze` limpo, **70/70 testes Dart** a
+passar.
+
 ## Próximo passo
 
-Fase 5 do guia (`Technical/guia-desenvolvimento.md`) — "Sessões
-recorrentes (séries)": Cloud Function agendada
-`generateRecurringOccurrences`, editar/cancelar uma ocorrência sem
-tocar na série, ecrãs "Criar aula/PT — recorrente" e "Ajustar uma
-semana da série". Ainda por consultar em detalhe.
+Fase 6 do guia (`Technical/guia-desenvolvimento.md`) — "Operações do
+dia a dia (Instrutor/Gestor)": **agora começa por modelar `Modality`**
+(acrescentado ao guia ao fechar a Fase 5 — pré-requisito do calendário
+por modalidade, UC20, que nenhuma fase anterior tinha pedido
+explicitamente), depois registo de presença/no-show (UC10-A, separado
+do booking), reduzir vagas com seleção explícita de quem remover
+(UC18), cancelamento de sessão pelo estúdio → cancela bookings +
+devolve usage em cadeia (UC18/UC10 — a peça que `cancelOccurrence` da
+Fase 5 deliberadamente NÃO faz ainda, ver nota em
+`session_occurrence_repository.dart`), desativação de instrutor →
+cancela sessões futuras automaticamente (UC24), remarcar aluno
+(UC10-B), notificações (UC21), calendário do instrutor (UC20), e
+recuperação de password self-service (UC01-A, também acrescentado ao
+guia agora — precisa de decidir um fornecedor de SMS/email primeiro).
+Também onde faz sentido revisitar se o Instrutor deve poder gerir as
+suas próprias séries (Fase 5 deixou isso deliberadamente só para o
+Gestor). Ainda por consultar em detalhe.

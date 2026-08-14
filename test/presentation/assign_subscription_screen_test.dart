@@ -86,6 +86,10 @@ class _FakeSubscriptionRepository implements SubscriptionRepository {
     required String serviceId,
   }) async =>
       null;
+
+  @override
+  Stream<Set<String>> watchEligibleMemberIds(String serviceId) =>
+      const Stream.empty();
 }
 
 void main() {
@@ -96,7 +100,8 @@ void main() {
         .doc(_tenantId)
         .collection('members')
         .doc('member_1')
-        .set({'memberNumber': 'M001', 'name': 'Ana Membro', 'status': 'active'});
+        .set(
+            {'memberNumber': 'M001', 'name': 'Ana Membro', 'status': 'active'});
     await firestore
         .collection('tenants')
         .doc(_tenantId)
@@ -128,9 +133,11 @@ void main() {
           const TenantAppConfig(tenantId: _tenantId),
         ),
         firestoreProvider.overrideWithValue(firestore),
-        subscriptionRepositoryProvider.overrideWithValue(subscriptionRepository),
+        subscriptionRepositoryProvider
+            .overrideWithValue(subscriptionRepository),
       ],
-      child: const MaterialApp(home: Scaffold(body: AssignSubscriptionScreen())),
+      child:
+          const MaterialApp(home: Scaffold(body: AssignSubscriptionScreen())),
     );
   }
 

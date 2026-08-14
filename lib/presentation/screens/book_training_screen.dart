@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../application/providers/admin_providers.dart';
 import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
@@ -10,18 +11,15 @@ import '../../domain/entities/booking.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/subscription.dart';
 
-/// UC05/06/07 — versão mínima da Fase 2 (guia-desenvolvimento.md,
-/// Fase 2: "Ecrã 'Marcar treino' (versão mínima, uma sessão só)"),
-/// com a validação de elegibilidade da Fase 3 (UC06/07/08/09: só quem
-/// tem um plano ativo com acesso a este serviço pode marcar) e a barra
-/// de utilização semanal da Fase 4 (story 7: "1/2 sessões esta
-/// semana").
-///
-/// Não faz seleção de serviço/modalidade (só existe uma Service de
-/// teste), nem antecedência mínima na hora de MARCAR (isso só é
-/// relevante para CANCELAR — Fase 4, `TenantSettingsScreen`). É
-/// deliberadamente o caminho mais simples possível, para validar a
-/// transação de booking ponta a ponta antes de construir a UI completa.
+/// UC05/06/07 — "Marcar treino". Até à Fase 5 mostrava só as
+/// ocorrências de UM serviço ("o primeiro ativo" — `primaryServiceProvider`,
+/// hack da Fase 2 para não hardcodar um id); com várias séries a
+/// poderem existir em serviços diferentes, isso escondia sessões reais
+/// sem nenhum aviso ao aluno (bug real, reportado depois da Fase 5).
+/// Mostra agora as ocorrências de TODOS os serviços
+/// (`allUpcomingOccurrencesProvider`), com o nome do serviço (e do
+/// instrutor, quando definido) em cada cartão — sem isso não dava para
+/// perceber "que treino se trata" só pela hora/vagas.
 class BookTrainingScreen extends ConsumerWidget {
   const BookTrainingScreen({super.key});
 
@@ -36,7 +34,9 @@ class BookTrainingScreen extends ConsumerWidget {
     // ignorada (appUser == null). Watch aqui garante que já está resolvido
     // antes de qualquer botão poder ser premido.
     final appUserAsync = ref.watch(currentAppUserProvider);
-    final serviceAsync = ref.watch(primaryServiceProvider);
+    final occurrencesAsync = ref.watch(allUpcomingOccurrencesProvider);
+    final servicesAsync = ref.watch(servicesProvider);
+    final staffAsync = ref.watch(staffProvider);
 
     return appUserAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -48,61 +48,43 @@ class BookTrainingScreen extends ConsumerWidget {
           );
         }
 
-        return serviceAsync.when(
+        return occurrencesAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, stack) => Center(child: Text('Erro: $error')),
-          data: (service) {
-            if (service == null) {
+          data: (occurrences) {
+            if (occurrences.isEmpty) {
               return const Center(
                 child: Padding(
                   padding: EdgeInsets.all(24),
                   child: Text(
-                    'Ainda não existe nenhum serviço configurado neste tenant.',
+                    'Sem sessões futuras para marcar.',
                     textAlign: TextAlign.center,
                   ),
                 ),
               );
             }
-
-            final occurrencesAsync =
-                ref.watch(upcomingOccurrencesProvider(service.id));
-
-            return Column(
-              children: [
-                _WeeklyUsageBanner(
+            final servicesById = {
+              for (final s in servicesAsync.valueOrNull ?? const []) s.id: s,
+            };
+            final staffByUid = {
+              for (final s in staffAsync.valueOrNull ?? const []) s.uid: s,
+            };
+            return ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: occurrences.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final occurrence = occurrences[index];
+                return _OccurrenceTile(
+                  occurrence: occurrence,
                   memberId: appUser.uid,
-                  serviceId: service.id,
-                  serviceName: service.name,
-                ),
-                Expanded(
-                  child: occurrencesAsync.when(
-                    loading: () => const Center(child: CircularProgressIndicator()),
-                    error: (error, stack) => Center(child: Text('Erro: $error')),
-                    data: (occurrences) {
-                      if (occurrences.isEmpty) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text(
-                              'Sem sessões futuras para marcar.',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        );
-                      }
-                      return ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: occurrences.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) => _OccurrenceTile(
-                          occurrence: occurrences[index],
-                          memberId: appUser.uid,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
+                  serviceName: servicesById[occurrence.serviceId]?.name ??
+                      occurrence.serviceId,
+                  instructorName: occurrence.instructorId == null
+                      ? null
+                      : staffByUid[occurrence.instructorId]?.name,
+                );
+              },
             );
           },
         );
@@ -111,73 +93,18 @@ class BookTrainingScreen extends ConsumerWidget {
   }
 }
 
-/// Fase 4 story 7 — "Ecrã aluno: barra '1/2 sessões esta semana' no
-/// ecrã de marcação". Só aparece quando a [UsageRule] aplicável a este
-/// membro+serviço é `limited` — para `unlimited` (ou quando o membro
-/// não tem nenhum plano que dê acesso, caso já coberto pela mensagem de
-/// elegibilidade ao tentar marcar) não mostra nada. Período é sempre a
-/// semana ATUAL (`isoWeekKey(DateTime.now())`), não a semana de nenhuma
-/// sessão específica.
-class _WeeklyUsageBanner extends ConsumerWidget {
-  const _WeeklyUsageBanner({
-    required this.memberId,
-    required this.serviceId,
-    required this.serviceName,
-  });
-
-  final String memberId;
-  final String serviceId;
-  final String serviceName;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final ruleAsync = ref.watch(
-      applicableUsageRuleProvider((memberId: memberId, serviceId: serviceId)),
-    );
-
-    return ruleAsync.when(
-      loading: () => const SizedBox.shrink(),
-      error: (error, stack) => const SizedBox.shrink(),
-      data: (rule) {
-        if (rule == null || rule.isUnlimited) return const SizedBox.shrink();
-        final limit = rule.limit!;
-        final period = isoWeekKey(DateTime.now());
-        final usageAsync = ref.watch(
-          usageProvider((memberId: memberId, serviceId: serviceId, period: period)),
-        );
-        final used = usageAsync.valueOrNull?.used ?? 0;
-        final reached = used >= limit;
-
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Card(
-            color: reached
-                ? Theme.of(context).colorScheme.errorContainer
-                : Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Icon(reached ? Icons.block_outlined : Icons.timelapse_outlined, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text('Esta semana: $used/$limit sessões de $serviceName'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
 class _OccurrenceTile extends ConsumerStatefulWidget {
-  const _OccurrenceTile({required this.occurrence, required this.memberId});
+  const _OccurrenceTile({
+    required this.occurrence,
+    required this.memberId,
+    required this.serviceName,
+    required this.instructorName,
+  });
 
   final SessionOccurrence occurrence;
   final String memberId;
+  final String serviceName;
+  final String? instructorName;
 
   @override
   ConsumerState<_OccurrenceTile> createState() => _OccurrenceTileState();
@@ -205,7 +132,7 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
       // do listener do Firestore. Fase 4: o mesmo vale para a barra de
       // utilização — sem isto, "X/Y" só atualizava depois do próximo
       // evento de snapshot chegar sozinho.
-      ref.invalidate(upcomingOccurrencesProvider(widget.occurrence.serviceId));
+      ref.invalidate(allUpcomingOccurrencesProvider);
       ref.invalidate(usageProvider((
         memberId: widget.memberId,
         serviceId: widget.occurrence.serviceId,
@@ -240,14 +167,26 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              dateFormat.format(occurrence.startAt),
+              widget.serviceName,
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
+            Text(
+              dateFormat.format(occurrence.startAt) +
+                  (widget.instructorName != null
+                      ? ' · ${widget.instructorName}'
+                      : ''),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
             Text(
               occurrence.isFull
                   ? 'Sem vagas'
                   : '${occurrence.availableSlots} vaga(s) de ${occurrence.capacity}',
+            ),
+            _WeeklyUsageLine(
+              memberId: widget.memberId,
+              serviceId: occurrence.serviceId,
             ),
             const SizedBox(height: 12),
             FilledButton(
@@ -267,6 +206,62 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Fase 4 story 7 — "barra '1/2 sessões esta semana'". Até à Fase 5
+/// era uma única barra fixa no topo do ecrã, para o único serviço
+/// visível. Com várias sessões de serviços diferentes na mesma lista,
+/// isso deixou de fazer sentido — passou a ser uma linha por cartão,
+/// scoped ao serviço DESSA ocorrência. Só aparece quando a [UsageRule]
+/// aplicável é `limited`; para `unlimited` (ou membro sem plano —
+/// caso já coberto pela mensagem de elegibilidade ao tentar marcar)
+/// não mostra nada.
+class _WeeklyUsageLine extends ConsumerWidget {
+  const _WeeklyUsageLine({required this.memberId, required this.serviceId});
+
+  final String memberId;
+  final String serviceId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ruleAsync = ref.watch(
+      applicableUsageRuleProvider((memberId: memberId, serviceId: serviceId)),
+    );
+
+    return ruleAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (error, stack) => const SizedBox.shrink(),
+      data: (rule) {
+        if (rule == null || rule.isUnlimited) return const SizedBox.shrink();
+        final limit = rule.limit!;
+        final period = isoWeekKey(DateTime.now());
+        final usageAsync = ref.watch(
+          usageProvider(
+              (memberId: memberId, serviceId: serviceId, period: period)),
+        );
+        final used = usageAsync.valueOrNull?.used ?? 0;
+        final reached = used >= limit;
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            children: [
+              Icon(
+                reached ? Icons.block_outlined : Icons.timelapse_outlined,
+                size: 16,
+                color: reached ? Theme.of(context).colorScheme.error : null,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Esta semana: $used/$limit',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

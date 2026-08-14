@@ -76,9 +76,10 @@ class FirebaseSubscriptionRepository implements SubscriptionRepository {
     } on FirebaseFunctionsException catch (e) {
       if (e.code == 'already-exists') {
         final details = e.details;
-        final names = details is Map && details['conflictingServiceNames'] is List
-            ? (details['conflictingServiceNames'] as List).cast<String>()
-            : const <String>[];
+        final names =
+            details is Map && details['conflictingServiceNames'] is List
+                ? (details['conflictingServiceNames'] as List).cast<String>()
+                : const <String>[];
         throw SubscriptionServiceConflictException(names);
       }
       rethrow;
@@ -112,5 +113,18 @@ class FirebaseSubscriptionRepository implements SubscriptionRepository {
         .get();
     if (snapshot.docs.isEmpty) return null;
     return snapshot.docs.first.data()['planId'] as String?;
+  }
+
+  @override
+  Stream<Set<String>> watchEligibleMemberIds(String serviceId) {
+    return _subscriptions
+        .where('status', isEqualTo: 'active')
+        .where('activeServiceIds', arrayContains: serviceId)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => doc.data()['memberId'] as String)
+              .toSet(),
+        );
   }
 }
