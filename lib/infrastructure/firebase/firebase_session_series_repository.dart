@@ -10,6 +10,7 @@ SessionSeries _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     id: doc.id,
     serviceId: data['serviceId'] as String,
     instructorId: data['instructorId'] as String?,
+    modalityId: data['modalityId'] as String?,
     dayOfWeek: (data['dayOfWeek'] as num).toInt(),
     startTime: data['startTime'] as String,
     durationMinutes: (data['durationMinutes'] as num).toInt(),
@@ -53,6 +54,7 @@ class FirebaseSessionSeriesRepository implements SessionSeriesRepository {
   Future<String> createSeries({
     required String serviceId,
     String? instructorId,
+    String? modalityId,
     required int dayOfWeek,
     required String startTime,
     required int durationMinutes,
@@ -63,6 +65,7 @@ class FirebaseSessionSeriesRepository implements SessionSeriesRepository {
     final ref = await _series.add({
       'serviceId': serviceId,
       'instructorId': instructorId,
+      'modalityId': modalityId,
       'dayOfWeek': dayOfWeek,
       'startTime': startTime,
       'durationMinutes': durationMinutes,
@@ -80,6 +83,7 @@ class FirebaseSessionSeriesRepository implements SessionSeriesRepository {
     await _series.doc(series.id).update({
       'serviceId': series.serviceId,
       'instructorId': series.instructorId,
+      'modalityId': series.modalityId,
       'dayOfWeek': series.dayOfWeek,
       'startTime': series.startTime,
       'durationMinutes': series.durationMinutes,

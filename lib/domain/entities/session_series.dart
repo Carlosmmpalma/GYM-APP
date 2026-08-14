@@ -23,6 +23,7 @@ class SessionSeries extends Equatable {
     required this.startDate,
     required this.status,
     this.instructorId,
+    this.modalityId,
     this.preAssignedMemberIds = const [],
   });
 
@@ -33,6 +34,11 @@ class SessionSeries extends Equatable {
   /// informativa; não bloqueia nenhuma atribuição). `null` quando a
   /// série não tem instrutor definido.
   final String? instructorId;
+
+  /// Fase 6 (Domain Model v1 §8-9) — opcional; `null` em séries
+  /// anteriores a esta fase ou sem modalidade definida (nem todo
+  /// serviço tem modalidade, ex.: "Treino sem acompanhamento").
+  final String? modalityId;
 
   /// segunda=1 … domingo=7 (`DateTime.weekday`).
   final int dayOfWeek;
@@ -77,6 +83,7 @@ class SessionSeries extends Equatable {
         id: id,
         serviceId: serviceId,
         instructorId: instructorId,
+        modalityId: modalityId,
         dayOfWeek: dayOfWeek,
         startTime: startTime,
         durationMinutes: durationMinutes,
@@ -91,6 +98,7 @@ class SessionSeries extends Equatable {
         id,
         serviceId,
         instructorId,
+        modalityId,
         dayOfWeek,
         startTime,
         durationMinutes,

@@ -56,6 +56,7 @@ interface SeriesData {
   tenantRef: FirebaseFirestore.DocumentReference;
   serviceId: string;
   instructorId: string | null;
+  modalityId: string | null;
   dayOfWeek: number;
   startTime: string;
   durationMinutes: number;
@@ -75,6 +76,7 @@ function seriesFromDoc(doc: FirebaseFirestore.QueryDocumentSnapshot): SeriesData
     tenantRef: doc.ref.parent.parent!,
     serviceId: data.serviceId as string,
     instructorId: (data.instructorId as string | null | undefined) ?? null,
+    modalityId: (data.modalityId as string | null | undefined) ?? null,
     dayOfWeek: data.dayOfWeek as number,
     startTime: data.startTime as string,
     durationMinutes: data.durationMinutes as number,
@@ -123,6 +125,7 @@ async function generateForSeries(
     await refs[i].set({
       serviceId: series.serviceId,
       instructorId: series.instructorId,
+      modalityId: series.modalityId,
       seriesId: series.id,
       startAt: Timestamp.fromDate(startAt),
       endAt: Timestamp.fromDate(endAt),

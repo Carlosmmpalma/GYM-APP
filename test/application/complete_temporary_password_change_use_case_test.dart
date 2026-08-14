@@ -29,6 +29,9 @@ class _FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> sendPasswordResetEmail(String email) async {}
 }
 
 class _FakeAccountRepository implements AccountRepository {

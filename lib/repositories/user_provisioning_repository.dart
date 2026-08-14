@@ -19,5 +19,6 @@ abstract class UserProvisioningRepository {
     required String name,
     required String email,
     required Set<Role> roles,
+    Set<String> modalityIds = const {},
   });
 }

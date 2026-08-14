@@ -34,6 +34,13 @@ service cloud.firestore {
       return belongsToTenant(tenantId) && 'manager' in request.auth.token.roles;
     }
 
+    // Fase 6 — presença (UC10-A) pode ser registada por Instrutor OU
+    // Manager, ao contrário das ações de gestão anteriores
+    // (Planos/Serviços/Modalidades/Séries), que continuam Manager-only.
+    function isInstructor(tenantId) {
+      return belongsToTenant(tenantId) && 'instructor' in request.auth.token.roles;
+    }
+
     // Sonda de diagnóstico da Fase 0. Não faz parte do modelo de negócio.
     match /_diagnostics/{docId} {
       allow read, write: if true;
@@ -56,13 +63,16 @@ service cloud.firestore {
     // Manager; o próprio membro só pode atualizar `phone`/`email` no
     // SEU PRÓPRIO documento (`MyProfileScreen`) — `memberNumber`/
     // `status`/`name` continuam exclusivos do Gestor.
+    // Fase 6 (UC21): `fcmTokens` juntou-se à mesma lista — é o próprio
+    // membro que regista o token do seu dispositivo (arrayUnion), nunca
+    // o Gestor.
     match /tenants/{tenantId}/members/{memberId} {
       allow read: if belongsToTenant(tenantId);
       allow write: if isManager(tenantId);
       allow update: if belongsToTenant(tenantId)
         && request.auth.uid == memberId
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['phone', 'email', 'updatedAt']);
+             .hasOnly(['phone', 'email', 'updatedAt', 'fcmTokens']);
     }
 
     match /tenants/{tenantId}/staff/{staffId} {
@@ -86,6 +96,15 @@ service cloud.firestore {
     // validar (criar/ativar/desativar um Service é uma escrita
     // isolada a UM documento).
     match /tenants/{tenantId}/services/{serviceId} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if isManager(tenantId);
+    }
+
+    // --- Modalities (Fase 6, Domain Model v1 §8-9) ---
+    // Mesmo padrão exato de `services` — escrita direta do cliente,
+    // sem invariante cross-documento (a lista `serviceIds` vive no
+    // próprio documento da modalidade, ver `modality.dart`).
+    match /tenants/{tenantId}/modalities/{modalityId} {
       allow read: if belongsToTenant(tenantId);
       allow write: if isManager(tenantId);
     }
@@ -118,8 +137,15 @@ service cloud.firestore {
       allow read: if belongsToTenant(tenantId);
       allow create: if isManager(tenantId)
         && request.resource.data.activeBookingCount == 0;
+      // Fase 6: `update` passou a exigir também que `status` não mude
+      // — cancelar (UC18/UC10) precisa de cascatar para os bookings
+      // ativos (libertar vaga + devolver usage), o que só a Cloud
+      // Function `cancelOccurrenceForStudio` (Admin SDK) faz; sem esta
+      // condição, um Manager podia "cancelar" com um update direto e
+      // saltar a cascata por completo.
       allow update: if isManager(tenantId)
-        && request.resource.data.activeBookingCount == resource.data.activeBookingCount;
+        && request.resource.data.activeBookingCount == resource.data.activeBookingCount
+        && request.resource.data.status == resource.data.status;
       allow delete: if false;
 
       // Bookings continuam SEMPRE fora do alcance do cliente, mesmo
@@ -129,6 +155,14 @@ service cloud.firestore {
       match /bookings/{bookingId} {
         allow read: if belongsToTenant(tenantId);
         allow write: if false;
+      }
+
+      // Presença (Fase 6, UC10-A) — documento isolado, sem contador
+      // nem invariante cross-documento; ao contrário de bookings, não
+      // precisa de Cloud Function. Manager OU Instrutor.
+      match /attendance/{memberId} {
+        allow read: if belongsToTenant(tenantId);
+        allow write: if isManager(tenantId) || isInstructor(tenantId);
       }
     }
 

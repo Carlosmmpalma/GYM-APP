@@ -15,6 +15,7 @@ abstract class SessionSeriesRepository {
   Future<String> createSeries({
     required String serviceId,
     String? instructorId,
+    String? modalityId,
     required int dayOfWeek,
     required String startTime,
     required int durationMinutes,

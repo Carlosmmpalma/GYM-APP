@@ -40,4 +40,11 @@ abstract class BookingRepository {
   /// só existe sob o tenant a que esse uid pertence — não há fuga
   /// possível entre tenants aqui.
   Stream<List<Booking>> watchMyBookings(String memberId);
+
+  /// Fase 6 — quem está inscrito numa ocorrência concreta (ativos e
+  /// cancelados). Até aqui não existia nenhuma forma de ver isto em
+  /// lado nenhum da app — `SeriesDetailScreen` só mostrava a contagem.
+  /// Presença (UC10-A), reduzir vagas (UC18) e remarcar (UC10-B)
+  /// precisam todos disto.
+  Stream<List<Booking>> watchBookingsForOccurrence(String occurrenceId);
 }

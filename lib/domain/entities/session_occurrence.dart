@@ -28,6 +28,7 @@ class SessionOccurrence extends Equatable {
     required this.activeBookingCount,
     this.seriesId,
     this.instructorId,
+    this.modalityId,
   });
 
   final String id;
@@ -47,6 +48,10 @@ class SessionOccurrence extends Equatable {
   /// ocorrência sem afetar a série (mesmo raciocínio de `capacity`).
   final String? instructorId;
 
+  /// Fase 6 — idem, copiado da série (ou escolhido diretamente numa
+  /// ocorrência ad-hoc); `null` quando o serviço não tem modalidade.
+  final String? modalityId;
+
   int get availableSlots => capacity - activeBookingCount;
 
   bool get isFull => availableSlots <= 0;
@@ -64,5 +69,6 @@ class SessionOccurrence extends Equatable {
         activeBookingCount,
         seriesId,
         instructorId,
+        modalityId,
       ];
 }

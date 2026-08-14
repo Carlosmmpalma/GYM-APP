@@ -155,3 +155,69 @@ export async function runBookingTransaction(
     return { kind: 'booked' };
   });
 }
+
+export interface ReleasePlan {
+  memberId: string;
+  bookingRef: FirebaseFirestore.DocumentReference;
+  usageRef: FirebaseFirestore.DocumentReference | null;
+  usageUsedBefore: number;
+}
+
+/**
+ * Fase 6 (UC18/UC10) — fase de LEITURA de "libertar um membro de uma
+ * ocorrência, estúdio-iniciado" (reduzir vagas, cancelar sessão,
+ * remarcar). Ao contrário de `cancelBooking.ts` (o membro a cancelar,
+ * sujeito à janela de antecedência mínima), isto devolve usage SEMPRE
+ * — não é o membro que está a desistir tarde, é o estúdio a decidir.
+ *
+ * Separado em leitura ([prepareRelease]) e escrita ([applyRelease])
+ * de propósito: quando se liberta MAIS do que um membro na mesma
+ * transação (`removeMembersFromOccurrence`/`cancelOccurrenceForStudio`),
+ * o Firestore exige que TODAS as leituras de uma transação aconteçam
+ * antes de QUALQUER escrita — chamar uma função "leitura+escrita" num
+ * `for` violaria isso a partir do segundo membro. `null` quando não há
+ * nada para libertar (já não estava `booked`).
+ */
+export async function prepareRelease(
+  tx: FirebaseFirestore.Transaction,
+  params: {
+    tenantRef: FirebaseFirestore.DocumentReference;
+    occurrenceRef: FirebaseFirestore.DocumentReference;
+    memberId: string;
+  },
+): Promise<ReleasePlan | null> {
+  const bookingRef = params.occurrenceRef.collection('bookings').doc(params.memberId);
+  const bookingSnap = await tx.get(bookingRef);
+  if (!bookingSnap.exists || bookingSnap.data()?.status !== 'booked') {
+    return null;
+  }
+  const bookingData = bookingSnap.data()!;
+  const serviceId = bookingData.serviceId as string | undefined;
+  const period = bookingData.period as string | undefined;
+  const usageRef =
+    serviceId && period
+      ? params.tenantRef.collection('usage').doc(`${params.memberId}_${serviceId}_${period}`)
+      : null;
+  const usageSnap = usageRef ? await tx.get(usageRef) : null;
+
+  return {
+    memberId: params.memberId,
+    bookingRef,
+    usageRef: usageSnap?.exists ? usageRef : null,
+    usageUsedBefore: (usageSnap?.data()?.used as number | undefined) ?? 0,
+  };
+}
+
+/** Fase de ESCRITA correspondente a [prepareRelease] — nenhuma leitura aqui. */
+export function applyRelease(tx: FirebaseFirestore.Transaction, plan: ReleasePlan): void {
+  tx.update(plan.bookingRef, {
+    status: 'cancelled',
+    cancelledAt: FieldValue.serverTimestamp(),
+  });
+  if (plan.usageRef) {
+    tx.update(plan.usageRef, {
+      used: plan.usageUsedBefore > 0 ? plan.usageUsedBefore - 1 : 0,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+}

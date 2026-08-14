@@ -10,6 +10,9 @@ const inputSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   roles: z.array(z.enum(['instructor', 'manager'])).min(1),
+  // Fase 6 (UC12/22 fechado) — só faz sentido para quem tem role
+  // instructor; opcional porque um Gestor puro nunca preenche isto.
+  modalityIds: z.array(z.string().min(1)).optional(),
 });
 
 /**
@@ -33,7 +36,7 @@ export const createStaff = onCall(async (request) => {
   if (!parsed.success) {
     throw new HttpsError('invalid-argument', parsed.error.message);
   }
-  const { name, email, roles } = parsed.data;
+  const { name, email, roles, modalityIds } = parsed.data;
 
   const firestore = getFirestore();
   const auth = getAuth();
@@ -61,6 +64,7 @@ export const createStaff = onCall(async (request) => {
       name,
       email,
       roles,
+      modalityIds: modalityIds ?? [],
       status: 'active',
       passwordTemporaria: true,
       createdAt: FieldValue.serverTimestamp(),

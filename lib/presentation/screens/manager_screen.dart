@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 
 import 'assign_subscription_screen.dart';
 import 'gestor_dashboard_screen.dart';
+import 'instructor_calendar_screen.dart';
 import 'manage_members_screen.dart';
+import 'manage_modalities_screen.dart';
 import 'manage_plans_screen.dart';
 import 'manage_series_screen.dart';
 import 'manage_services_screen.dart';
 import 'manage_staff_screen.dart';
+import 'send_notification_screen.dart';
 import 'tenant_settings_screen.dart';
 
 /// Hub do Gestor (Fase 3 + extensão pedida a seguir) — ponto de
@@ -49,6 +52,20 @@ class ManagerScreen extends StatelessWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ManageServicesScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.category_outlined),
+              title: const Text('Modalidades'),
+              subtitle:
+                  const Text('Pilates, Hyrox... e a que serviços se aplicam'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const ManageModalitiesScreen()),
               ),
             ),
           ),
@@ -107,6 +124,20 @@ class ManagerScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Card(
             child: ListTile(
+              leading: const Icon(Icons.calendar_month_outlined),
+              title: const Text('Calendário'),
+              subtitle:
+                  const Text('Próximas 2 semanas, todas as sessões (UC20)'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const InstructorCalendarScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
               leading: const Icon(Icons.person_add_alt_outlined),
               title: const Text('Atribuir plano a membro'),
               subtitle: const Text('Criar uma subscription para um membro'),
@@ -114,6 +145,20 @@ class ManagerScreen extends StatelessWidget {
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
                     builder: (_) => const AssignSubscriptionScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.notifications_outlined),
+              title: const Text('Notificar um membro'),
+              subtitle: const Text(
+                  'Enviar uma notificação push a um membro específico'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const SendNotificationScreen()),
               ),
             ),
           ),

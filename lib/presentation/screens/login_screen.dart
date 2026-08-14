@@ -62,6 +62,50 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  // UC01-A — só é genuinamente self-service para staff (email real): o
+  // Firebase Auth envia o link de reset diretamente. Para nº de sócio
+  // (email sintético, nunca entregável), não fingimos um mecanismo que
+  // não existe — a mensagem diz para contactar o Gestor. Fica
+  // documentado (README) que a parte de membros continua por decidir
+  // (fornecedor SMS/email).
+  Future<void> _forgotPassword() async {
+    final identifier = _memberNumberController.text.trim();
+    if (!identifier.contains('@')) {
+      showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Recuperar password'),
+          content: const Text(
+            'A recuperação de password para alunos (por nº de sócio) ainda '
+            'não está disponível de forma self-service — contacta o Gestor '
+            'do ginásio para repor a tua password.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Ok'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    try {
+      await ref.read(authRepositoryProvider).sendPasswordResetEmail(identifier);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Email de recuperação enviado para $identifier.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível enviar o email: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -127,8 +171,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textAlign: TextAlign.center,
                     ),
                   ],
-                  // UC01-A — recuperação de password fica para quando o
-                  // fornecedor de notificações (SMS/email) for decidido.
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _isSubmitting ? null : _forgotPassword,
+                    child: const Text('Esqueci-me da password'),
+                  ),
                 ],
               ),
             ),

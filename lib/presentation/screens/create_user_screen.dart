@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/admin_providers.dart';
+import '../../application/providers/modality_providers.dart';
 import '../../domain/entities/new_account_credentials.dart';
 import '../../domain/entities/role.dart';
 
@@ -14,10 +15,11 @@ enum _UserType { aluno, staff }
 /// sido feito — `createMember`/`createStaff` existiam desde a Fase 1
 /// sem nenhuma UI a chamá-las.
 ///
-/// Ao contrário do mockup ("Modalidade associada": Hyrox/PT/Pilates
-/// como checkboxes), `createStaff.ts` não tem nenhum campo de
-/// modalidade no schema — só `roles` (instructor/manager). Sigo o que
-/// o backend realmente aceita, não o mockup à letra.
+/// Fase 6: o mockup ("Modalidade associada": Hyrox/PT/Pilates como
+/// checkboxes) tinha ficado sem seguimento porque `createStaff.ts` não
+/// tinha nenhum campo de modalidade — `Modality` não existia em
+/// nenhuma parte da app. Agora existe (UC12/22 fechado); o picker
+/// aparece só quando "Instrutor" está selecionado.
 class CreateUserScreen extends ConsumerStatefulWidget {
   const CreateUserScreen({super.key});
 
@@ -32,6 +34,7 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
 
   _UserType _type = _UserType.aluno;
   final Set<Role> _staffRoles = {Role.instructor};
+  final Set<String> _modalityIds = {};
   bool _submitting = false;
   String? _errorMessage;
 
@@ -62,6 +65,7 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
               name: _nameController.text.trim(),
               email: _emailController.text.trim(),
               roles: _staffRoles,
+              modalityIds: _staffRoles.contains(Role.instructor) ? _modalityIds : const {},
             );
       if (!mounted) return;
       await _showCredentialsDialog(credentials);
@@ -194,6 +198,45 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
                     }
                   }),
                 ),
+                if (_staffRoles.contains(Role.instructor)) ...[
+                  const SizedBox(height: 16),
+                  const Text('Modalidades'),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final modalitiesAsync = ref.watch(modalitiesProvider);
+                      return modalitiesAsync.when(
+                        loading: () => const LinearProgressIndicator(),
+                        error: (error, stack) => Text('Erro: $error'),
+                        data: (modalities) {
+                          final active = modalities.where((m) => m.active).toList();
+                          if (active.isEmpty) {
+                            return const Text(
+                              'Ainda não existe nenhuma modalidade ativa.',
+                              style: TextStyle(fontStyle: FontStyle.italic),
+                            );
+                          }
+                          return Column(
+                            children: active
+                                .map(
+                                  (m) => CheckboxListTile(
+                                    title: Text(m.name),
+                                    value: _modalityIds.contains(m.id),
+                                    onChanged: (checked) => setState(() {
+                                      if (checked ?? false) {
+                                        _modalityIds.add(m.id);
+                                      } else {
+                                        _modalityIds.remove(m.id);
+                                      }
+                                    }),
+                                  ),
+                                )
+                                .toList(),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ],
               ],
               const SizedBox(height: 16),
               const Card(

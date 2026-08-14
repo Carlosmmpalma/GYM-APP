@@ -44,3 +44,13 @@ export {
   generateRecurringOccurrencesNow,
 } from './generateRecurringOccurrences';
 export { assignMembersToOccurrence } from './assignMembersToOccurrence';
+
+// Fase 6 — Operações do dia a dia. removeMembersFromOccurrence (UC18
+// atualizado, reduzir vagas) e cancelOccurrenceForStudio (UC18/UC10,
+// substitui a escrita direta da Fase 5 — agora cascata para bookings/
+// usage) partilham `lib/bookingLogic.ts#prepareRelease`/`applyRelease`.
+export { removeMembersFromOccurrence } from './removeMembersFromOccurrence';
+export { cancelOccurrenceForStudio } from './cancelOccurrenceForStudio';
+export { deactivateInstructor } from './deactivateInstructor';
+export { rescheduleBooking } from './rescheduleBooking';
+export { sendNotification } from './sendNotification';

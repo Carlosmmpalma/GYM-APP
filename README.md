@@ -1723,22 +1723,275 @@ cartão, em vez de "Marcação #".
 **Verificado**: `flutter analyze` limpo, **70/70 testes Dart** a
 passar.
 
+## Fase 6 — Operações do dia a dia (Instrutor/Gestor)
+
+**Objetivo do guia:** dar ao Instrutor e ao Gestor as ferramentas do
+dia a dia sobre uma sessão concreta — quem apareceu, ajustar vagas,
+cancelar, remarcar, avisar os inscritos — e a primeira área da app
+própria do Instrutor (até aqui só o Gestor tinha ecrãs de gestão,
+decisão explícita da Fase 5).
+
+### Decisão de arquitetura (perguntada ao Carlos antes de codificar)
+
+O guia lista 9 stories, duas delas (notificações push, recuperação de
+password) a precisar de infraestrutura nova (FCM, fornecedor SMS/
+email) que eu não consigo configurar por ti. Perguntei se querias
+deixá-las de fora desta fase ou avançar mesmo assim, com a ressalva
+explícita de que ficariam incompletas sem essa configuração externa —
+escolheste avançar com as 9. O que isso significa na prática, ponto a
+ponto:
+
+- **Notificações push**: o código fica todo implementado (token
+  registration, Cloud Function, UI de envio), mas só entrega
+  notificações de facto depois de configurares uma VAPID key (Web
+  push) e/ou certificado APNs (iOS) na Firebase Console — um passo que
+  não é feito por código, o mesmo tipo de passo manual já documentado
+  desde a Fase 0 ("criar o Firebase Project"). Sem essa configuração,
+  `getToken()` falha em silêncio (capturado, não propaga erro nenhum
+  para o utilizador) e a app continua a funcionar normalmente, só sem
+  entregar pushes.
+- **Recuperação de password**: só é genuinamente self-service para
+  **staff** (email real — `sendPasswordResetEmail` do Firebase Auth
+  funciona de graça). Para **membros** (identificados por nº de sócio,
+  email sintético nunca entregável), a app mostra uma mensagem
+  explícita a dizer para contactar o Gestor — não finjo um mecanismo
+  que não existe. Fica documentado que a parte de membros precisa de
+  um fornecedor de SMS/email a decidir antes de ser implementada.
+
+### O que foi acrescentado
+
+- **`Modality`** (Domain Model v1 §8-9, pré-requisito acrescentado ao
+  guia ao fechar a Fase 5): `lib/domain/entities/modality.dart` (`id`,
+  `name`, `active`, `serviceIds` — lista de ids no próprio documento,
+  Firestore Data Model v1 §12). `ModalityRepository`/
+  `FirebaseModalityRepository`, mesmo padrão CRUD simples de
+  `ServiceRepository`. `ManageModalitiesScreen` (novo card em
+  "Gestão"). `StaffSummary` ganhou `modalityIds`; `CreateUserScreen`/
+  `StaffDetailScreen` ganharam o picker (checkboxes) para instrutores.
+  `SessionSeries`/`SessionOccurrence` ganharam `modalityId` opcional
+  (copiado da série para a ocorrência na geração, mesmo padrão de
+  `instructorId`); `CreateSeriesScreen` ganhou o dropdown, filtrado às
+  modalidades ativas do serviço escolhido. `firestore.rules`:
+  `modalities` — leitura ampla no tenant, escrita Manager (mesmo
+  padrão de `services`/`plans`).
+- **Roster de uma ocorrência — peça partilhada por presença/reduzir
+  vagas/remarcar.** Até esta fase, nenhum ecrã mostrava os NOMES de
+  quem estava inscrito numa sessão (só a contagem "X/Y").
+  `BookingRepository` ganhou `watchBookingsForOccurrence`.
+  `OccurrenceDetailScreen` (novo): cartão com serviço/modalidade/
+  instrutor/hora/vagas + lista de inscritos, e é o ecrã onde vivem
+  todas as ações desta fase — acessível a partir de
+  `SeriesDetailScreen` e do calendário. `ManageSeriesScreen` passou a
+  mostrar também "Sessões avulsas" (ocorrências `seriesId == null`,
+  que até aqui, uma vez criadas, nunca mais apareciam em lado nenhum
+  da Gestão).
+- **Presença/no-show (UC10-A)**: `Attendance` (`memberId`, `status`
+  attended/no_show, `recordedBy`, `recordedAt`) — documento isolado em
+  `sessionOccurrences/{id}/attendance/{memberId}`, separado do
+  `Booking` de propósito (Domain Model v1 §29). Escrita direta do
+  cliente (sem invariante cross-documento, não precisa de Cloud
+  Function) — Manager OU Instrutor; nova função `isInstructor(tenantId)`
+  em `firestore.rules`. `OccurrenceDetailScreen`: toggle Presente/
+  Faltou por inscrito.
+- **Reduzir vagas (UC18 atualizado) + cancelamento pelo estúdio
+  (UC18/UC10)**: ambos cross-documento (booking + contador + usage),
+  por isso Cloud Function. `lib/bookingLogic.ts` ganhou o par
+  `prepareRelease`/`applyRelease` (desenho em duas fases — Firestore
+  exige que TODAS as leituras de uma transação aconteçam antes de
+  qualquer escrita, o que impedia libertar vários membros num único
+  loop transacional sem isto). `removeMembersFromOccurrence.ts` (novo)
+  e `cancelOccurrenceForStudio.ts` (novo, substitui a escrita direta
+  da Fase 5 — a limitação que a própria Fase 5 já tinha assinalado
+  como "isso é Fase 6") partilham essa lógica; usage é SEMPRE
+  devolvida (estúdio-iniciado, ao contrário de `cancelBooking.ts` que
+  respeita a janela de antecedência mínima). `firestore.rules`:
+  `sessionOccurrences.update` passou a exigir também que `status` não
+  mude nessa escrita — cancelar já não pode saltar a cascata mesmo por
+  um Manager. `OccurrenceDetailScreen`: "Reduzir vagas" (força escolher
+  exatamente `atuais − novo limite` de quem sai) e "Cancelar sessão"
+  (com aviso do nº de inscritos afetados).
+- **Desativação de instrutor com cascata (UC24)**:
+  `deactivateInstructor.ts` (novo) — marca `staff.status = inactive`,
+  cancela todas as `sessionSeries` desse instrutor, e para cada
+  ocorrência futura ainda agendada aplica a mesma cascata de
+  `cancelOccurrenceForStudio` (uma transação por ocorrência — reutiliza
+  `prepareRelease`/`applyRelease`). Novo índice composto
+  `sessionOccurrences(instructorId, startAt)`. `StaffDetailScreen`: ao
+  desligar um instrutor, mostra um diálogo de confirmação explicando a
+  cascata e, no fim, um resumo (quantas séries/ocorrências/bookings
+  foram afetados) — nunca finge que "desativar" é uma escrita simples
+  quando na verdade cancela sessões de outras pessoas.
+- **Remarcar aluno (UC10-B)**: `rescheduleBooking.ts` (novo) — cancela
+  a marcação na ocorrência de origem (sempre com sucesso se existir) e
+  tenta marcar no destino. **Não é atómico entre origem e destino**
+  (são documentos/subcoleções diferentes) — se o destino falhar (sem
+  vaga, sem elegibilidade), a função devolve um erro com `reason`
+  prefixado `from-cancelled-*` para a UI mostrar isto com clareza, em
+  vez de sugerir que nada aconteceu; `RescheduleFailedException`
+  distingue esse caso de "não tinha marcação na origem" (erro comum/
+  esperado). `OccurrenceDetailScreen`: botão "Remarcar" por inscrito,
+  picker das próximas ocorrências do MESMO serviço.
+- **Notificações push (UC21) + infraestrutura FCM**: `MemberRepository`/
+  `StaffRepository` ganharam `registerFcmToken` (`arrayUnion`, nunca
+  substitui tokens antigos — um dispositivo pode reinstalar a app).
+  `fcmTokenRegistrationProvider` (novo) — chamado uma vez por sessão de
+  login a partir de `HomeScreen`, pede permissão + regista o token,
+  com falha SEMPRE silenciosa (ver decisão acima).
+  `firestore.rules`: `fcmTokens` juntou-se à lista restrita de campos
+  que o próprio membro pode escrever no seu documento (Fase 5, UC02);
+  `staff` já tinha escrita ampla, sem alteração necessária.
+  `sendNotification.ts` (novo) — alvo `memberId` único OU
+  `occurrenceId` (todos os inscritos ativos dessa sessão; não existe
+  nenhum conceito de "alunos do instrutor" independente de uma sessão
+  concreta no Domain Model, por isso o alvo "todos os alunos" do
+  mockup simplifica para isto — sinalizado). `SendNotificationScreen`
+  (novo), acessível a partir de `OccurrenceDetailScreen` (todos os
+  inscritos) e de `ManagerScreen` (um membro específico).
+  `FirebaseMessaging.onMessage` em `HomeScreen` mostra um SnackBar em
+  primeiro plano (sem `flutter_local_notifications`, fora de âmbito —
+  mensagens em segundo plano/terminado já aparecem via o SO, sem
+  código extra).
+- **Calendário do instrutor (UC20)**: `InstructorCalendarScreen`
+  (novo) — próximas 2 semanas, agrupadas por dia, cada sessão com
+  serviço/modalidade/hora/vagas; toca → `OccurrenceDetailScreen` (o
+  mesmo ecrã de gestão — os mockups mostram estas ações também na
+  secção "Instrutor", não é um ecrã à parte). Ícone novo em `HomeScreen`
+  (visível a um instrutor puro, filtrado à própria agenda) e card novo
+  em `ManagerScreen` (sem filtro — "a visão do gestor" dos mockups é a
+  mesma janela, todas as sessões).
+- **Recuperação de password para staff (UC01-A)**: `AuthRepository`
+  ganhou `sendPasswordResetEmail`. `LoginScreen`: link "Esqueci-me da
+  password" — se o identificador introduzido contém `@` (mesma deteção
+  já usada para login de staff desde a Fase 3), chama o Firebase Auth
+  diretamente; sem `@` (nº de sócio), mostra o aviso "contacta o Gestor"
+  descrito acima.
+
+### Verificado
+
+- `dart format` nos ficheiros desta fase, `flutter analyze
+  --fatal-infos` (0 avisos) e **`flutter test` — 83/83 testes a
+  passar**, incluindo os 13 novos desta fase (`modality_test.dart`,
+  `attendance_test.dart`, `manage_modalities_screen_test.dart`,
+  `occurrence_detail_screen_test.dart` — presença + reduzir vagas,
+  fakes de repositório contra `FakeFirebaseFirestore`, nunca mock
+  direto de `cloud_functions`, mesmo padrão de sempre).
+- `npm run build` + `npm run lint` em `firebase/functions` — 0 erros,
+  0 avisos, incluindo as 6 Cloud Functions novas desta fase
+  (`removeMembersFromOccurrence`, `cancelOccurrenceForStudio`,
+  `deactivateInstructor`, `rescheduleBooking`, `sendNotification`).
+- 🔴 `firebase emulators:exec --only firestore,functions,auth "npm
+  --prefix firebase/tests test"` — **73/73 testes de Security
+  Rules/Functions a passar**, incluindo os 15 novos de
+  `operations-rules.test.ts` (`modalities` Manager-only, `attendance`
+  Manager/Instrutor nunca membro, `sessionOccurrences.status` bloqueado
+  a escrita direta mesmo para Manager, `members.fcmTokens` na mesma
+  regra restrita do próprio membro). Um teste da Fase 5
+  (`session-series-rules.test.ts`, "Manager consegue cancelar só esta
+  ocorrência") tinha ficado a assumir o comportamento ANTIGO — corrigido
+  para refletir o bloqueio novo desta fase, com nota a apontar para
+  `operations-rules.test.ts`.
+
+**O que continua por confirmar manualmente** (sem como correr `flutter
+run` + clicar na app a partir daqui): todo o fluxo em Chrome — ver os
+passos abaixo. Em particular, notificações push e recuperação de
+password de membro só têm como ser confirmadas depois das decisões de
+infraestrutura pendentes (ver acima).
+
+### Passos para verificar a Fase 6 localmente
+
+Comandos em PowerShell — sem `&&`; cada passo em linhas separadas.
+
+```powershell
+# 1. Confirmar que tudo continua a compilar/passar
+dart format --output=none --set-exit-if-changed .
+flutter analyze --fatal-infos
+flutter test
+# Espera 83/83.
+
+# 2. Cloud Functions: build + lint
+cd firebase/functions
+npm run build
+npm run lint
+cd ../..
+
+# 3. 🔴 Security Rules + Functions (precisa de firestore,functions,auth
+#    — booking-concurrency.test.ts, da Fase 5, continua a chamar
+#    createBooking a sério através do Functions Emulator)
+firebase emulators:exec --project=demo-gym-saas-dev --only firestore,functions,auth "npm --prefix firebase/tests test"
+# Espera 73/73.
+
+# 4. Com o emulador completo a correr (firebase emulators:start
+#    --project=demo-gym-saas-dev) e o seed já feito (Fase 5):
+flutter run -t lib/main_development.dart
+
+# 5. Modalidades — como o Leo (Gestor)
+# Gestão → Modalidades → "+" → cria "Pilates" → abre-a, ativa o
+# serviço "Hyrox" → volta a "Aulas/Horários" → cria uma série nova →
+# confirma que o dropdown de modalidade aparece e lista "Pilates".
+
+# 6. Presença — abre uma sessão (a partir de "Aulas/Horários" ou do
+# calendário) com inscritos → marca Presente num, Faltou noutro →
+# confirma no emulador (localhost:4000/firestore) que
+# sessionOccurrences/{id}/attendance/{uid} tem o status certo.
+
+# 7. Reduzir vagas — na mesma sessão, "Reduzir vagas" → baixa a
+# capacidade → escolhe exatamente quem sai → confirma que a
+# capacidade e a contagem batem certo, e que o(s) membro(s) removido(s)
+# recupera(m) a utilização semanal (Marcações dele(s) já não mostra
+# essa sessão).
+
+# 8. Cancelar sessão pelo estúdio — outra sessão com inscritos →
+# "Cancelar sessão" → confirma que TODOS os inscritos recuperam a
+# utilização semanal e a sessão desaparece de "Marcar treino".
+
+# 9. Desativar um instrutor com sessões futuras — Gestão → Staff →
+# escolhe um instrutor com séries/sessões futuras → desliga "Staff
+# ativo" → confirma o diálogo de aviso e o resumo final → confirma que
+# essas séries/sessões desaparecem.
+
+# 10. Remarcar um aluno — numa sessão com inscritos, "Remarcar" num
+# membro → escolhe outra sessão do mesmo serviço → confirma que ele
+# sai da origem e aparece no destino.
+
+# 11. Notificar — a partir de uma sessão, "Notificar inscritos" (envia
+# a todos os ativos) e, a partir de Gestão → "Notificar um membro"
+# (um só) → confirma que não crasha mesmo sem VAPID key configurada
+# (mensagem "0 dispositivo(s)" é esperada sem essa configuração).
+
+# 12. Calendário do instrutor — login como um Instrutor puro (sem
+# Role.manager) → ícone novo na AppBar → confirma que só mostra as
+# suas próprias sessões nas próximas 2 semanas. Como o Leo (Manager),
+# Gestão → "Calendário" → confirma que mostra TODAS as sessões.
+
+# 13. Recuperação de password — LoginScreen → "Esqueci-me da
+# password" com "leo@nxtperformancestudio.pt" → confirma no emulador
+# de Auth (localhost:4000/auth) que o email foi enviado. Com um nº de
+# sócio → confirma a mensagem "contacta o Gestor", sem tentar enviar
+# nada.
+```
+
+### Critério "Done" da Fase 6
+
+> um Instrutor consegue ver a sua agenda, marcar presença, e o Gestor
+> consegue reduzir vagas/cancelar uma sessão sem overbooking nem
+> perder o histórico.
+
+Os passos 6-9 e 12 acima cobrem exatamente isto — presença registada
+por sessão, reduzir vagas/cancelar sempre com devolução de utilização
+(nunca overbooking, `activeBookingCount` continua exclusivo das Cloud
+Functions), agenda do instrutor a mostrar só as suas sessões. Remarcar
+(UC10-B) e notificar (UC21) vão além do critério mínimo, também
+cobertos (passos 10-11). **Continua por confirmar manualmente por ti**
+— o mecanismo está implementado e os testes automatizados (Dart +
+Cloud Functions + Rules) passam, mas ninguém clicou ainda na app a
+sério para esta fase.
+
 ## Próximo passo
 
-Fase 6 do guia (`Technical/guia-desenvolvimento.md`) — "Operações do
-dia a dia (Instrutor/Gestor)": **agora começa por modelar `Modality`**
-(acrescentado ao guia ao fechar a Fase 5 — pré-requisito do calendário
-por modalidade, UC20, que nenhuma fase anterior tinha pedido
-explicitamente), depois registo de presença/no-show (UC10-A, separado
-do booking), reduzir vagas com seleção explícita de quem remover
-(UC18), cancelamento de sessão pelo estúdio → cancela bookings +
-devolve usage em cadeia (UC18/UC10 — a peça que `cancelOccurrence` da
-Fase 5 deliberadamente NÃO faz ainda, ver nota em
-`session_occurrence_repository.dart`), desativação de instrutor →
-cancela sessões futuras automaticamente (UC24), remarcar aluno
-(UC10-B), notificações (UC21), calendário do instrutor (UC20), e
-recuperação de password self-service (UC01-A, também acrescentado ao
-guia agora — precisa de decidir um fornecedor de SMS/email primeiro).
-Também onde faz sentido revisitar se o Instrutor deve poder gerir as
+Fase 6 está fechada. Os próximos passos ficam ao teu critério —
+sugestões abertas: revisitar se o Instrutor deve poder criar/gerir as
 suas próprias séries (Fase 5 deixou isso deliberadamente só para o
-Gestor). Ainda por consultar em detalhe.
+Gestor); configurar a VAPID key/certificado APNs para as notificações
+push entregarem de facto; decidir um fornecedor de SMS/email para a
+recuperação de password self-service de membros. `Technical/guia-desenvolvimento.md`
+não lista Fase 7 ainda — a definir contigo quando quiseres avançar.

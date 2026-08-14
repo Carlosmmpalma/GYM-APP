@@ -18,6 +18,7 @@ SessionOccurrence _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     activeBookingCount: (data['activeBookingCount'] as num? ?? 0).toInt(),
     seriesId: data['seriesId'] as String?,
     instructorId: data['instructorId'] as String?,
+    modalityId: data['modalityId'] as String?,
   );
 }
 
@@ -64,9 +65,18 @@ class FirebaseSessionOccurrenceRepository
   }
 
   @override
+  Stream<SessionOccurrence?> watchOccurrence(String occurrenceId) {
+    return _occurrences
+        .doc(occurrenceId)
+        .snapshots()
+        .map((snapshot) => snapshot.exists ? _fromDoc(snapshot) : null);
+  }
+
+  @override
   Future<String> createOccurrence({
     required String serviceId,
     String? instructorId,
+    String? modalityId,
     required DateTime startAt,
     required DateTime endAt,
     required int capacity,
@@ -74,6 +84,7 @@ class FirebaseSessionOccurrenceRepository
     final ref = await _occurrences.add({
       'serviceId': serviceId,
       'instructorId': instructorId,
+      'modalityId': modalityId,
       'seriesId': null,
       'startAt': Timestamp.fromDate(startAt),
       'endAt': Timestamp.fromDate(endAt),
@@ -92,18 +103,28 @@ class FirebaseSessionOccurrenceRepository
     required DateTime endAt,
     required int capacity,
     String? instructorId,
+    String? modalityId,
   }) async {
     await _occurrences.doc(occurrenceId).update({
       'startAt': Timestamp.fromDate(startAt),
       'endAt': Timestamp.fromDate(endAt),
       'capacity': capacity,
       'instructorId': instructorId,
+      'modalityId': modalityId,
     });
   }
 
   @override
   Future<void> cancelOccurrence(String occurrenceId) async {
-    await _occurrences.doc(occurrenceId).update({'status': 'cancelled'});
+    // Fase 6 — deixou de ser uma escrita direta (`update({'status':
+    // 'cancelled'})`, Fase 5): cancelar tem de cascatar para os
+    // bookings ativos (libertar vaga + devolver usage, UC18/UC10), o
+    // que exige Admin SDK — mesmo motivo de createBooking/cancelBooking
+    // desde a Fase 4. `firestore.rules` já bloqueia mudar `status` por
+    // escrita direta do cliente, mesmo para Manager.
+    await _functions.httpsCallable('cancelOccurrenceForStudio').call<void>({
+      'occurrenceId': occurrenceId,
+    });
   }
 
   @override
@@ -148,5 +169,47 @@ class FirebaseSessionOccurrenceRepository
       for (final entry in entries)
         entry['memberId'] as String: entry['ok'] as bool,
     };
+  }
+
+  @override
+  Future<List<String>> removeMembers({
+    required String occurrenceId,
+    required List<String> memberIds,
+    int? newCapacity,
+  }) async {
+    final result = await _functions
+        .httpsCallable('removeMembersFromOccurrence')
+        .call<Object?>({
+      'occurrenceId': occurrenceId,
+      'memberIds': memberIds,
+      if (newCapacity != null) 'newCapacity': newCapacity,
+    });
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return ((data['removed'] as List?) ?? const [])
+        .map((e) => e as String)
+        .toList();
+  }
+
+  @override
+  Future<void> rescheduleBooking({
+    required String fromOccurrenceId,
+    required String toOccurrenceId,
+    required String memberId,
+  }) async {
+    try {
+      await _functions.httpsCallable('rescheduleBooking').call<void>({
+        'fromOccurrenceId': fromOccurrenceId,
+        'toOccurrenceId': toOccurrenceId,
+        'memberId': memberId,
+      });
+    } on FirebaseFunctionsException catch (e) {
+      final reason =
+          e.details is Map ? (e.details as Map)['reason'] as String? : null;
+      if (reason != null && reason.startsWith('from-cancelled')) {
+        throw RescheduleFailedException(
+            e.message ?? 'Não foi possível remarcar.');
+      }
+      rethrow;
+    }
   }
 }

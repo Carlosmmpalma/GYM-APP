@@ -7,6 +7,7 @@ import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/session_series.dart';
 import 'create_series_screen.dart';
+import 'occurrence_detail_screen.dart';
 import 'series_detail_screen.dart';
 
 const _weekdayNames = {
@@ -34,6 +35,7 @@ class ManageSeriesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final seriesAsync = ref.watch(seriesProvider);
+    final occurrencesAsync = ref.watch(allUpcomingOccurrencesProvider);
     final servicesAsync = ref.watch(servicesProvider);
     final staffAsync = ref.watch(staffProvider);
 
@@ -50,54 +52,112 @@ class ManageSeriesScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) => Center(child: Text('Erro: $error')),
         data: (seriesList) {
-          if (seriesList.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Ainda não existe nenhuma série. Usa o botão "+" para criar '
-                  'a primeira aula/PT recorrente.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
           final servicesById = {
             for (final s in servicesAsync.valueOrNull ?? const []) s.id: s,
           };
           final staffByUid = {
             for (final s in staffAsync.valueOrNull ?? const []) s.uid: s,
           };
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: seriesList.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final series = seriesList[index];
-              final serviceName =
-                  servicesById[series.serviceId]?.name ?? series.serviceId;
-              final instructorName = series.instructorId == null
-                  ? null
-                  : staffByUid[series.instructorId]?.name;
-              return Card(
-                child: ListTile(
-                  title: Text(serviceName),
-                  subtitle: Text(
-                    '${_weekdayNames[series.dayOfWeek] ?? series.dayOfWeek} · '
-                    '${series.startTime} · ${series.capacityLabel}'
-                    '${instructorName != null ? ' · $instructorName' : ''}'
-                    '${series.isActive ? '' : ' · cancelada'}',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                        builder: (_) => SeriesDetailScreen(series: series)),
-                  ),
+          // Fase 6 — ocorrências "só esta data" (seriesId == null):
+          // até aqui, uma vez criadas, nunca mais apareciam em lado
+          // nenhum da Gestão. Filtrado client-side sobre a mesma
+          // stream já usada em `BookTrainingScreen` (Fase 5) — sem
+          // query nova.
+          final adHocOccurrences = (occurrencesAsync.valueOrNull ?? const [])
+              .where((o) => o.seriesId == null)
+              .toList();
+
+          if (seriesList.isEmpty && adHocOccurrences.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Ainda não existe nenhuma série nem sessão. Usa o botão '
+                  '"+" para criar a primeira aula/PT.',
+                  textAlign: TextAlign.center,
                 ),
-              );
-            },
+              ),
+            );
+          }
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              if (seriesList.isNotEmpty) ...[
+                Text('Séries', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                for (final series in seriesList) ...[
+                  _SeriesTile(
+                    series: series,
+                    serviceName:
+                        servicesById[series.serviceId]?.name ?? series.serviceId,
+                    instructorName: series.instructorId == null
+                        ? null
+                        : staffByUid[series.instructorId]?.name,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ],
+              if (adHocOccurrences.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text('Sessões avulsas', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                for (final occurrence in adHocOccurrences) ...[
+                  Card(
+                    child: ListTile(
+                      title: Text(
+                        servicesById[occurrence.serviceId]?.name ?? occurrence.serviceId,
+                      ),
+                      subtitle: Text(
+                        '${seriesDateFormat.format(occurrence.startAt)} · '
+                        '${occurrence.activeBookingCount}/${occurrence.capacity} inscritos',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              OccurrenceDetailScreen(occurrenceId: occurrence.id),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ],
+            ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _SeriesTile extends StatelessWidget {
+  const _SeriesTile({
+    required this.series,
+    required this.serviceName,
+    required this.instructorName,
+  });
+
+  final SessionSeries series;
+  final String serviceName;
+  final String? instructorName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        title: Text(serviceName),
+        subtitle: Text(
+          '${_weekdayNames[series.dayOfWeek] ?? series.dayOfWeek} · '
+          '${series.startTime} · ${series.capacityLabel}'
+          '${instructorName != null ? ' · $instructorName' : ''}'
+          '${series.isActive ? '' : ' · cancelada'}',
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: series)),
+        ),
       ),
     );
   }

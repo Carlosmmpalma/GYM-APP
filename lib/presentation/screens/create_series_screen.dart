@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/admin_providers.dart';
 import '../../application/providers/booking_providers.dart';
+import '../../application/providers/modality_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/role.dart';
 import '../../domain/entities/service.dart';
@@ -29,6 +30,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
   bool _recurring = true;
   Service? _service;
   String? _instructorId;
+  String? _modalityId;
   int _dayOfWeek = DateTime.monday;
   DateTime _date = DateTime.now();
   TimeOfDay _time = const TimeOfDay(hour: 18, minute: 0);
@@ -83,12 +85,37 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                         .toList(),
                     onChanged: (v) => setState(() {
                       _service = v;
+                      _modalityId = null;
                       _preAssignedMemberIds.clear();
                     }),
                     validator: (v) => v == null ? 'Escolhe um serviço' : null,
                   );
                 },
               ),
+              if (_service != null) ...[
+                const SizedBox(height: 16),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final modalitiesAsync = ref.watch(modalitiesProvider);
+                    final options = (modalitiesAsync.valueOrNull ?? const [])
+                        .where((m) => m.active && m.serviceIds.contains(_service!.id))
+                        .toList();
+                    if (options.isEmpty) return const SizedBox.shrink();
+                    return DropdownButtonFormField<String?>(
+                      key: ValueKey('modality-${_service!.id}'),
+                      initialValue: _modalityId,
+                      decoration: const InputDecoration(labelText: 'Modalidade (opcional)'),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('Sem modalidade')),
+                        ...options.map(
+                          (m) => DropdownMenuItem(value: m.id, child: Text(m.name)),
+                        ),
+                      ],
+                      onChanged: (v) => setState(() => _modalityId = v),
+                    );
+                  },
+                ),
+              ],
               const SizedBox(height: 16),
               staffAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -251,6 +278,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
         await ref.read(sessionSeriesRepositoryProvider).createSeries(
               serviceId: _service!.id,
               instructorId: _instructorId,
+              modalityId: _modalityId,
               dayOfWeek: _dayOfWeek,
               startTime:
                   '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}',
@@ -295,6 +323,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
             .createOccurrence(
               serviceId: _service!.id,
               instructorId: _instructorId,
+              modalityId: _modalityId,
               startAt: startAt,
               endAt: endAt,
               capacity: capacity,

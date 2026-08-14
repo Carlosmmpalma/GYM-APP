@@ -58,6 +58,14 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "activeServiceIds", "arrayConfig": "CONTAINS" }
       ]
+    },
+    {
+      "collectionGroup": "sessionOccurrences",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "instructorId", "order": "ASCENDING" },
+        { "fieldPath": "startAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

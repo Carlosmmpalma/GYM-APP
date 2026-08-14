@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/admin_providers.dart';
+import '../../application/providers/modality_providers.dart';
+import '../../domain/entities/role.dart';
 import '../../domain/entities/staff_summary.dart';
 
 /// Detalhe de staff (Instrutor/Gestor): dados + toggle ativo/inativo.
@@ -52,37 +54,144 @@ class StaffDetailScreen extends ConsumerWidget {
               subtitle: Text(
                 currentStaff.active
                     ? 'Pode continuar a fazer login e a dar aulas/PT.'
-                    : 'Inativo — mantém o histórico (aulas dadas, etc.), '
-                        'mas devias reatribuir as sessões futuras dele.',
+                    : 'Inativo — mantém o histórico (aulas dadas, etc.).'
+                        '${currentStaff.roles.contains(Role.instructor) ? ' As séries/sessões futuras dele já foram canceladas (UC24).' : ''}',
               ),
               value: currentStaff.active,
-              onChanged: (value) async {
-                try {
-                  await ref.read(staffRepositoryProvider).setStaffActive(
-                        staffId: currentStaff.uid,
-                        active: value,
-                      );
-                } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Não foi possível atualizar o staff: $e')),
-                  );
-                }
-              },
+              onChanged: (value) => _toggleActive(context, ref, currentStaff, value),
             ),
           ),
-          if (!currentStaff.active)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text(
-                'Nota: desativar aqui não cancela automaticamente as sessões '
-                'futuras deste instrutor (UC24) — isso é gestão de sessões, '
-                'ainda não construída (Fase 5+ do guia).',
-                style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic),
-              ),
+          if (currentStaff.roles.contains(Role.instructor)) ...[
+            const SizedBox(height: 24),
+            Text('Modalidades', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Consumer(
+              builder: (context, ref, _) {
+                final modalitiesAsync = ref.watch(modalitiesProvider);
+                return modalitiesAsync.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (error, stack) => Text('Erro: $error'),
+                  data: (modalities) {
+                    final active = modalities.where((m) => m.active).toList();
+                    if (active.isEmpty) {
+                      return const Text(
+                        'Ainda não existe nenhuma modalidade ativa.',
+                        style: TextStyle(fontStyle: FontStyle.italic),
+                      );
+                    }
+                    return Column(
+                      children: active
+                          .map(
+                            (m) => CheckboxListTile(
+                              title: Text(m.name),
+                              value: currentStaff.modalityIds.contains(m.id),
+                              onChanged: (checked) async {
+                                final updated = {...currentStaff.modalityIds};
+                                if (checked ?? false) {
+                                  updated.add(m.id);
+                                } else {
+                                  updated.remove(m.id);
+                                }
+                                try {
+                                  await ref.read(staffRepositoryProvider).setModalityIds(
+                                        staffId: currentStaff.uid,
+                                        modalityIds: updated,
+                                      );
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text('Não foi possível atualizar: $e')),
+                                  );
+                                }
+                              },
+                            ),
+                          )
+                          .toList(),
+                    );
+                  },
+                );
+              },
             ),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _toggleActive(
+    BuildContext context,
+    WidgetRef ref,
+    StaffSummary currentStaff,
+    bool active,
+  ) async {
+    final isInstructor = currentStaff.roles.contains(Role.instructor);
+
+    // UC24 — desativar um instrutor cancela em cadeia as suas séries/
+    // sessões futuras; um Gestor puro não tem nada para cascatar.
+    // Reativar nunca cascata (não faz sentido "des-cancelar" sessões
+    // sozinho) — continua a escrita simples de sempre.
+    if (!active && isInstructor) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Desativar instrutor?'),
+          content: Text(
+            'As séries ativas e as sessões futuras de ${currentStaff.name} vão '
+            'ser canceladas automaticamente (UC24) — quem estiver inscrito '
+            'recupera a utilização semanal, como um cancelamento pelo estúdio.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Voltar'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Desativar'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      try {
+        final summary = await ref
+            .read(staffRepositoryProvider)
+            .deactivateInstructorWithCascade(currentStaff.uid);
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Instrutor desativado — ${summary.seriesCancelled} série(s) e '
+              '${summary.occurrencesCancelled} sessão/sessões futura(s) '
+              'canceladas (${summary.bookingsCancelled} marcação(ões) '
+              'afetada(s)).',
+            ),
+          ),
+        );
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível desativar: $e')),
+        );
+      }
+      return;
+    }
+
+    try {
+      await ref.read(staffRepositoryProvider).setStaffActive(
+            staffId: currentStaff.uid,
+            active: active,
+          );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível atualizar o staff: $e')),
+      );
+    }
   }
 }

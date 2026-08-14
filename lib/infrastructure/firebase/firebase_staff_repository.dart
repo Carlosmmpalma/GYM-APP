@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../domain/entities/role.dart';
 import '../../domain/entities/staff_summary.dart';
@@ -7,19 +8,22 @@ import '../../repositories/staff_repository.dart';
 StaffSummary _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
   final data = doc.data() ?? const {};
   final rolesRaw = (data['roles'] as List?) ?? const [];
+  final modalityIdsRaw = (data['modalityIds'] as List?) ?? const [];
   return StaffSummary(
     uid: doc.id,
     name: data['name'] as String? ?? '(sem nome)',
     email: data['email'] as String? ?? '',
     roles: rolesRaw.map((r) => Role.fromClaim(r as String)).toSet(),
     active: (data['status'] as String? ?? 'active') == 'active',
+    modalityIds: modalityIdsRaw.map((e) => e as String).toSet(),
   );
 }
 
 class FirebaseStaffRepository implements StaffRepository {
-  FirebaseStaffRepository(this._firestore, this._tenantId);
+  FirebaseStaffRepository(this._firestore, this._functions, this._tenantId);
 
   final FirebaseFirestore _firestore;
+  final FirebaseFunctions _functions;
   final String _tenantId;
 
   CollectionReference<Map<String, dynamic>> get _staff =>
@@ -39,6 +43,43 @@ class FirebaseStaffRepository implements StaffRepository {
   }) async {
     await _staff.doc(staffId).update({
       'status': active ? 'active' : 'inactive',
+    });
+  }
+
+  @override
+  Future<void> setModalityIds({
+    required String staffId,
+    required Set<String> modalityIds,
+  }) async {
+    await _staff.doc(staffId).update({'modalityIds': modalityIds.toList()});
+  }
+
+  @override
+  Future<
+      ({
+        int seriesCancelled,
+        int occurrencesCancelled,
+        int bookingsCancelled
+      })> deactivateInstructorWithCascade(String staffId) async {
+    final result =
+        await _functions.httpsCallable('deactivateInstructor').call<Object?>({
+      'staffId': staffId,
+    });
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return (
+      seriesCancelled: (data['seriesCancelled'] as num? ?? 0).toInt(),
+      occurrencesCancelled: (data['occurrencesCancelled'] as num? ?? 0).toInt(),
+      bookingsCancelled: (data['bookingsCancelled'] as num? ?? 0).toInt(),
+    );
+  }
+
+  @override
+  Future<void> registerFcmToken({
+    required String staffId,
+    required String token,
+  }) async {
+    await _staff.doc(staffId).update({
+      'fcmTokens': FieldValue.arrayUnion([token]),
     });
   }
 }

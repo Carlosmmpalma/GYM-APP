@@ -39,6 +39,13 @@ abstract class AuthRepository {
   /// `password_temporaria` no documento do membro/staff é a camada de
   /// aplicação, depois disto ter sucesso.
   Future<void> updatePassword(String newPassword);
+
+  /// UC01-A — só faz sentido para staff (email real): o Firebase Auth
+  /// envia o link de reset diretamente para essa caixa de correio, sem
+  /// precisar de nenhuma Cloud Function nova. Para membros (email
+  /// sintético, nunca entregável) isto NÃO é chamado — `LoginScreen`
+  /// intercepta antes, ver nota lá.
+  Future<void> sendPasswordResetEmail(String email);
 }
 
 class InvalidCredentialsException implements Exception {

@@ -233,9 +233,14 @@ describe('Security Rules — sessionOccurrences escritas por Manager (Fase 5)', 
     );
   });
 
-  it('um Manager CONSEGUE cancelar só esta ocorrência (status)', async () => {
+  // Fase 6: esta escrita passou a ser bloqueada mesmo para o Manager —
+  // cancelar tem de cascatar para os bookings ativos (libertar vaga +
+  // devolver usage), o que só a Cloud Function `cancelOccurrenceForStudio`
+  // (Admin SDK) faz. Ver `operations-rules.test.ts` (Fase 6) para a
+  // cobertura completa desta invariante.
+  it('um Manager já NÃO consegue mudar status diretamente (Fase 6 — passou por Cloud Function)', async () => {
     const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
-    await assertSucceeds(
+    await assertFails(
       db.doc(`tenants/${TENANT_A}/sessionOccurrences/occ_1`).update({ status: 'cancelled' }),
     );
   });

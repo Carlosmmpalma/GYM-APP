@@ -61,3 +61,30 @@ export function requireManager(request: CallableRequest): AuthenticatedManager {
 
   return { uid: auth.uid, tenantId };
 }
+
+/**
+ * Fase 6 — operações do dia a dia sobre uma sessão (reduzir vagas,
+ * cancelar pelo estúdio, remarcar, notificar) podem ser feitas por
+ * Manager OU Instrutor, ao contrário das operações de gestão
+ * anteriores (criar staff, planos, séries), que continuam
+ * `requireManager`. Os mockups mostram estas ações também na secção
+ * "Instrutor", não só "Gestor".
+ */
+export function requireManagerOrInstructor(request: CallableRequest): AuthenticatedManager {
+  const auth = request.auth;
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'Autenticação necessária.');
+  }
+
+  const tenantId = auth.token.tenantId as string | undefined;
+  const roles = (auth.token.roles as string[] | undefined) ?? [];
+
+  if (!tenantId || !(roles.includes('manager') || roles.includes('instructor'))) {
+    throw new HttpsError(
+      'permission-denied',
+      'Só um Gestor ou Instrutor do tenant pode executar esta operação.',
+    );
+  }
+
+  return { uid: auth.uid, tenantId };
+}

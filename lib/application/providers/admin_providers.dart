@@ -15,6 +15,7 @@ import 'tenant_context_providers.dart';
 final staffRepositoryProvider = Provider<StaffRepository>((ref) {
   return FirebaseStaffRepository(
     ref.watch(firestoreProvider),
+    ref.watch(functionsProvider),
     ref.watch(tenantAppConfigProvider).tenantId,
   );
 });

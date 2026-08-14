@@ -35,11 +35,13 @@ class FirebaseUserProvisioningRepository implements UserProvisioningRepository {
     required String name,
     required String email,
     required Set<Role> roles,
+    Set<String> modalityIds = const {},
   }) async {
     final result = await _functions.httpsCallable('createStaff').call<Object?>({
       'name': name,
       'email': email,
       'roles': roles.map((r) => r.name).toList(),
+      'modalityIds': modalityIds.toList(),
     });
     final data = _asMap(result.data);
     return NewAccountCredentials(

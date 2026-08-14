@@ -13,6 +13,7 @@ class StaffSummary extends Equatable {
     required this.email,
     required this.roles,
     required this.active,
+    this.modalityIds = const {},
   });
 
   final String uid;
@@ -21,6 +22,12 @@ class StaffSummary extends Equatable {
   final Set<Role> roles;
   final bool active;
 
+  /// Fase 6 (UC12/22 fechado: "instrutor pode ter várias modalidades")
+  /// — só tem sentido para quem tem `Role.instructor`, mas fica no
+  /// mesmo documento de sempre; um Gestor puro simplesmente nunca
+  /// preenche isto.
+  final Set<String> modalityIds;
+
   @override
-  List<Object?> get props => [uid, name, email, roles, active];
+  List<Object?> get props => [uid, name, email, roles, active, modalityIds];
 }

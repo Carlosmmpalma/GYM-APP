@@ -60,4 +60,14 @@ class FirebaseMemberRepository implements MemberRepository {
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
+
+  @override
+  Future<void> registerFcmToken({
+    required String memberId,
+    required String token,
+  }) async {
+    await _members.doc(memberId).update({
+      'fcmTokens': FieldValue.arrayUnion([token]),
+    });
+  }
 }

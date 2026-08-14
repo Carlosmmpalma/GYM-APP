@@ -29,4 +29,15 @@ abstract class MemberRepository {
     required String phone,
     required String email,
   });
+
+  /// Fase 6 (UC21) — regista este token de FCM no próprio documento
+  /// (`arrayUnion`, um dispositivo pode ter mais do que um token ao
+  /// longo do tempo — reinstalação, etc.; nunca removemos tokens
+  /// antigos aqui, só acrescentamos). Falha silenciosa esperada em
+  /// plataformas/browsers sem VAPID key configurada — ver
+  /// `notification_providers.dart`.
+  Future<void> registerFcmToken({
+    required String memberId,
+    required String token,
+  });
 }

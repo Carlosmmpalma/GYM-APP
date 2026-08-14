@@ -1,15 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../domain/entities/attendance.dart';
 import '../../domain/entities/booking.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/session_series.dart';
 import '../../domain/entities/usage.dart';
+import '../../infrastructure/firebase/firebase_attendance_repository.dart';
 import '../../infrastructure/firebase/firebase_booking_repository.dart';
 import '../../infrastructure/firebase/firebase_service_repository.dart';
 import '../../infrastructure/firebase/firebase_session_occurrence_repository.dart';
 import '../../infrastructure/firebase/firebase_session_series_repository.dart';
 import '../../infrastructure/firebase/firebase_subscription_repository.dart';
 import '../../infrastructure/firebase/firebase_usage_repository.dart';
+import '../../repositories/attendance_repository.dart';
 import '../../repositories/booking_repository.dart';
 import '../../repositories/service_repository.dart';
 import '../../repositories/session_occurrence_repository.dart';
@@ -41,7 +44,41 @@ final bookingRepositoryProvider = Provider<BookingRepository>((ref) {
   return FirebaseBookingRepository(
     ref.watch(firestoreProvider),
     ref.watch(functionsProvider),
+    ref.watch(tenantAppConfigProvider).tenantId,
   );
+});
+
+/// Fase 6 — roster de uma ocorrência (presença, reduzir vagas, remarcar).
+final occurrenceBookingsProvider =
+    StreamProvider.family<List<Booking>, String>((ref, occurrenceId) {
+  return ref
+      .watch(bookingRepositoryProvider)
+      .watchBookingsForOccurrence(occurrenceId);
+});
+
+/// Fase 6 — versão reativa de `getOccurrence`, para
+/// `OccurrenceDetailScreen` refletir capacidade/contagem ao vivo depois
+/// de ações (reduzir vagas, cancelar).
+final liveOccurrenceProvider =
+    StreamProvider.family<SessionOccurrence?, String>((ref, occurrenceId) {
+  return ref
+      .watch(sessionOccurrenceRepositoryProvider)
+      .watchOccurrence(occurrenceId);
+});
+
+/// Fase 6 (UC10-A).
+final attendanceRepositoryProvider = Provider<AttendanceRepository>((ref) {
+  return FirebaseAttendanceRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(tenantAppConfigProvider).tenantId,
+  );
+});
+
+final occurrenceAttendanceProvider =
+    StreamProvider.family<List<Attendance>, String>((ref, occurrenceId) {
+  return ref
+      .watch(attendanceRepositoryProvider)
+      .watchAttendanceForOccurrence(occurrenceId);
 });
 
 /// Fase 4 — leitura do read model de utilização (`usage/{...}`, ver
@@ -161,5 +198,20 @@ final upcomingWeekOccurrencesProvider =
       .watchOccurrencesStartingBetween(
         now,
         now.add(const Duration(days: 7)),
+      );
+});
+
+/// UC20 — `InstructorCalendarScreen`: janela maior que
+/// [upcomingWeekOccurrencesProvider] (2 semanas em vez de 1), qualquer
+/// serviço/instrutor — o ecrã filtra client-side por `instructorId`
+/// quando aberto por um Instrutor; o Gestor vê tudo sem filtro.
+final upcomingTwoWeeksOccurrencesProvider =
+    StreamProvider<List<SessionOccurrence>>((ref) {
+  final now = DateTime.now();
+  return ref
+      .watch(sessionOccurrenceRepositoryProvider)
+      .watchOccurrencesStartingBetween(
+        now,
+        now.add(const Duration(days: 14)),
       );
 });

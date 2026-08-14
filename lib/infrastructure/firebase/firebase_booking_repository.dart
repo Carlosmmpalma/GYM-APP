@@ -46,20 +46,18 @@ Booking _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
 /// exceções de domínio, mesmo padrão já usado em
 /// `firebase_subscription_repository.dart` para `createSubscription`.
 ///
-/// Repara que, ao contrário de todos os outros repositories Firebase
-/// deste projeto, este NÃO recebe `tenantId` — apanhado pelo
-/// `flutter analyze` (`unused_field`) ao remover a última leitura
-/// direta do Firestore sob `tenants/{tenantId}/...`. Nem `createBooking`/
-/// `cancelBooking` precisam (o tenant vem dos custom claims do
-/// chamador, do lado do servidor — ver `requireAuthenticated` em
-/// `callerContext.ts`), nem `watchMyBookings` (a query já era só por
-/// `memberId`, mesma nota de isolamento usada em `recalculateUsage.ts`:
-/// um uid só pertence a um tenant).
+/// Até à Fase 6, este repository não recebia `tenantId` (nem
+/// `createBooking`/`cancelBooking` precisam — o tenant vem dos custom
+/// claims do chamador — nem `watchMyBookings`, cuja query já era só
+/// por `memberId`). `watchBookingsForOccurrence` (Fase 6) precisa do
+/// caminho completo (`tenants/{tenantId}/sessionOccurrences/{id}/
+/// bookings`), por isso `_tenantId` voltou a fazer falta aqui.
 class FirebaseBookingRepository implements BookingRepository {
-  FirebaseBookingRepository(this._firestore, this._functions);
+  FirebaseBookingRepository(this._firestore, this._functions, this._tenantId);
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
+  final String _tenantId;
 
   @override
   Future<void> createBooking({
@@ -124,6 +122,18 @@ class FirebaseBookingRepository implements BookingRepository {
     return _firestore
         .collectionGroup('bookings')
         .where('memberId', isEqualTo: memberId)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map(_fromDoc).toList());
+  }
+
+  @override
+  Stream<List<Booking>> watchBookingsForOccurrence(String occurrenceId) {
+    return _firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('sessionOccurrences')
+        .doc(occurrenceId)
+        .collection('bookings')
         .snapshots()
         .map((snapshot) => snapshot.docs.map(_fromDoc).toList());
   }

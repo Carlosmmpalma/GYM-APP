@@ -112,6 +112,10 @@ class _FakeBookingRepository implements BookingRepository {
   @override
   Stream<List<Booking>> watchMyBookings(String memberId) =>
       const Stream.empty();
+
+  @override
+  Stream<List<Booking>> watchBookingsForOccurrence(String occurrenceId) =>
+      const Stream.empty();
 }
 
 void main() {

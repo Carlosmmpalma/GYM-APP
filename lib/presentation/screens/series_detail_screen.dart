@@ -6,6 +6,7 @@ import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/session_series.dart';
 import 'manage_series_screen.dart';
+import 'occurrence_detail_screen.dart';
 
 /// Fase 5 — "ajustar uma semana da série": resumo da [SessionSeries] +
 /// lista das ocorrências já materializadas (`seriesOccurrencesProvider`),
@@ -178,7 +179,12 @@ class _OccurrenceTile extends ConsumerWidget {
         subtitle: Text(
           cancelled
               ? 'Cancelada'
-              : '${occurrence.activeBookingCount}/${occurrence.capacity} marcações',
+              : '${occurrence.activeBookingCount}/${occurrence.capacity} marcações — toca para ver inscritos',
+        ),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => OccurrenceDetailScreen(occurrenceId: occurrence.id),
+          ),
         ),
         trailing: cancelled
             ? null
@@ -220,6 +226,7 @@ class _OccurrenceTile extends ConsumerWidget {
                 .add(occurrence.endAt.difference(occurrence.startAt)),
             capacity: result.capacity,
             instructorId: occurrence.instructorId,
+            modalityId: occurrence.modalityId,
           );
     } catch (e) {
       if (!context.mounted) return;
