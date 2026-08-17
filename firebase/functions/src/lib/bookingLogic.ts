@@ -82,10 +82,25 @@ export async function runBookingTransaction(
     startAt: Date;
     source: 'self' | 'instructor' | 'manager';
     eligibility: EligibilityInfo;
+    // UC08 (fechado) — "atribuição manual conta sempre para o limite
+    // semanal, exceto UC08-A (sessão extra explícita)". `false` por
+    // omissão para todos os caminhos existentes (self/manager) — só
+    // `assignMembersToOccurrence.ts` (o único caminho que oferece
+    // "+ Sessão extra" na UI) alguma vez passa `true`.
+    isExtra?: boolean;
   },
 ): Promise<BookingTxResult> {
-  const { tenantRef, occurrenceRef, bookingRef, memberId, serviceId, startAt, source, eligibility } =
-    params;
+  const {
+    tenantRef,
+    occurrenceRef,
+    bookingRef,
+    memberId,
+    serviceId,
+    startAt,
+    source,
+    eligibility,
+    isExtra = false,
+  } = params;
   const { isLimited, limit } = eligibility;
 
   const period = isoWeekKey(startAt);
@@ -113,9 +128,10 @@ export async function runBookingTransaction(
       return { kind: 'capacity' };
     }
 
-    // UC08-A (sessão extra) continua fora de âmbito — nenhum caminho
-    // que chama isto (self/manager) define isExtra=true ainda.
-    const isExtra = false;
+    // UC08-A — uma sessão extra continua a exigir vaga na sala (o
+    // `activeCount >= capacity` acima aplica-se sempre); só isenta o
+    // membro do LIMITE SEMANAL do próprio plano, que é uma restrição
+    // diferente e independente.
     let usedBefore = 0;
     if (isLimited && !isExtra) {
       usedBefore = (usageSnap?.data()?.used as number | undefined) ?? 0;
@@ -161,6 +177,14 @@ export interface ReleasePlan {
   bookingRef: FirebaseFirestore.DocumentReference;
   usageRef: FirebaseFirestore.DocumentReference | null;
   usageUsedBefore: number;
+  /**
+   * UC08-A — se a marcação libertada era uma sessão EXTRA. Exposto
+   * porque `rescheduleBooking.ts` precisa de o REPLICAR na marcação de
+   * destino: sem isto, remarcar uma sessão extra criava no destino uma
+   * marcação normal, que passa a consumir o limite semanal — o membro
+   * perdia uma utilização só porque o estúdio o mudou de horário.
+   */
+  isExtra: boolean;
 }
 
 /**
@@ -194,8 +218,17 @@ export async function prepareRelease(
   const bookingData = bookingSnap.data()!;
   const serviceId = bookingData.serviceId as string | undefined;
   const period = bookingData.period as string | undefined;
+  // UC08-A — uma sessão EXTRA nunca incrementou `usage` (ver
+  // `runBookingTransaction` acima: o `tx.set(usageRef, ...)` é
+  // `if (isLimited && !isExtra)`), por isso libertá-la também não pode
+  // decrementar. Sem esta verificação, cancelar uma sessão extra
+  // roubava uma utilização que o membro nunca tinha gasto — ficava com
+  // 0/2 depois de ter usado 1 sessão normal. Bug real, apanhado na
+  // varredura da Fase 8 ao tornar `isExtra` funcional (até aí era
+  // sempre `false`, e por isso este caminho nunca podia estar errado).
+  const isExtra = (bookingData.isExtra as boolean | undefined) ?? false;
   const usageRef =
-    serviceId && period
+    serviceId && period && !isExtra
       ? params.tenantRef.collection('usage').doc(`${params.memberId}_${serviceId}_${period}`)
       : null;
   const usageSnap = usageRef ? await tx.get(usageRef) : null;
@@ -205,6 +238,7 @@ export async function prepareRelease(
     bookingRef,
     usageRef: usageSnap?.exists ? usageRef : null,
     usageUsedBefore: (usageSnap?.data()?.used as number | undefined) ?? 0,
+    isExtra,
   };
 }
 

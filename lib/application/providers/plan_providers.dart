@@ -40,7 +40,7 @@ final membersProvider = StreamProvider<List<MemberSummary>>((ref) {
 /// `.family` por uid em vez de derivar de `currentAppUserProvider`
 /// diretamente: mantém o provider testável sem depender de sessão real.
 final memberProfileProvider =
-    StreamProvider.family<MemberSummary?, String>((ref, uid) {
+    StreamProvider.autoDispose.family<MemberSummary?, String>((ref, uid) {
   return ref.watch(memberRepositoryProvider).watchMember(uid);
 });
 
@@ -51,7 +51,7 @@ final memberProfileProvider =
 /// `booking_providers.dart` para contornar a propagação de listeners)
 /// chega, e evita manter uma subscrição aberta por cada Plan visitado.
 final planServicesProvider =
-    FutureProvider.family<List<PlanService>, String>((ref, planId) {
+    FutureProvider.autoDispose.family<List<PlanService>, String>((ref, planId) {
   return ref.watch(planRepositoryProvider).getPlanServices(planId);
 });
 
@@ -70,8 +70,8 @@ final servicesProvider = StreamProvider<List<Service>>((ref) {
 /// já expõe `watchMemberSubscriptions()` desde a Fase 3 (é a mesma fonte
 /// usada por `isEligibleForService`); só faltava um provider Riverpod
 /// `.family` para o usar por `memberId` a partir da UI.
-final memberSubscriptionsProvider =
-    StreamProvider.family<List<Subscription>, String>((ref, memberId) {
+final memberSubscriptionsProvider = StreamProvider.autoDispose
+    .family<List<Subscription>, String>((ref, memberId) {
   return ref
       .watch(subscriptionRepositoryProvider)
       .watchMemberSubscriptions(memberId);
@@ -85,8 +85,8 @@ final memberSubscriptionsProvider =
 /// `getGrantingPlanId`). `null` quando o membro não tem nenhuma
 /// subscription ativa que dê acesso a este serviço (o mesmo caso que
 /// bloqueia o booking com `NotEligibleForServiceException`).
-final applicableUsageRuleProvider =
-    FutureProvider.family<UsageRule?, ({String memberId, String serviceId})>(
+final applicableUsageRuleProvider = FutureProvider.autoDispose
+    .family<UsageRule?, ({String memberId, String serviceId})>(
         (ref, args) async {
   final planId =
       await ref.watch(subscriptionRepositoryProvider).getGrantingPlanId(
@@ -113,8 +113,8 @@ final applicableUsageRuleProvider =
 /// acima: nenhum ecrã anterior precisava disto, por isso não existia
 /// nenhum provider que já desse a lista de membros filtrada por
 /// elegibilidade a um serviço.
-final eligibleMembersProvider =
-    StreamProvider.family<List<MemberSummary>, String>((ref, serviceId) {
+final eligibleMembersProvider = StreamProvider.autoDispose
+    .family<List<MemberSummary>, String>((ref, serviceId) {
   final eligibleIdsAsync = ref
       .watch(subscriptionRepositoryProvider)
       .watchEligibleMemberIds(serviceId);

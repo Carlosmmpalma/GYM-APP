@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../application/providers/admin_providers.dart';
 import '../../application/providers/booking_providers.dart';
@@ -7,7 +8,11 @@ import '../../application/providers/modality_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/role.dart';
 import '../../domain/entities/service.dart';
+import '../../domain/entities/session_occurrence.dart';
+import '../../domain/entities/session_series.dart';
 import 'manage_series_screen.dart';
+
+final _conflictTimeFormat = DateFormat('HH:mm', 'pt_PT');
 
 /// Fase 5 (UC17/UC19 atualizado) — criar uma aula/PT "só esta data" ou
 /// "semanal, fixa" (série). Capacidade é sempre um número livre — os
@@ -98,17 +103,21 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                   builder: (context, ref, _) {
                     final modalitiesAsync = ref.watch(modalitiesProvider);
                     final options = (modalitiesAsync.valueOrNull ?? const [])
-                        .where((m) => m.active && m.serviceIds.contains(_service!.id))
+                        .where((m) =>
+                            m.active && m.serviceIds.contains(_service!.id))
                         .toList();
                     if (options.isEmpty) return const SizedBox.shrink();
                     return DropdownButtonFormField<String?>(
                       key: ValueKey('modality-${_service!.id}'),
                       initialValue: _modalityId,
-                      decoration: const InputDecoration(labelText: 'Modalidade (opcional)'),
+                      decoration: const InputDecoration(
+                          labelText: 'Modalidade (opcional)'),
                       items: [
-                        const DropdownMenuItem(value: null, child: Text('Sem modalidade')),
+                        const DropdownMenuItem(
+                            value: null, child: Text('Sem modalidade')),
                         ...options.map(
-                          (m) => DropdownMenuItem(value: m.id, child: Text(m.name)),
+                          (m) => DropdownMenuItem(
+                              value: m.id, child: Text(m.name)),
                         ),
                       ],
                       onChanged: (v) => setState(() => _modalityId = v),
@@ -170,6 +179,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                 decoration:
                     const InputDecoration(labelText: 'Duração (minutos)'),
                 keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
                 validator: (v) {
                   final parsed = int.tryParse((v ?? '').trim());
                   return (parsed == null || parsed <= 0)
@@ -177,6 +187,16 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                       : null;
                 },
               ),
+              if (_instructorId != null)
+                _TimeConflictBanner(
+                  recurring: _recurring,
+                  instructorId: _instructorId!,
+                  dayOfWeek: _recurring ? _dayOfWeek : _date.weekday,
+                  date: _date,
+                  time: _time,
+                  durationMinutes:
+                      int.tryParse(_durationController.text.trim()) ?? 0,
+                ),
               const SizedBox(height: 16),
               Wrap(
                 spacing: 8,
@@ -417,6 +437,121 @@ class _TimePickerTile extends StatelessWidget {
       },
     );
   }
+}
+
+/// Fase 8 (auditoria funcional) — aviso de conflito de horário. O
+/// mockup ("Criar aula — recorrente") descreve "conflito de horário
+/// com outra aula da MESMA SALA é sinalizado antes de guardar" — mas
+/// nenhum documento técnico (Domain Model v1, Firestore Data Model v1,
+/// Platform Foundation) modela uma entidade `Room`/`Sala`, e inventar
+/// uma agora sem essa decisão seria fabricar dados que não existem.
+/// Proxy real e defensável: avisar quando o MESMO INSTRUTOR já tem
+/// outra aula sobreposta no horário — sinalizado aqui, não escondido.
+/// Nunca bloqueia a criação, só avisa; a decisão final é sempre do
+/// Gestor (mesmo espírito de "sinalizado, não escondido" já usado
+/// noutras simplificações desta app).
+class _TimeConflictBanner extends ConsumerWidget {
+  const _TimeConflictBanner({
+    required this.recurring,
+    required this.instructorId,
+    required this.dayOfWeek,
+    required this.date,
+    required this.time,
+    required this.durationMinutes,
+  });
+
+  final bool recurring;
+  final String instructorId;
+  final int dayOfWeek;
+  final DateTime date;
+  final TimeOfDay time;
+  final int durationMinutes;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (durationMinutes <= 0) return const SizedBox.shrink();
+    final startMinutes = time.hour * 60 + time.minute;
+    final endMinutes = startMinutes + durationMinutes;
+
+    final servicesById = <String, Service>{
+      for (final s
+          in ref.watch(servicesProvider).valueOrNull ?? const <Service>[])
+        s.id: s,
+    };
+
+    String? conflictLabel;
+
+    if (recurring) {
+      // Séries recorrentes com o mesmo instrutor, no mesmo dia da
+      // semana — a série em si nunca é reservável (só as ocorrências
+      // que gera), mas o padrão semanal já basta para detetar o
+      // conflito sem precisar de olhar para ocorrências concretas.
+      final series =
+          ref.watch(seriesProvider).valueOrNull ?? const <SessionSeries>[];
+      for (final s in series) {
+        if (!s.isActive || s.instructorId != instructorId) continue;
+        if (s.dayOfWeek != dayOfWeek) continue;
+        final parts = s.startTime.split(':');
+        final otherStart = int.parse(parts[0]) * 60 + int.parse(parts[1]);
+        final otherEnd = otherStart + s.durationMinutes;
+        if (startMinutes < otherEnd && otherStart < endMinutes) {
+          conflictLabel = '${servicesById[s.serviceId]?.name ?? s.serviceId} '
+              '· ${weekdayName(s.dayOfWeek)} ${s.startTime}';
+          break;
+        }
+      }
+    } else {
+      // "Só esta data" — compara contra ocorrências JÁ MATERIALIZADAS
+      // (ad-hoc ou geradas por série, `allUpcomingOccurrencesProvider`
+      // cobre ambas) no mesmo dia concreto.
+      final occurrences =
+          ref.watch(allUpcomingOccurrencesProvider).valueOrNull ??
+              const <SessionOccurrence>[];
+      for (final o in occurrences) {
+        if (o.status != SessionOccurrenceStatus.scheduled) continue;
+        if (o.instructorId != instructorId) continue;
+        if (!_isSameDay(o.startAt, date)) continue;
+        final otherStart = o.startAt.hour * 60 + o.startAt.minute;
+        final otherEnd = o.endAt.hour * 60 + o.endAt.minute;
+        if (startMinutes < otherEnd && otherStart < endMinutes) {
+          conflictLabel = '${servicesById[o.serviceId]?.name ?? o.serviceId} '
+              '· ${_conflictTimeFormat.format(o.startAt)}';
+          break;
+        }
+      }
+    }
+
+    if (conflictLabel == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Card(
+        color: Theme.of(context).colorScheme.errorContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.warning_amber_outlined,
+                  color: Theme.of(context).colorScheme.onErrorContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Conflito de horário: este instrutor já tem "$conflictLabel" '
+                  'à mesma hora. Podes continuar, mas confirma que não é um erro.',
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onErrorContainer),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
 /// UC08-A (fechado) — só mostra membros que já têm o serviço

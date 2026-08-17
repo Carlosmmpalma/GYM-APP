@@ -1,9 +1,9 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import { getMessaging } from 'firebase-admin/messaging';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManagerOrInstructor } from './lib/callerContext';
+import { notifyMembers } from './lib/notifications';
 
 const inputSchema = z.object({
   title: z.string().min(1),
@@ -52,25 +52,9 @@ export const sendNotification = onCall(async (request) => {
     targetMemberIds = bookingsSnap.docs.map((doc) => doc.id);
   }
 
-  if (targetMemberIds.length === 0) {
-    return { sent: 0, targets: 0 };
-  }
-
-  const memberDocs = await firestore.getAll(
-    ...targetMemberIds.map((id) => tenantRef.collection('members').doc(id)),
-  );
-  const tokens = memberDocs
-    .flatMap((doc) => (doc.data()?.fcmTokens as string[] | undefined) ?? [])
-    .filter((token, index, all) => all.indexOf(token) === index);
-
-  if (tokens.length === 0) {
-    return { sent: 0, targets: targetMemberIds.length };
-  }
-
-  const result = await getMessaging().sendEachForMulticast({
-    tokens,
-    notification: { title, body },
-  });
-
-  return { sent: result.successCount, targets: targetMemberIds.length };
+  // Fase 8 — a leitura de `fcmTokens` + `sendEachForMulticast` passou
+  // para `lib/notifications.ts`, partilhada com os envios AUTOMÁTICOS
+  // (cancelar/remover/desativar instrutor). Comportamento inalterado
+  // para este caminho manual.
+  return notifyMembers(tenantRef, targetMemberIds, title, body);
 });

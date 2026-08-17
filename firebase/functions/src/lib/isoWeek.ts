@@ -42,6 +42,22 @@ export function isoWeekRange(date: Date): { start: Date; end: Date } {
 }
 
 /**
+ * Fase 7 — id de documento de `freeTrainingSchedules/{weekId}`:
+ * `YYYY-MM-DD` da segunda-feira da semana ISO a que [date] pertence
+ * (Firestore Data Model v1 §39, exemplo `weekStart: "2026-08-17"`).
+ * Formato diferente de [isoWeekKey] (`YYYY-Www`) de propósito — aqui
+ * interessa a DATA concreta da segunda, não o número da semana, para
+ * a UI poder mostrar/navegar por datas sem ter de inverter o formato.
+ */
+export function weekIdForDate(date: Date): string {
+  const monday = isoWeekRange(date).start;
+  const yyyy = monday.getUTCFullYear();
+  const mm = String(monday.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(monday.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
  * Inverso de [isoWeekKey]: devolve a segunda-feira (00:00 UTC) da
  * semana identificada por [key] (`YYYY-Www`). Usado por
  * `recalculateUsage.ts` para recompor `periodStart`/`periodEnd` a

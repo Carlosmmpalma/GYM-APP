@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
 import { applyRelease, prepareRelease, ReleasePlan } from './lib/bookingLogic';
+import { notifyMembers } from './lib/notifications';
 
 const inputSchema = z.object({
   staffId: z.string().min(1),
@@ -79,6 +80,7 @@ export const deactivateInstructor = onCall(async (request) => {
 
   let cancelledOccurrences = 0;
   let cancelledBookings = 0;
+  const affectedMemberIds = new Set<string>();
   for (const occDoc of scheduledOccurrences) {
     const occurrenceRef = occDoc.ref;
     const result = await firestore.runTransaction(async (tx) => {
@@ -98,15 +100,32 @@ export const deactivateInstructor = onCall(async (request) => {
         applyRelease(tx, plan);
       }
       tx.update(occurrenceRef, { status: 'cancelled', activeBookingCount: 0 });
-      return plans.length;
+      return plans.map((p) => p.memberId);
     });
     cancelledOccurrences += 1;
-    cancelledBookings += result;
+    cancelledBookings += result.length;
+    for (const memberId of result) affectedMemberIds.add(memberId);
+  }
+
+  // UC24 (fechado) — "alunos notificados e sessões devolvidas ao limite
+  // semanal". UMA notificação por aluno afetado, não uma por ocorrência
+  // cancelada: um aluno com 8 sessões semanais deste instrutor receberia
+  // 8 pushes idênticos, o que seria spam. Por isso o `Set` acima.
+  if (affectedMemberIds.size > 0) {
+    await notifyMembers(
+      tenantRef,
+      [...affectedMemberIds],
+      'Sessões canceladas',
+      'O instrutor destas sessões deixou de estar disponível. As tuas '
+        + 'marcações futuras com ele foram canceladas e voltaram ao teu '
+        + 'limite semanal.',
+    );
   }
 
   return {
     seriesCancelled: activeSeriesDocs.length,
     occurrencesCancelled: cancelledOccurrences,
     bookingsCancelled: cancelledBookings,
+    membersNotified: affectedMemberIds.size,
   };
 });

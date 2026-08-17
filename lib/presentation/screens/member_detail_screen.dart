@@ -8,6 +8,7 @@ import '../../domain/entities/member_summary.dart';
 import '../../domain/entities/plan.dart';
 import '../../domain/entities/subscription.dart';
 import '../../repositories/usage_repository.dart';
+import '../widgets/personal_data_fields.dart';
 import 'assign_subscription_screen.dart';
 
 /// Um serviço ao qual uma subscription dá acesso, já resolvido (id +
@@ -28,7 +29,8 @@ class MemberDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subscriptionsAsync = ref.watch(memberSubscriptionsProvider(member.uid));
+    final subscriptionsAsync =
+        ref.watch(memberSubscriptionsProvider(member.uid));
     final plansAsync = ref.watch(plansProvider);
     final servicesAsync = ref.watch(servicesProvider);
     // Mesmo raciocínio de `currentPlan` em `plan_detail_screen.dart`:
@@ -70,6 +72,8 @@ class MemberDetailScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 8),
+          _EditMemberProfileCard(member: currentMember),
+          const SizedBox(height: 8),
           // Desativar, nunca eliminar — o uid continua referenciado
           // por subscriptions/bookings já feitos; apagar a conta
           // partiria esse histórico. Escreve `status` (Firestore),
@@ -96,7 +100,9 @@ class MemberDetailScreen extends ConsumerWidget {
                 } catch (e) {
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Não foi possível atualizar o membro: $e')),
+                    SnackBar(
+                        content:
+                            Text('Não foi possível atualizar o membro: $e')),
                   );
                 }
               },
@@ -143,7 +149,8 @@ class MemberDetailScreen extends ConsumerWidget {
                             // de ser verdade.
                             recalculableServices: subscription.activeServiceIds
                                 .where(servicesById.containsKey)
-                                .map((id) => (id: id, name: servicesById[id]!.name))
+                                .map((id) =>
+                                    (id: id, name: servicesById[id]!.name))
                                 .toList(),
                           ),
                         )
@@ -156,6 +163,127 @@ class MemberDetailScreen extends ConsumerWidget {
           // Espaço para o FAB não tapar o último cartão.
           const SizedBox(height: 80),
         ],
+      ),
+    );
+  }
+}
+
+/// Pedido pelo Carlo depois de testar "Criar utilizador": até aqui, o
+/// Gestor não tinha NENHUMA forma de editar nome/contactos/dados
+/// pessoais de um membro depois de criado — só o toggle ativo/inativo.
+/// Escrita direta (`updateMemberProfile`, já permitida por
+/// `firestore.rules` a qualquer Manager); mesmo espírito de
+/// `MyProfileScreen`, mas aqui é o Gestor a editar QUALQUER membro, com
+/// mais campos.
+class _EditMemberProfileCard extends ConsumerStatefulWidget {
+  const _EditMemberProfileCard({required this.member});
+
+  final MemberSummary member;
+
+  @override
+  ConsumerState<_EditMemberProfileCard> createState() =>
+      _EditMemberProfileCardState();
+}
+
+class _EditMemberProfileCardState
+    extends ConsumerState<_EditMemberProfileCard> {
+  late final _nameController = TextEditingController(text: widget.member.name);
+  late final _phoneController =
+      TextEditingController(text: widget.member.phone);
+  late final _emailController =
+      TextEditingController(text: widget.member.email);
+  late final _addressController =
+      TextEditingController(text: widget.member.address);
+  late final _nifController = TextEditingController(text: widget.member.nif);
+  late final _emergencyContactController =
+      TextEditingController(text: widget.member.emergencyContact);
+  late DateTime? _birthDate = widget.member.birthDate;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _addressController.dispose();
+    _nifController.dispose();
+    _emergencyContactController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await ref.read(memberRepositoryProvider).updateMemberProfile(
+            memberId: widget.member.uid,
+            name: _nameController.text.trim(),
+            phone: _phoneController.text.trim(),
+            email: _emailController.text.trim(),
+            birthDate: _birthDate,
+            address: _addressController.text.trim(),
+            nif: _nifController.text.trim(),
+            emergencyContact: _emergencyContactController.text.trim(),
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Dados atualizados.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível guardar: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Dados pessoais',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: 'Nome completo'),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _emailController,
+              decoration: const InputDecoration(labelText: 'Email de contacto'),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 12),
+            PersonalDataFields(
+              phoneController: _phoneController,
+              addressController: _addressController,
+              nifController: _nifController,
+              emergencyContactController: _emergencyContactController,
+              birthDate: _birthDate,
+              onBirthDateChanged: (date) => setState(() => _birthDate = date),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Guardar dados'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -319,7 +447,8 @@ class _SubscriptionTileState extends ConsumerState<_SubscriptionTile> {
                 ),
                 Chip(
                   label: Text(_statusLabel()),
-                  backgroundColor: _statusColor(context).withValues(alpha: 0.15),
+                  backgroundColor:
+                      _statusColor(context).withValues(alpha: 0.15),
                   labelStyle: TextStyle(color: _statusColor(context)),
                   visualDensity: VisualDensity.compact,
                 ),
@@ -339,7 +468,8 @@ class _SubscriptionTileState extends ConsumerState<_SubscriptionTile> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
-                  onPressed: _recalculating ? null : () => _recalculate(context),
+                  onPressed:
+                      _recalculating ? null : () => _recalculate(context),
                   icon: _recalculating
                       ? const SizedBox(
                           width: 14,

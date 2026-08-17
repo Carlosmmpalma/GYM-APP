@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/environment.dart';
@@ -30,6 +31,12 @@ final firestoreProvider = Provider<FirebaseFirestore>((ref) {
 /// Rules (ver nota em firebase_subscription_repository.dart).
 final functionsProvider = Provider<FirebaseFunctions>((ref) {
   return FirebaseFunctions.instance;
+});
+
+/// Fase 8 — primeiro provider a precisar de Storage a sério (vídeo de
+/// exercícios, UC15).
+final firebaseStorageProvider = Provider<FirebaseStorage>((ref) {
+  return FirebaseStorage.instance;
 });
 
 /// Repository Pattern (Platform Foundation §12): a camada acima só conhece

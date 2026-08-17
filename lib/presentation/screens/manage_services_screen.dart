@@ -49,11 +49,21 @@ class ManageServicesScreen extends ConsumerWidget {
             itemBuilder: (context, index) {
               final service = services[index];
               return Card(
-                child: SwitchListTile(
+                child: ListTile(
                   title: Text(service.name),
-                  subtitle: Text(service.active ? 'Ativo' : 'Inativo'),
-                  value: service.active,
-                  onChanged: (value) => _setActive(context, ref, service, value),
+                  subtitle: Text(
+                    [
+                      service.active ? 'Ativo' : 'Inativo',
+                      if (service.exclusiveGroup != null)
+                        'Grupo exclusivo: ${service.exclusiveGroup}',
+                    ].join(' · '),
+                  ),
+                  onTap: () => _editService(context, ref, service),
+                  trailing: Switch(
+                    value: service.active,
+                    onChanged: (value) =>
+                        _setActive(context, ref, service, value),
+                  ),
                 ),
               );
             },
@@ -64,18 +74,46 @@ class ManageServicesScreen extends ConsumerWidget {
   }
 
   Future<void> _createService(BuildContext context, WidgetRef ref) async {
-    final name = await showDialog<String>(
+    final result = await showDialog<({String name, String? exclusiveGroup})>(
       context: context,
-      builder: (_) => const _CreateServiceDialog(),
+      builder: (_) => const _ServiceFormDialog(),
     );
-    if (name == null) return;
+    if (result == null) return;
 
     try {
-      await ref.read(serviceRepositoryProvider).createService(name: name);
+      await ref.read(serviceRepositoryProvider).createService(
+            name: result.name,
+            exclusiveGroup: result.exclusiveGroup,
+          );
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Não foi possível criar o serviço: $e')),
+      );
+    }
+  }
+
+  Future<void> _editService(
+    BuildContext context,
+    WidgetRef ref,
+    Service service,
+  ) async {
+    final result = await showDialog<({String name, String? exclusiveGroup})>(
+      context: context,
+      builder: (_) => _ServiceFormDialog(service: service),
+    );
+    if (result == null) return;
+
+    try {
+      await ref.read(serviceRepositoryProvider).updateService(
+            serviceId: service.id,
+            name: result.name,
+            exclusiveGroup: result.exclusiveGroup,
+          );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível editar o serviço: $e')),
       );
     }
   }
@@ -100,41 +138,75 @@ class ManageServicesScreen extends ConsumerWidget {
   }
 }
 
-class _CreateServiceDialog extends StatefulWidget {
-  const _CreateServiceDialog();
+/// Serve tanto criar como editar — [service] `null` é criação. UC26
+/// (fechado) — `exclusiveGroup` é um identificador LIVRE (não um
+/// enum): o Gestor escreve a mesma palavra (ex.: "sala") em todos os
+/// serviços que devem ser mutuamente exclusivos entre si ("Sem
+/// acompanhamento" e o serviço que os planos Standard/Plus/Premium
+/// concedem) — só a IGUALDADE da string é que importa para
+/// `createSubscription.ts`, não o texto em si.
+class _ServiceFormDialog extends StatefulWidget {
+  const _ServiceFormDialog({this.service});
+
+  final Service? service;
 
   @override
-  State<_CreateServiceDialog> createState() => _CreateServiceDialogState();
+  State<_ServiceFormDialog> createState() => _ServiceFormDialogState();
 }
 
-class _CreateServiceDialogState extends State<_CreateServiceDialog> {
+class _ServiceFormDialogState extends State<_ServiceFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
+  late final _nameController =
+      TextEditingController(text: widget.service?.name ?? '');
+  late final _groupController =
+      TextEditingController(text: widget.service?.exclusiveGroup ?? '');
 
   @override
   void dispose() {
     _nameController.dispose();
+    _groupController.dispose();
     super.dispose();
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
-    Navigator.of(context).pop(_nameController.text.trim());
+    final group = _groupController.text.trim();
+    Navigator.of(context).pop((
+      name: _nameController.text.trim(),
+      exclusiveGroup: group.isEmpty ? null : group,
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
+    final isEdit = widget.service != null;
     return AlertDialog(
-      title: const Text('Novo serviço'),
+      title: Text(isEdit ? 'Editar serviço' : 'Novo serviço'),
       content: Form(
         key: _formKey,
-        child: TextFormField(
-          controller: _nameController,
-          decoration: const InputDecoration(labelText: 'Nome'),
-          autofocus: true,
-          validator: (v) =>
-              (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
-          onFieldSubmitted: (_) => _submit(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: 'Nome'),
+              autofocus: true,
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _groupController,
+              decoration: const InputDecoration(
+                labelText: 'Grupo exclusivo (opcional)',
+                helperText: 'Serviços com o MESMO grupo tornam-se mutuamente '
+                    'exclusivos (UC26) — um membro nunca pode ter '
+                    'subscriptions ativas a dois deles ao mesmo tempo.',
+                helperMaxLines: 3,
+              ),
+              onFieldSubmitted: (_) => _submit(),
+            ),
+          ],
         ),
       ),
       actions: [
@@ -142,7 +214,10 @@ class _CreateServiceDialogState extends State<_CreateServiceDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('Criar')),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(isEdit ? 'Guardar' : 'Criar'),
+        ),
       ],
     );
   }

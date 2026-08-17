@@ -36,6 +36,24 @@ class FirebaseSessionOccurrenceRepository
       .doc(_tenantId)
       .collection('sessionOccurrences');
 
+  /// Fase 8 (varredura de performance) — teto de segurança para as
+  /// duas queries de "próximas ocorrências". Não tinham limite NENHUM:
+  /// `startAt >= now` sem fronteira superior devolvia todas as
+  /// ocorrências futuras que existissem, e o cron diário
+  /// (`generateRecurringOccurrences.ts`) empurra o horizonte de 8
+  /// semanas todos os dias — ou seja, o conjunto cresce com o número de
+  /// séries do tenant e nunca encolhe. Pior: estas queries alimentam o
+  /// ecrã principal do Aluno (`BookTrainingScreen`), por isso QUALQUER
+  /// marcação feita por QUALQUER pessoa no tenant altera
+  /// `activeBookingCount` e faz o snapshot inteiro voltar a chegar e a
+  /// ser desserializado.
+  ///
+  /// Como o `orderBy('startAt')` é ascendente, o limite corta pelas
+  /// ocorrências MAIS DISTANTES — as próximas, que são as únicas que um
+  /// aluno realmente vai marcar, ficam sempre lá. 200 é folgado para um
+  /// estúdio real (8 semanas × ~20 sessões/semana ≈ 160).
+  static const _upcomingLimit = 200;
+
   @override
   Stream<List<SessionOccurrence>> watchUpcomingOccurrences(String serviceId) {
     final now = Timestamp.now();
@@ -43,6 +61,7 @@ class FirebaseSessionOccurrenceRepository
         .where('serviceId', isEqualTo: serviceId)
         .where('startAt', isGreaterThanOrEqualTo: now)
         .orderBy('startAt')
+        .limit(_upcomingLimit)
         .snapshots()
         .map((snapshot) => snapshot.docs.map(_fromDoc).toList());
   }
@@ -53,6 +72,7 @@ class FirebaseSessionOccurrenceRepository
     return _occurrences
         .where('startAt', isGreaterThanOrEqualTo: now)
         .orderBy('startAt')
+        .limit(_upcomingLimit)
         .snapshots()
         .map((snapshot) => snapshot.docs.map(_fromDoc).toList());
   }
@@ -153,12 +173,14 @@ class FirebaseSessionOccurrenceRepository
   Future<Map<String, bool>> assignMembers({
     required String occurrenceId,
     required List<String> memberIds,
+    bool isExtra = false,
   }) async {
     final result = await _functions
         .httpsCallable('assignMembersToOccurrence')
         .call<Object?>({
       'occurrenceId': occurrenceId,
       'memberIds': memberIds,
+      'isExtra': isExtra,
     });
     // Mesmo padrão defensivo de `firebase_usage_repository.dart#recalculateUsage`
     // — o interop do Flutter Web pode devolver `Map<Object?, Object?>`.

@@ -26,6 +26,13 @@ const inputSchema = z.object({
  *
  * Só um Gestor do próprio tenant pode chamar isto (requireManager) —
  * mesmo padrão de createMember/createStaff.
+ *
+ * Fase 8 (auditoria funcional, UC26 fechado) — "Sem acompanhamento" e
+ * Standard/Plus/Premium não são produtos independentes, são NÍVEIS DO
+ * MESMO PRODUTO: passou a validar também conflito por
+ * `Service.exclusiveGroup`, não só por `serviceId` literal — dois
+ * planos que concedem serviços DIFERENTES mas com o mesmo
+ * `exclusiveGroup` são tratados como o mesmo conflito.
  */
 export const createSubscription = onCall(async (request) => {
   const caller = requireManager(request);
@@ -77,25 +84,59 @@ export const createSubscription = onCall(async (request) => {
     .where('status', '==', 'active')
     .get();
 
+  // UC26 (fechado) — "Sem acompanhamento" e Standard/Plus/Premium são
+  // NÍVEIS DO MESMO PRODUTO, nunca combináveis, mesmo quando são
+  // serviços DIFERENTES (o `activeServiceIds` acima só apanhava o
+  // membro a repetir o MESMO serviço). Antes de comparar, é preciso
+  // saber o `exclusiveGroup` de cada serviço envolvido — tanto os que
+  // este plano concederia como os que as subscriptions ativas já
+  // concedem — daí ter de ler `services` já aqui, não só no caminho de
+  // erro como o conflito por serviço fazia até agora.
+  const existingServiceIds = new Set<string>();
+  for (const doc of existingActiveSnap.docs) {
+    for (const id of (doc.data().activeServiceIds as string[]) ?? []) {
+      existingServiceIds.add(id);
+    }
+  }
+  const allServiceIds = [...new Set([...grantedServiceIds, ...existingServiceIds])];
+
+  const serviceInfoById = new Map<string, { name: string; exclusiveGroup: string | null }>();
+  for (let i = 0; i < allServiceIds.length; i += 30) {
+    // 'in' aceita no máximo 30 valores (limite da SDK).
+    const chunk = allServiceIds.slice(i, i + 30);
+    const chunkSnap = await tenantRef
+      .collection('services')
+      .where(FieldPath.documentId(), 'in', chunk)
+      .get();
+    for (const doc of chunkSnap.docs) {
+      serviceInfoById.set(doc.id, {
+        name: (doc.data().name as string | undefined) ?? doc.id,
+        exclusiveGroup: (doc.data().exclusiveGroup as string | undefined) ?? null,
+      });
+    }
+  }
+
+  const newExclusiveGroups = new Set(
+    grantedServiceIds
+      .map((id) => serviceInfoById.get(id)?.exclusiveGroup)
+      .filter((g): g is string => !!g),
+  );
+
   const conflictingServiceIds = new Set<string>();
   for (const doc of existingActiveSnap.docs) {
-    const existingServiceIds = (doc.data().activeServiceIds as string[]) ?? [];
-    for (const serviceId of existingServiceIds) {
-      if (grantedServiceIds.includes(serviceId)) {
+    for (const serviceId of (doc.data().activeServiceIds as string[]) ?? []) {
+      const sameService = grantedServiceIds.includes(serviceId);
+      const group = serviceInfoById.get(serviceId)?.exclusiveGroup;
+      const sameGroup = !!group && newExclusiveGroups.has(group);
+      if (sameService || sameGroup) {
         conflictingServiceIds.add(serviceId);
       }
     }
   }
 
   if (conflictingServiceIds.size > 0) {
-    const servicesSnap = await tenantRef
-      .collection('services')
-      .where(FieldPath.documentId(), 'in', [
-        ...conflictingServiceIds,
-      ].slice(0, 30)) // 'in' aceita no máximo 30 valores (limite da SDK).
-      .get();
-    const conflictingServiceNames = servicesSnap.docs.map(
-      (doc) => (doc.data().name as string | undefined) ?? doc.id,
+    const conflictingServiceNames = [...conflictingServiceIds].map(
+      (id) => serviceInfoById.get(id)?.name ?? id,
     );
 
     throw new HttpsError(

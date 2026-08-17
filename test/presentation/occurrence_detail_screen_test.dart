@@ -153,6 +153,7 @@ class _FakeSessionOccurrenceRepository implements SessionOccurrenceRepository {
   Future<Map<String, bool>> assignMembers({
     required String occurrenceId,
     required List<String> memberIds,
+    bool isExtra = false,
   }) =>
       throw UnimplementedError();
 

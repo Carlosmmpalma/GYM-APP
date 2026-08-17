@@ -45,4 +45,23 @@ abstract class StaffRepository {
     required String staffId,
     required String token,
   });
+
+  /// Pedido pelo Carlo depois de testar "Criar utilizador" — edita
+  /// nome/email/dados pessoais de um staff (`StaffDetailScreen`).
+  /// Cloud Function `updateStaffProfile` (Admin SDK), ao contrário de
+  /// [MemberRepository.updateMemberProfile]: aqui `email` É o login
+  /// real (Firebase Auth), por isso mudá-lo tem de sincronizar a
+  /// credencial, não só o Firestore — ver nota de arquitetura em
+  /// `updateStaffProfile.ts`. Lança se o email novo já pertencer a
+  /// outra conta.
+  Future<void> updateStaffProfile({
+    required String staffId,
+    required String name,
+    required String email,
+    required String phone,
+    DateTime? birthDate,
+    required String address,
+    required String nif,
+    required String emergencyContact,
+  });
 }

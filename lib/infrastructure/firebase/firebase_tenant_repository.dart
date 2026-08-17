@@ -35,7 +35,8 @@ class FirebaseTenantRepository implements TenantRepository {
   Future<int> getMinCancellationNoticeHours(String tenantId) async {
     final snapshot = await _bookingPolicyDoc(tenantId).get();
     if (!snapshot.exists) return 0;
-    return (snapshot.data()?['minCancellationNoticeHours'] as num? ?? 0).toInt();
+    return (snapshot.data()?['minCancellationNoticeHours'] as num? ?? 0)
+        .toInt();
   }
 
   @override
@@ -45,6 +46,23 @@ class FirebaseTenantRepository implements TenantRepository {
   }) async {
     await _bookingPolicyDoc(tenantId).set({
       'minCancellationNoticeHours': hours,
+    }, SetOptions(merge: true));
+  }
+
+  @override
+  Future<int> getMinBookingNoticeMinutes(String tenantId) async {
+    final snapshot = await _bookingPolicyDoc(tenantId).get();
+    if (!snapshot.exists) return 0;
+    return (snapshot.data()?['minBookingNoticeMinutes'] as num? ?? 0).toInt();
+  }
+
+  @override
+  Future<void> setMinBookingNoticeMinutes({
+    required String tenantId,
+    required int minutes,
+  }) async {
+    await _bookingPolicyDoc(tenantId).set({
+      'minBookingNoticeMinutes': minutes,
     }, SetOptions(merge: true));
   }
 }

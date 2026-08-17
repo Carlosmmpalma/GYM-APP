@@ -51,8 +51,14 @@ service cloud.firestore {
     // Ver nota no topo do ficheiro sobre porque isto não pode incluir
     // sessionOccurrences/bookings.
 
+    // Fase 8 (revisão geral) — escrita passou a Manager. O documento do
+    // tenant guarda `name`/`timezone`/`status`; com a regra antiga,
+    // qualquer aluno podia renomear o ginásio ou pôr o tenant a
+    // `suspended`. Nenhum ecrã de cliente escreve aqui (o seed usa o
+    // Admin SDK, que ignora Rules), por isso apertar não parte nada.
     match /tenants/{tenantId} {
-      allow read, write: if belongsToTenant(tenantId);
+      allow read: if belongsToTenant(tenantId);
+      allow write: if isManager(tenantId);
     }
 
     // Fase 5 (UC02) — até aqui, `allow read, write: if belongsToTenant`
@@ -73,10 +79,75 @@ service cloud.firestore {
         && request.auth.uid == memberId
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['phone', 'email', 'updatedAt', 'fcmTokens']);
+
+      // --- Avaliações físicas (Fase 8, UC04/UC14 fechado) ---
+      // Histórica — cada avaliação nova é um documento novo, nunca
+      // sobrescreve a anterior (o próprio ecrã só chama `add()` para
+      // criar). Escrita direta do cliente: sem invariante
+      // cross-documento, mesmo padrão de `attendance`. O PRÓPRIO
+      // membro só lê (nunca escreve — só o Instrutor/Gestor avalia).
+      match /assessments/{assessmentId} {
+        allow read: if belongsToTenant(tenantId)
+          && (request.auth.uid == memberId || isManager(tenantId) || isInstructor(tenantId));
+        allow write: if isManager(tenantId) || isInstructor(tenantId);
+      }
+
+      // --- Histórico de carga (Fase 8, UC16 fechado) ---
+      // Só `create` — "nunca sobrescrever o histórico" é aplicado a
+      // sério aqui, não só na UI: um `update`/`delete` deixaria
+      // reescrever um registo já feito, o que o próprio use case
+      // fechado proíbe explicitamente.
+      match /loadHistory/{recordId} {
+        allow read: if belongsToTenant(tenantId)
+          && (request.auth.uid == memberId || isManager(tenantId) || isInstructor(tenantId));
+        allow create: if isManager(tenantId) || isInstructor(tenantId);
+        allow update, delete: if false;
+      }
+
+      // --- Plano de treino (Fase 8, UC13) ---
+      // `currentLoad` é sempre o valor mais recente (espelha o
+      // último `loadHistory`); o cliente (`TrainingPlanRepository`)
+      // garante que os dois ficam coerentes através de um
+      // `WriteBatch` — a Rule não valida essa coerência entre
+      // coleções (exigiria `get()` ao histórico a cada escrita, sem
+      // benefício real: só Instrutor/Gestor escrevem aqui na mesma).
+      match /planEntries/{entryId} {
+        allow read: if belongsToTenant(tenantId)
+          && (request.auth.uid == memberId || isManager(tenantId) || isInstructor(tenantId));
+        allow write: if isManager(tenantId) || isInstructor(tenantId);
+      }
     }
 
+    // Fase 8 (revisão geral) — era `allow read, write: if
+    // belongsToTenant`, ou seja QUALQUER aluno autenticado do tenant
+    // podia ESCREVER no documento de qualquer instrutor/gestor:
+    // desativá-lo (`status: inactive`, negação de serviço na prática,
+    // já que `StaffDetailScreen` e o calendário filtram por isso),
+    // alterar-lhe nome/email/dados pessoais, ou até criar um
+    // `staff/{o-próprio-uid}`. Não era escalada de privilégios — os
+    // roles vêm dos custom claims do token, nunca deste documento — mas
+    // era uma lacuna real de autorização, exatamente a mesma que
+    // `members` fechou na Fase 5 e que aqui ficou por fechar com o
+    // argumento "só o Gestor mexe em staff hoje" (verdade na UI, não
+    // imposta pelo servidor).
+    //
+    // Leitura mantém-se ampla no tenant: `BookTrainingScreen` (ecrã de
+    // Aluno) mostra o nome do instrutor da sessão. Isso implica que os
+    // dados pessoais do staff (telefone, NIF, morada) também ficam
+    // legíveis por qualquer membro — as Rules do Firestore não filtram
+    // por campo. Fica assinalado; fechá-lo a sério exigiria separar os
+    // dados pessoais para uma subcoleção própria, que é uma mudança de
+    // modelo de dados, não uma regra.
     match /tenants/{tenantId}/staff/{staffId} {
-      allow read, write: if belongsToTenant(tenantId);
+      allow read: if belongsToTenant(tenantId);
+      allow write: if isManager(tenantId);
+      // UC21 — o próprio staff regista o token FCM do seu dispositivo
+      // (`registerFcmToken`, `arrayUnion`), tal como um membro faz no
+      // seu documento. Só este campo.
+      allow update: if belongsToTenant(tenantId)
+        && request.auth.uid == staffId
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['fcmTokens']);
     }
 
     // Fase 4: escrita restrita a Manager (era ampla desde a Fase 1,
@@ -107,6 +178,18 @@ service cloud.firestore {
     match /tenants/{tenantId}/modalities/{modalityId} {
       allow read: if belongsToTenant(tenantId);
       allow write: if isManager(tenantId);
+    }
+
+    // --- Biblioteca de exercícios (Fase 8, UC15 fechado) ---
+    // "Partilhada por todos os instrutores" — tenant-wide, sem dono.
+    // Leitura ampla (o Aluno precisa de ver nome/vídeo dos exercícios
+    // do seu próprio plano); escrita Manager OU Instrutor (ao
+    // contrário de `services`/`modalities`/`plans`, que continuam
+    // Manager-only — a biblioteca é uma ferramenta do dia a dia do
+    // Instrutor, não uma decisão de gestão do negócio).
+    match /tenants/{tenantId}/exercises/{exerciseId} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if isManager(tenantId) || isInstructor(tenantId);
     }
 
     // --- Sessions / Bookings (Fase 2; escrita fechada ao cliente na Fase 4) ---
@@ -273,6 +356,77 @@ service cloud.firestore {
       // por uma regra `allow create` aqui — por isso nunca há forma de
       // um uid corresponder a um booking de outro tenant) e mais simples.
       allow read: if isSignedIn() && resource.data.memberId == request.auth.uid;
+    }
+
+    // --- Treino livre (Fase 7, UC09/UC17-A fechado) ---
+    //
+    // Estado da semana (`draft`/`suggested`/`published`) — a
+    // sugestão automática nunca é visível ao Aluno até o Gestor
+    // aprovar/publicar explicitamente ("nenhum aluno pode ver uma
+    // grelha em estado 'sugerido'"). Escrita sempre `false`: mudar de
+    // estado passa pelas Cloud Functions `suggestFreeTrainingSchedule`/
+    // `publishFreeTrainingSchedule` (Admin SDK, ignoram estas regras).
+    match /tenants/{tenantId}/freeTrainingSchedules/{weekId} {
+      allow read: if isManager(tenantId)
+        || (belongsToTenant(tenantId) && resource.data.status == 'published');
+      allow write: if false;
+
+      // Um bloco horário reservável. Mesma visibilidade da semana-mãe
+      // — Rules não herdam a condição do `match` pai automaticamente,
+      // por isso `get()` explícito ao documento da semana. Escrita
+      // direta pelo Gestor para montar a grelha antes de publicar
+      // (mesmo padrão de `sessionOccurrences` ad-hoc, Fase 5):
+      // `activeBookingCount` continua exclusivo das Cloud Functions de
+      // booking (create exige nascer a 0, update exige não mudar nesta
+      // escrita).
+      //
+      // Fase 8 (auditoria funcional, UC17-A fechado) — `delete` deixa
+      // de ser sempre `false`: passa a ser permitido só ANTES de a
+      // semana ser publicada (`status != 'published'`) e só se o bloco
+      // não tiver ninguém marcado (`activeBookingCount == 0` — defesa
+      // extra, mesmo que na prática marcar exija a semana já
+      // publicada, `bookFreeTrainingSlot.ts`). Depois de publicada, um
+      // bloco só pode ser esvaziado (`updateSlot`/capacidade), nunca
+      // apagado — mesmo espírito de `sessionOccurrences`, que também
+      // nunca permite `delete`.
+      match /slots/{slotId} {
+        allow read: if isManager(tenantId)
+          || (belongsToTenant(tenantId)
+              && get(/databases/$(database)/documents/tenants/$(tenantId)/freeTrainingSchedules/$(weekId)).data.status == 'published');
+        allow create: if isManager(tenantId) && request.resource.data.activeBookingCount == 0;
+        allow update: if isManager(tenantId)
+          && request.resource.data.activeBookingCount == resource.data.activeBookingCount;
+        allow delete: if isManager(tenantId)
+          && resource.data.activeBookingCount == 0
+          && get(/databases/$(database)/documents/tenants/$(tenantId)/freeTrainingSchedules/$(weekId)).data.status != 'published';
+
+        // UC09/UC17 fechado — "Aluno vê só contagem; Gestor e
+        // Instrutor veem nomes". A contagem já vive em
+        // `activeBookingCount` (público, herda a leitura do slot); os
+        // NOMES só existem lendo os documentos de booking, por isso é
+        // aqui que a diferença de visibilidade tem de ser aplicada a
+        // sério, não só escondida na UI: um Aluno só consegue `get` a
+        // PRÓPRIA marcação (nunca `list`, nunca a de outro membro por
+        // id); Instrutor/Gestor conseguem listar todas. Escrita sempre
+        // `false` — passa por `bookFreeTrainingSlot`/
+        // `cancelFreeTrainingBooking`/`assignMembersToFreeTrainingSlot`.
+        match /bookings/{bookingId} {
+          allow get: if isManager(tenantId) || isInstructor(tenantId)
+            || (belongsToTenant(tenantId) && resource.data.memberId == request.auth.uid);
+          allow list: if isManager(tenantId) || isInstructor(tenantId);
+          allow write: if false;
+        }
+
+        // UC10-A fechado — "o Gestor (NÃO o Instrutor, que só tem
+        // leitura sobre o treino livre) pode também registar presença/
+        // falta nos horários de treino livre". Ao contrário de
+        // `sessionOccurrences/attendance` (Fase 6, Manager OU
+        // Instrutor), aqui é Manager-only.
+        match /attendance/{memberId} {
+          allow read: if isManager(tenantId) || isInstructor(tenantId);
+          allow write: if isManager(tenantId);
+        }
+      }
     }
 
     // Tudo o resto fica bloqueado.

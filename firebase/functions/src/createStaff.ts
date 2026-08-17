@@ -4,6 +4,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
+import { parseOptionalDate } from './lib/parseDate';
 import { generateTemporaryPassword } from './lib/tempPassword';
 
 const inputSchema = z.object({
@@ -13,6 +14,14 @@ const inputSchema = z.object({
   // Fase 6 (UC12/22 fechado) — só faz sentido para quem tem role
   // instructor; opcional porque um Gestor puro nunca preenche isto.
   modalityIds: z.array(z.string().min(1)).optional(),
+  // Pedido pelo Carlo depois de testar "Criar utilizador": staff
+  // ganha os mesmos dados pessoais opcionais do Aluno (menos `email`,
+  // que aqui já é obrigatório — é o login).
+  phone: z.string().optional(),
+  birthDate: z.string().optional(),
+  address: z.string().optional(),
+  nif: z.string().optional(),
+  emergencyContact: z.string().optional(),
 });
 
 /**
@@ -36,10 +45,14 @@ export const createStaff = onCall(async (request) => {
   if (!parsed.success) {
     throw new HttpsError('invalid-argument', parsed.error.message);
   }
-  const { name, email, roles, modalityIds } = parsed.data;
+  const { name, email, roles, modalityIds, phone, birthDate, address, nif, emergencyContact } =
+    parsed.data;
 
   const firestore = getFirestore();
   const auth = getAuth();
+
+  // Ver nota em `createMember.ts` — validar antes de criar a conta.
+  const birthTimestamp = parseOptionalDate(birthDate, 'birthDate');
 
   const temporaryPassword = generateTemporaryPassword();
 
@@ -49,27 +62,41 @@ export const createStaff = onCall(async (request) => {
     displayName: name,
   });
 
-  await auth.setCustomUserClaims(userRecord.uid, {
-    tenantId: caller.tenantId,
-    roles,
-  });
-
-  await firestore
-    .collection('tenants')
-    .doc(caller.tenantId)
-    .collection('staff')
-    .doc(userRecord.uid)
-    .set({
-      userId: userRecord.uid,
-      name,
-      email,
+  // Mesmo rollback de `createMember.ts`: um staff sem `staff/{uid}` ou
+  // sem claims consegue autenticar-se e fica preso num estado que
+  // nenhum ecrã trata. Aqui é ainda mais visível do que nos membros,
+  // porque o email de login é real e a pessoa vai mesmo tentar entrar.
+  try {
+    await auth.setCustomUserClaims(userRecord.uid, {
+      tenantId: caller.tenantId,
       roles,
-      modalityIds: modalityIds ?? [],
-      status: 'active',
-      passwordTemporaria: true,
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: caller.uid,
     });
+
+    await firestore
+      .collection('tenants')
+      .doc(caller.tenantId)
+      .collection('staff')
+      .doc(userRecord.uid)
+      .set({
+        userId: userRecord.uid,
+        name,
+        email,
+        roles,
+        modalityIds: modalityIds ?? [],
+        status: 'active',
+        passwordTemporaria: true,
+        phone: phone ?? '',
+        birthDate: birthTimestamp,
+        address: address ?? '',
+        nif: nif ?? '',
+        emergencyContact: emergencyContact ?? '',
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: caller.uid,
+      });
+  } catch (err) {
+    await auth.deleteUser(userRecord.uid).catch(() => undefined);
+    throw err;
+  }
 
   return {
     uid: userRecord.uid,

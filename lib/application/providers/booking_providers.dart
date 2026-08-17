@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/iso_week.dart';
 import '../../domain/entities/attendance.dart';
 import '../../domain/entities/booking.dart';
 import '../../domain/entities/session_occurrence.dart';
@@ -48,9 +49,23 @@ final bookingRepositoryProvider = Provider<BookingRepository>((ref) {
   );
 });
 
+/// Fase 8 (revisão geral) — TODOS os `.family` deste ficheiro (e de
+/// `free_training_providers`/`plan_providers`/`training_providers`)
+/// passaram a `autoDispose`. Um `.family` sem `autoDispose` cria uma
+/// instância de provider POR ARGUMENTO e mantém-na viva o resto da
+/// sessão: abrir 30 sessões ao longo de um turno deixava 30 listeners
+/// Firestore abertos em simultâneo, cada um a faturar leituras a cada
+/// alteração; um instrutor a percorrer 40 alunos deixava 40+ listeners
+/// de avaliações/planos/histórico. Era fuga de memória E custo real de
+/// Firestore, não só arrumação.
+///
+/// A exceção deliberada é `fcmTokenRegistrationProvider`
+/// (`notification_providers.dart`), que TEM de sobreviver à navegação —
+/// está documentado lá.
+///
 /// Fase 6 — roster de uma ocorrência (presença, reduzir vagas, remarcar).
-final occurrenceBookingsProvider =
-    StreamProvider.family<List<Booking>, String>((ref, occurrenceId) {
+final occurrenceBookingsProvider = StreamProvider.autoDispose
+    .family<List<Booking>, String>((ref, occurrenceId) {
   return ref
       .watch(bookingRepositoryProvider)
       .watchBookingsForOccurrence(occurrenceId);
@@ -59,8 +74,8 @@ final occurrenceBookingsProvider =
 /// Fase 6 — versão reativa de `getOccurrence`, para
 /// `OccurrenceDetailScreen` refletir capacidade/contagem ao vivo depois
 /// de ações (reduzir vagas, cancelar).
-final liveOccurrenceProvider =
-    StreamProvider.family<SessionOccurrence?, String>((ref, occurrenceId) {
+final liveOccurrenceProvider = StreamProvider.autoDispose
+    .family<SessionOccurrence?, String>((ref, occurrenceId) {
   return ref
       .watch(sessionOccurrenceRepositoryProvider)
       .watchOccurrence(occurrenceId);
@@ -74,8 +89,8 @@ final attendanceRepositoryProvider = Provider<AttendanceRepository>((ref) {
   );
 });
 
-final occurrenceAttendanceProvider =
-    StreamProvider.family<List<Attendance>, String>((ref, occurrenceId) {
+final occurrenceAttendanceProvider = StreamProvider.autoDispose
+    .family<List<Attendance>, String>((ref, occurrenceId) {
   return ref
       .watch(attendanceRepositoryProvider)
       .watchAttendanceForOccurrence(occurrenceId);
@@ -97,8 +112,9 @@ final usageRepositoryProvider = Provider<UsageRepository>((ref) {
 /// sempre `isoWeekKey(DateTime.now())` como período (a semana ATUAL, não
 /// a semana da sessão sendo marcada: a barra mostra "quanto já usei esta
 /// semana", não uma projeção por sessão).
-final usageProvider = StreamProvider.family<Usage?,
-    ({String memberId, String serviceId, String period})>((ref, args) {
+final usageProvider = StreamProvider.autoDispose
+    .family<Usage?, ({String memberId, String serviceId, String period})>(
+        (ref, args) {
   return ref.watch(usageRepositoryProvider).watchUsage(
         memberId: args.memberId,
         serviceId: args.serviceId,
@@ -148,7 +164,8 @@ final allUpcomingOccurrencesProvider =
 /// ele confirmar, não só depois). `FutureProvider`, não `Stream` — só
 /// precisamos do valor uma vez para este cálculo, não de o seguir ao
 /// vivo.
-final occurrenceProvider = FutureProvider.family<SessionOccurrence?, String>(
+final occurrenceProvider =
+    FutureProvider.autoDispose.family<SessionOccurrence?, String>(
   (ref, occurrenceId) {
     return ref
         .watch(sessionOccurrenceRepositoryProvider)
@@ -178,8 +195,8 @@ final seriesProvider = StreamProvider<List<SessionSeries>>((ref) {
 
 /// "Ajustar uma semana da série" (`SeriesDetailScreen`) — todas as
 /// ocorrências já materializadas a partir de uma série.
-final seriesOccurrencesProvider =
-    StreamProvider.family<List<SessionOccurrence>, String>((ref, seriesId) {
+final seriesOccurrencesProvider = StreamProvider.autoDispose
+    .family<List<SessionOccurrence>, String>((ref, seriesId) {
   return ref
       .watch(sessionOccurrenceRepositoryProvider)
       .watchOccurrencesForSeries(seriesId);
@@ -201,17 +218,21 @@ final upcomingWeekOccurrencesProvider =
       );
 });
 
-/// UC20 — `InstructorCalendarScreen`: janela maior que
-/// [upcomingWeekOccurrencesProvider] (2 semanas em vez de 1), qualquer
-/// serviço/instrutor — o ecrã filtra client-side por `instructorId`
-/// quando aberto por um Instrutor; o Gestor vê tudo sem filtro.
-final upcomingTwoWeeksOccurrencesProvider =
-    StreamProvider<List<SessionOccurrence>>((ref) {
-  final now = DateTime.now();
+/// Fase 8 (auditoria funcional, UC20 atualizado) — `InstructorCalendarScreen`
+/// passou de "próximas 2 semanas, tudo junto numa lista" (janela fixa,
+/// `upcomingTwoWeeksOccurrencesProvider`, agora removido) para
+/// navegação por semana com tabs por dia (mockup "Semana — visão do
+/// gestor"): uma família por semana (chave: segunda-feira 00:00 dessa
+/// semana) em vez de uma janela fixa a partir de "agora", para poder
+/// navegar para trás/à frente — mesmo padrão de
+/// `freeTrainingScheduleProvider`/`freeTrainingSlotsProvider` (chave
+/// por semana), só que por `DateTime` em vez de `weekId` String porque
+/// não há nenhum documento Firestore correspondente a "a semana X de
+/// sessionOccurrences" (ao contrário de `freeTrainingSchedules`).
+final occurrencesForWeekProvider = StreamProvider.autoDispose
+    .family<List<SessionOccurrence>, DateTime>((ref, weekStart) {
+  final range = isoWeekRange(weekStart);
   return ref
       .watch(sessionOccurrenceRepositoryProvider)
-      .watchOccurrencesStartingBetween(
-        now,
-        now.add(const Duration(days: 14)),
-      );
+      .watchOccurrencesStartingBetween(range.start, range.end);
 });

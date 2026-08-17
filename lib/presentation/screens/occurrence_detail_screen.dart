@@ -14,6 +14,7 @@ import '../../domain/entities/service.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/staff_summary.dart';
 import '../../repositories/session_occurrence_repository.dart';
+import '../widgets/occurrence_dialogs.dart';
 import 'manage_series_screen.dart';
 import 'send_notification_screen.dart';
 
@@ -140,6 +141,39 @@ class OccurrenceDetailScreen extends ConsumerWidget {
                   icon: const Icon(Icons.notifications_outlined),
                   label: const Text('Notificar inscritos'),
                 ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () =>
+                            _editOccurrence(context, ref, occurrence),
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const Text('Editar aula'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: occurrence.availableSlots <= 0
+                            ? null
+                            : () => _assignMember(context, ref, occurrence,
+                                isExtra: false),
+                        icon: const Icon(Icons.person_add_alt_outlined),
+                        label: const Text('Adicionar membro'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: occurrence.availableSlots <= 0
+                      ? null
+                      : () => _assignMember(context, ref, occurrence,
+                          isExtra: true),
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: const Text('+ Sessão extra'),
+                ),
               ],
               const SizedBox(height: 24),
               Text('Inscritos', style: Theme.of(context).textTheme.titleMedium),
@@ -164,7 +198,6 @@ class OccurrenceDetailScreen extends ConsumerWidget {
                             occurrence: occurrence,
                             booking: booking,
                             member: membersByUid[booking.memberId],
-                            servicesById: servicesById,
                             modalitiesById: modalitiesById,
                             staffByUid: staffByUid,
                           ),
@@ -260,6 +293,85 @@ class OccurrenceDetailScreen extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Não foi possível cancelar: $e')),
+      );
+    }
+  }
+
+  Future<void> _editOccurrence(
+    BuildContext context,
+    WidgetRef ref,
+    SessionOccurrence occurrence,
+  ) async {
+    final result = await showEditOccurrenceDialog(
+      context: context,
+      occurrence: occurrence,
+      title: 'Editar aula',
+    );
+    if (result == null) return;
+
+    try {
+      await ref.read(sessionOccurrenceRepositoryProvider).updateOccurrence(
+            occurrenceId: occurrence.id,
+            startAt: result.startAt,
+            endAt: result.startAt
+                .add(occurrence.endAt.difference(occurrence.startAt)),
+            capacity: result.capacity,
+            instructorId: occurrence.instructorId,
+            modalityId: occurrence.modalityId,
+          );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aula atualizada.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível editar: $e')),
+      );
+    }
+  }
+
+  /// UC08-A — [isExtra] só muda o texto mostrado e o parâmetro passado
+  /// à Cloud Function; a decisão de negócio em si (isentar do limite
+  /// semanal, nunca da capacidade da sala) é sempre do backend.
+  Future<void> _assignMember(
+    BuildContext context,
+    WidgetRef ref,
+    SessionOccurrence occurrence, {
+    required bool isExtra,
+  }) async {
+    final memberIds = await showAssignMemberDialog(
+      context: context,
+      serviceId: occurrence.serviceId,
+      occurrence: occurrence,
+      isExtra: isExtra,
+    );
+    if (memberIds == null || memberIds.isEmpty) return;
+
+    try {
+      final results =
+          await ref.read(sessionOccurrenceRepositoryProvider).assignMembers(
+                occurrenceId: occurrence.id,
+                memberIds: memberIds,
+                isExtra: isExtra,
+              );
+      final assigned = results.values.where((ok) => ok).length;
+      final failed = results.length - assigned;
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failed == 0
+                ? '$assigned membro(s) atribuído(s)'
+                    '${isExtra ? ' (sessão extra)' : ''}.'
+                : '$assigned atribuído(s), $failed não foi possível (sem vaga ou sem plano ativo).',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível atribuir: $e')),
       );
     }
   }
@@ -377,7 +489,6 @@ class _MemberTile extends ConsumerWidget {
     required this.occurrence,
     required this.booking,
     required this.member,
-    required this.servicesById,
     required this.modalitiesById,
     required this.staffByUid,
   });
@@ -385,7 +496,10 @@ class _MemberTile extends ConsumerWidget {
   final SessionOccurrence occurrence;
   final Booking booking;
   final MemberSummary? member;
-  final Map<String, Service> servicesById;
+  // `modalitiesById`/`staffByUid` são usados pelo picker de remarcação
+  // (UC10-B), para descrever as sessões de destino. `servicesById`
+  // também era passado a cada tile mas nunca lido — removido na
+  // revisão da Fase 8.
   final Map<String, Modality> modalitiesById;
   final Map<String, StaffSummary> staffByUid;
 

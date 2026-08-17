@@ -30,6 +30,19 @@ String isoWeekKey(DateTime date) {
   return '$isoYear-W${weekNumber.toString().padLeft(2, '0')}';
 }
 
+/// Fase 7 — id de documento de `freeTrainingSchedules/{weekId}`:
+/// `YYYY-MM-DD` da segunda-feira da semana ISO a que [date] pertence
+/// (espelha `weekIdForDate` em `isoWeek.ts`). Formato diferente de
+/// [isoWeekKey] (`YYYY-Www`) de propósito — aqui interessa a data
+/// concreta da segunda, não o número da semana.
+String weekIdForDate(DateTime date) {
+  final monday = isoWeekRange(date).start;
+  final yyyy = monday.year.toString().padLeft(4, '0');
+  final mm = monday.month.toString().padLeft(2, '0');
+  final dd = monday.day.toString().padLeft(2, '0');
+  return '$yyyy-$mm-$dd';
+}
+
 /// Devolve o início (segunda-feira 00:00:00.000 UTC) e o fim
 /// (domingo 23:59:59.999 UTC) da semana ISO a que [date] pertence.
 ({DateTime start, DateTime end}) isoWeekRange(DateTime date) {

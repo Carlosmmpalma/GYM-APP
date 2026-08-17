@@ -2,12 +2,18 @@ import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
-import { requireManager } from './lib/callerContext';
+import { requireManagerOrInstructor } from './lib/callerContext';
 import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
 
 const inputSchema = z.object({
   occurrenceId: z.string().min(1),
   memberIds: z.array(z.string().min(1)).min(1),
+  // UC08-A (fechado) — "+ Sessão extra" no mockup: isenta estes
+  // membros do limite semanal do próprio plano (nunca da capacidade da
+  // sala, que continua a aplicar-se sempre). `false` por omissão —
+  // atribuição manual normal conta para o limite como qualquer
+  // marcação (UC08 fechado).
+  isExtra: z.boolean().optional().default(false),
 });
 
 type MemberOutcome =
@@ -30,15 +36,22 @@ type MemberOutcome =
  * devolvido por `generateRecurringOccurrencesNow`), para a UI poder
  * mostrar "3 atribuídos, 1 sem vaga, 1 sem plano ativo" em vez de um
  * erro genérico.
+ *
+ * Fase 8 (auditoria funcional) — `requireManagerOrInstructor`, não
+ * `requireManager`: esta função também serve o botão "+ Sessão extra"
+ * (UC08-A) e "Adicionar membro" em `OccurrenceDetailScreen`, o mesmo
+ * ecrã "Detalhe da aula" onde presença/reduzir vagas/cancelar/remarcar
+ * já são Manager OU Instrutor desde a Fase 6 — nunca fazia sentido só
+ * esta ação ficar mais restrita que as vizinhas na mesma tela.
  */
 export const assignMembersToOccurrence = onCall(async (request) => {
-  const caller = requireManager(request);
+  const caller = requireManagerOrInstructor(request);
 
   const parsed = inputSchema.safeParse(request.data);
   if (!parsed.success) {
     throw new HttpsError('invalid-argument', parsed.error.message);
   }
-  const { occurrenceId, memberIds } = parsed.data;
+  const { occurrenceId, memberIds, isExtra } = parsed.data;
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);
@@ -69,6 +82,7 @@ export const assignMembersToOccurrence = onCall(async (request) => {
       startAt,
       source: 'manager',
       eligibility,
+      isExtra,
     });
 
     if (result.kind === 'booked') {

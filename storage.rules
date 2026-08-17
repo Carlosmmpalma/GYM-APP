@@ -1,10 +1,45 @@
 rules_version = '2';
 
-// Deny-all por omissão — ver comentário em firestore.rules. O storage
-// path por tenant (tenants/{tenantId}/...) é definido em Platform
-// Foundation §19 e será implementado quando existir upload real (Fase 6+).
+// Fase 8 (UC15, Platform Foundation §19) — primeira vez que este
+// projeto usa Storage a sério; até aqui era deny-all por omissão (ver
+// firestore.rules para o mesmo raciocínio de isolamento por tenant).
+// Mesmas funções auxiliares de `firestore.rules` (custom claims no
+// próprio token, sem `get()` extra) — Storage Rules usam a mesma
+// sintaxe de `request.auth.token`.
 service firebase.storage {
   match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function belongsToTenant(tenantId) {
+      return isSignedIn() && request.auth.token.tenantId == tenantId;
+    }
+
+    function isManager(tenantId) {
+      return belongsToTenant(tenantId) && 'manager' in request.auth.token.roles;
+    }
+
+    function isInstructor(tenantId) {
+      return belongsToTenant(tenantId) && 'instructor' in request.auth.token.roles;
+    }
+
+    // Vídeo demonstrativo de um exercício da biblioteca (UC15) —
+    // partilhado por todo o tenant (Aluno precisa de ver o vídeo dos
+    // exercícios do seu próprio plano), escrito só por Instrutor/
+    // Gestor. Mesmo aviso do mockup ("Formato ou tamanho inválido é
+    // rejeitado") aplicado a sério aqui, não só na UI: só vídeo,
+    // até 100MB.
+    match /tenants/{tenantId}/exercises/{exerciseId}/{fileName} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if (isManager(tenantId) || isInstructor(tenantId))
+        && request.resource.contentType.matches('video/.*')
+        && request.resource.size < 100 * 1024 * 1024;
+      allow delete: if isManager(tenantId) || isInstructor(tenantId);
+    }
+
+    // Tudo o resto continua bloqueado.
     match /{allPaths=**} {
       allow read, write: if false;
     }

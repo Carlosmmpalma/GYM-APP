@@ -1,3 +1,4 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,12 +10,24 @@ import 'package:gym_saas/core/config/tenant_app_config.dart';
 import 'package:gym_saas/domain/entities/app_user.dart';
 import 'package:gym_saas/domain/entities/role.dart';
 import 'package:gym_saas/presentation/widgets/auth_gate.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:mocktail/mocktail.dart';
+
+// Fase 7 — `HomeScreen` ganhou um 3º tab (`FreeTrainingScreen`); como
+// os três tabs vivem num `IndexedStack`, TODOS constroem mesmo só o
+// primeiro estar visível, e `FreeTrainingScreen` formata uma data logo
+// no primeiro build (cabeçalho da semana) — precisa do locale.
+class _MockFirebaseFunctions extends Mock implements FirebaseFunctions {}
 
 /// Testa só a decisão de routing do AuthGate — os ecrãs individuais
 /// (LoginScreen, ForcePasswordChangeScreen, HelloWorldScreen) já têm
 /// os seus próprios testes/serão testados à parte quando ganharem lógica
 /// própria maior.
 void main() {
+  setUpAll(() async {
+    await initializeDateFormatting('pt_PT');
+  });
+
   testWidgets('sem sessão mostra o ecrã de login (UC01)', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -69,6 +82,7 @@ void main() {
           currentAppUserProvider.overrideWith((ref) => Stream.value(appUser)),
           hasTemporaryPasswordProvider.overrideWith((ref) async => false),
           firestoreProvider.overrideWithValue(fakeFirestore),
+          functionsProvider.overrideWithValue(_MockFirebaseFunctions()),
         ],
         child: const MaterialApp(home: AuthGate()),
       ),

@@ -16,6 +16,11 @@ StaffSummary _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     roles: rolesRaw.map((r) => Role.fromClaim(r as String)).toSet(),
     active: (data['status'] as String? ?? 'active') == 'active',
     modalityIds: modalityIdsRaw.map((e) => e as String).toSet(),
+    phone: data['phone'] as String? ?? '',
+    birthDate: (data['birthDate'] as Timestamp?)?.toDate(),
+    address: data['address'] as String? ?? '',
+    nif: data['nif'] as String? ?? '',
+    emergencyContact: data['emergencyContact'] as String? ?? '',
   );
 }
 
@@ -80,6 +85,29 @@ class FirebaseStaffRepository implements StaffRepository {
   }) async {
     await _staff.doc(staffId).update({
       'fcmTokens': FieldValue.arrayUnion([token]),
+    });
+  }
+
+  @override
+  Future<void> updateStaffProfile({
+    required String staffId,
+    required String name,
+    required String email,
+    required String phone,
+    DateTime? birthDate,
+    required String address,
+    required String nif,
+    required String emergencyContact,
+  }) async {
+    await _functions.httpsCallable('updateStaffProfile').call<void>({
+      'staffId': staffId,
+      'name': name,
+      'email': email,
+      'phone': phone,
+      if (birthDate != null) 'birthDate': birthDate.toIso8601String(),
+      'address': address,
+      'nif': nif,
+      'emergencyContact': emergencyContact,
     });
   }
 }

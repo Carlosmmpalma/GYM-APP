@@ -5,6 +5,7 @@ import '../../application/providers/admin_providers.dart';
 import '../../application/providers/modality_providers.dart';
 import '../../domain/entities/role.dart';
 import '../../domain/entities/staff_summary.dart';
+import '../widgets/personal_data_fields.dart';
 
 /// Detalhe de staff (Instrutor/Gestor): dados + toggle ativo/inativo.
 /// Mesmo raciocínio de `MemberDetailScreen` (desativar, nunca eliminar
@@ -42,11 +43,14 @@ class StaffDetailScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 4),
-                  Text('Papel: ${currentStaff.roles.map((r) => r.name).join(', ')}'),
+                  Text(
+                      'Papel: ${currentStaff.roles.map((r) => r.name).join(', ')}'),
                 ],
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          _EditStaffProfileCard(staff: currentStaff),
           const SizedBox(height: 8),
           Card(
             child: SwitchListTile(
@@ -58,7 +62,8 @@ class StaffDetailScreen extends ConsumerWidget {
                         '${currentStaff.roles.contains(Role.instructor) ? ' As séries/sessões futuras dele já foram canceladas (UC24).' : ''}',
               ),
               value: currentStaff.active,
-              onChanged: (value) => _toggleActive(context, ref, currentStaff, value),
+              onChanged: (value) =>
+                  _toggleActive(context, ref, currentStaff, value),
             ),
           ),
           if (currentStaff.roles.contains(Role.instructor)) ...[
@@ -69,7 +74,8 @@ class StaffDetailScreen extends ConsumerWidget {
               builder: (context, ref, _) {
                 final modalitiesAsync = ref.watch(modalitiesProvider);
                 return modalitiesAsync.when(
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (error, stack) => Text('Erro: $error'),
                   data: (modalities) {
                     final active = modalities.where((m) => m.active).toList();
@@ -93,7 +99,9 @@ class StaffDetailScreen extends ConsumerWidget {
                                   updated.remove(m.id);
                                 }
                                 try {
-                                  await ref.read(staffRepositoryProvider).setModalityIds(
+                                  await ref
+                                      .read(staffRepositoryProvider)
+                                      .setModalityIds(
                                         staffId: currentStaff.uid,
                                         modalityIds: updated,
                                       );
@@ -101,7 +109,8 @@ class StaffDetailScreen extends ConsumerWidget {
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                        content: Text('Não foi possível atualizar: $e')),
+                                        content: Text(
+                                            'Não foi possível atualizar: $e')),
                                   );
                                 }
                               },
@@ -193,5 +202,139 @@ class StaffDetailScreen extends ConsumerWidget {
         SnackBar(content: Text('Não foi possível atualizar o staff: $e')),
       );
     }
+  }
+}
+
+/// Pedido pelo Carlo depois de testar "Criar utilizador": até aqui
+/// este ecrã não tinha NENHUMA forma de editar nome/email/dados
+/// pessoais de um staff depois de criado. Ao contrário do equivalente
+/// em `member_detail_screen.dart`, mudar o email aqui passa pela Cloud
+/// Function `updateStaffProfile` — é o email de LOGIN real, ver nota
+/// de arquitetura em `updateStaffProfile.ts`.
+class _EditStaffProfileCard extends ConsumerStatefulWidget {
+  const _EditStaffProfileCard({required this.staff});
+
+  final StaffSummary staff;
+
+  @override
+  ConsumerState<_EditStaffProfileCard> createState() =>
+      _EditStaffProfileCardState();
+}
+
+class _EditStaffProfileCardState extends ConsumerState<_EditStaffProfileCard> {
+  late final _nameController = TextEditingController(text: widget.staff.name);
+  late final _emailController = TextEditingController(text: widget.staff.email);
+  late final _phoneController = TextEditingController(text: widget.staff.phone);
+  late final _addressController =
+      TextEditingController(text: widget.staff.address);
+  late final _nifController = TextEditingController(text: widget.staff.nif);
+  late final _emergencyContactController =
+      TextEditingController(text: widget.staff.emergencyContact);
+  late DateTime? _birthDate = widget.staff.birthDate;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _nifController.dispose();
+    _emergencyContactController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    if (name.isEmpty || email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nome e email válido são obrigatórios.')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await ref.read(staffRepositoryProvider).updateStaffProfile(
+            staffId: widget.staff.uid,
+            name: name,
+            email: email,
+            phone: _phoneController.text.trim(),
+            birthDate: _birthDate,
+            address: _addressController.text.trim(),
+            nif: _nifController.text.trim(),
+            emergencyContact: _emergencyContactController.text.trim(),
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Dados atualizados.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível guardar: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Dados pessoais',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: 'Nome completo'),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _emailController,
+              decoration:
+                  const InputDecoration(labelText: 'Email (usado para login)'),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text(
+                'Mudar o email muda também as credenciais de login deste staff.',
+                style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic),
+              ),
+            ),
+            const SizedBox(height: 12),
+            PersonalDataFields(
+              phoneController: _phoneController,
+              addressController: _addressController,
+              nifController: _nifController,
+              emergencyContactController: _emergencyContactController,
+              birthDate: _birthDate,
+              onBirthDateChanged: (date) => setState(() => _birthDate = date),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Guardar dados'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

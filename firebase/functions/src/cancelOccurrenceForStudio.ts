@@ -1,9 +1,10 @@
-import { getFirestore } from 'firebase-admin/firestore';
+import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManagerOrInstructor } from './lib/callerContext';
 import { applyRelease, prepareRelease, ReleasePlan } from './lib/bookingLogic';
+import { describeOccurrence, notifyMembers } from './lib/notifications';
 
 const inputSchema = z.object({
   occurrenceId: z.string().min(1),
@@ -58,8 +59,25 @@ export const cancelOccurrenceForStudio = onCall(async (request) => {
     }
     tx.update(occurrenceRef, { status: 'cancelled', activeBookingCount: 0 });
 
-    return { cancelledBookings: plans.length };
+    return {
+      cancelledBookings: plans.length,
+      memberIds: plans.map((p) => p.memberId),
+      startAt: (occSnap.data()?.startAt as Timestamp | undefined)?.toDate(),
+    };
   });
 
-  return result;
+  // UC10/UC18 (fechado) — o estúdio cancelou a aula; quem estava
+  // inscrito é notificado (UC11). Fora da transação, e sem poder
+  // desfazer o cancelamento se falhar (ver `lib/notifications.ts`).
+  if (result.memberIds.length > 0) {
+    const when = result.startAt ? describeOccurrence(result.startAt) : 'uma sessão marcada';
+    await notifyMembers(
+      tenantRef,
+      result.memberIds,
+      'Sessão cancelada',
+      `A sessão de ${when} foi cancelada pelo estúdio. A sessão volta ao teu limite semanal.`,
+    );
+  }
+
+  return { cancelledBookings: result.cancelledBookings };
 });

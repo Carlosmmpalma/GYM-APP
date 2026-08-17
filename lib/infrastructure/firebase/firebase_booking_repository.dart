@@ -82,6 +82,11 @@ class FirebaseBookingRepository implements BookingRepository {
             used: (details['used'] as num).toInt(),
             limit: (details['limit'] as num).toInt(),
           );
+        case 'too-close-to-start':
+          final details = e.details as Map;
+          throw TooCloseToStartException(
+            minutesRequired: (details['minutesRequired'] as num).toInt(),
+          );
       }
       if (e.code == 'not-found') {
         throw const SessionNotBookableException();
@@ -99,7 +104,8 @@ class FirebaseBookingRepository implements BookingRepository {
     required String memberId,
   }) async {
     try {
-      final result = await _functions.httpsCallable('cancelBooking').call<Object?>({
+      final result =
+          await _functions.httpsCallable('cancelBooking').call<Object?>({
         'occurrenceId': occurrenceId,
         'memberId': memberId,
       });
@@ -119,9 +125,19 @@ class FirebaseBookingRepository implements BookingRepository {
 
   @override
   Stream<List<Booking>> watchMyBookings(String memberId) {
+    // Fase 8 (varredura de performance) — `status == 'booked'` passou a
+    // ser filtrado NO SERVIDOR. Antes vinha tudo e o ecrã filtrava em
+    // Dart: um membro com dois anos de histórico descarregava centenas
+    // de documentos cancelados (numa collectionGroup query, das mais
+    // caras) só para mostrar as 2-3 marcações ativas que tem. O ecrã
+    // (`my_bookings_screen.dart`) só alguma vez mostrou `booked`, por
+    // isso não se perde nada — e o `limit` é um teto defensivo: ninguém
+    // tem 100 marcações ATIVAS em simultâneo.
     return _firestore
         .collectionGroup('bookings')
         .where('memberId', isEqualTo: memberId)
+        .where('status', isEqualTo: 'booked')
+        .limit(100)
         .snapshots()
         .map((snapshot) => snapshot.docs.map(_fromDoc).toList());
   }

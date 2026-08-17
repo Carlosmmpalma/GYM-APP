@@ -247,3 +247,81 @@ describe('Concorrência na última vaga (Fase 2, 🔴 crítico — via Cloud Fun
     expect(occSnap.data()?.activeBookingCount).toBe(2);
   }, 15_000);
 });
+
+// Fase 8 (auditoria funcional, UC06/UC07/UC08/UC09 fechado) —
+// "antecedência mínima para marcar, configurável pelo Gestor". Reusa o
+// mesmo tenant/serviço/subscriptions já semeados em `beforeAll` acima
+// — só varia `startAt` da ocorrência e o documento
+// `config/bookingPolicy`, por isso vive no mesmo ficheiro em vez de
+// duplicar todo o setup de custom token/Functions emulator.
+describe('Antecedência mínima para marcar (Fase 8, UC06/07/08/09 fechado)', () => {
+  const bookingPolicyRef = adminFirestore.doc(
+    `tenants/${TENANT_ID}/config/bookingPolicy`,
+  );
+
+  async function resetOccurrenceStartingIn(minutesFromNow: number) {
+    const occurrenceRef = adminFirestore.doc(
+      `tenants/${TENANT_ID}/sessionOccurrences/${OCCURRENCE_ID}`,
+    );
+    await adminFirestore.recursiveDelete(occurrenceRef).catch(() => undefined);
+    await occurrenceRef.set({
+      serviceId: SERVICE_ID,
+      startAt: Timestamp.fromDate(new Date(Date.now() + minutesFromNow * 60 * 1000)),
+      endAt: Timestamp.fromDate(new Date(Date.now() + (minutesFromNow + 60) * 60 * 1000)),
+      capacity: 5,
+      status: 'scheduled',
+      activeBookingCount: 0,
+    });
+  }
+
+  afterAll(async () => {
+    // Não deixar `minBookingNoticeMinutes` configurado para trás —
+    // outros ficheiros/testes deste diretório assumem `0` (sem
+    // restrição) por omissão, mesmo raciocínio do `resetOccurrence`
+    // acima para `activeBookingCount`.
+    await bookingPolicyRef.delete().catch(() => undefined);
+  });
+
+  it('rejeita marcar dentro da janela configurada (failed-precondition, reason too-close-to-start)', async () => {
+    await bookingPolicyRef.set({ minBookingNoticeMinutes: 120 }, { merge: true });
+    await resetOccurrenceStartingIn(30);
+
+    const functions = await signedInFunctionsClient('client-notice-too-close', 'member_a', {
+      tenantId: TENANT_ID,
+      roles: ['member'],
+    });
+
+    await expect(
+      httpsCallable(functions, 'createBooking')({
+        occurrenceId: OCCURRENCE_ID,
+        memberId: 'member_a',
+      }),
+    ).rejects.toMatchObject({
+      code: 'functions/failed-precondition',
+      details: { reason: 'too-close-to-start', minutesRequired: 120 },
+    });
+
+    const occSnap = await adminFirestore
+      .doc(`tenants/${TENANT_ID}/sessionOccurrences/${OCCURRENCE_ID}`)
+      .get();
+    expect(occSnap.data()?.activeBookingCount).toBe(0);
+  }, 15_000);
+
+  it('permite marcar fora da janela configurada', async () => {
+    await bookingPolicyRef.set({ minBookingNoticeMinutes: 120 }, { merge: true });
+    await resetOccurrenceStartingIn(180);
+
+    const functions = await signedInFunctionsClient('client-notice-ok', 'member_a', {
+      tenantId: TENANT_ID,
+      roles: ['member'],
+    });
+
+    const result = await attemptBooking(functions, 'member_a');
+    expect(result).toBe('booked');
+
+    const occSnap = await adminFirestore
+      .doc(`tenants/${TENANT_ID}/sessionOccurrences/${OCCURRENCE_ID}`)
+      .get();
+    expect(occSnap.data()?.activeBookingCount).toBe(1);
+  }, 15_000);
+});

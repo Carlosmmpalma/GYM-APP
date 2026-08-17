@@ -17,4 +17,20 @@ abstract class TenantRepository {
     required String tenantId,
     required int hours,
   });
+
+  /// Fase 8 (auditoria funcional, UC06/UC07/UC08/UC09 fechado) —
+  /// "antecedência mínima para MARCAR" (não confundir com
+  /// [getMinCancellationNoticeHours], que é sobre cancelar). Mesmo
+  /// documento (`tenants/{tenantId}/config/bookingPolicy`), campo
+  /// irmão `minBookingNoticeMinutes`. Só se aplica a marcação
+  /// self-service (`createBooking`/`bookFreeTrainingSlot`) — atribuição
+  /// manual por Instrutor/Gestor nunca passa por esta validação, mesmo
+  /// espírito de UC08-A. `0` (sem restrição) se o documento ainda não
+  /// existir.
+  Future<int> getMinBookingNoticeMinutes(String tenantId);
+
+  Future<void> setMinBookingNoticeMinutes({
+    required String tenantId,
+    required int minutes,
+  });
 }

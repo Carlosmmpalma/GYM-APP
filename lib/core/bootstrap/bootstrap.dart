@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import '../../app.dart';
@@ -69,9 +70,12 @@ Future<void> bootstrap(Environment environment) async {
       config.functionsEmulatorHost,
       config.functionsEmulatorPort,
     );
-    // Storage emulado liga-se aqui também, quando o respetivo provider
-    // for criado:
-    //   FirebaseStorage.instance.useStorageEmulator(host, port);
+    // Fase 8 — primeiro provider a precisar mesmo de Storage
+    // (`FirebaseStorageRepository`, vídeo de exercícios, UC15).
+    await FirebaseStorage.instance.useStorageEmulator(
+      config.storageEmulatorHost,
+      config.storageEmulatorPort,
+    );
   }
 
   // Crashlytics (Platform Foundation §24 — Observabilidade). Em

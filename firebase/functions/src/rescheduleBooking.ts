@@ -48,16 +48,18 @@ export const rescheduleBooking = onCall(async (request) => {
   const fromRef = tenantRef.collection('sessionOccurrences').doc(fromOccurrenceId);
   const toRef = tenantRef.collection('sessionOccurrences').doc(toOccurrenceId);
 
-  // Passo 1 — liberta a marcação de origem.
+  // Passo 1 — liberta a marcação de origem. `wasExtra` viaja daqui
+  // para o passo 2: UC08-A, remarcar uma sessão extra tem de manter-se
+  // extra no destino (ver `ReleasePlan.isExtra`).
   const released = await firestore.runTransaction(async (tx) => {
     const occSnap = await tx.get(fromRef);
     const plan = await prepareRelease(tx, { tenantRef, occurrenceRef: fromRef, memberId });
-    if (!plan) return false;
+    if (!plan) return null;
 
     applyRelease(tx, plan);
     const activeCount = (occSnap.data()?.activeBookingCount as number | undefined) ?? 0;
     tx.update(fromRef, { activeBookingCount: Math.max(0, activeCount - 1) });
-    return true;
+    return { isExtra: plan.isExtra };
   });
 
   if (!released) {
@@ -102,6 +104,7 @@ export const rescheduleBooking = onCall(async (request) => {
     startAt,
     source: 'manager',
     eligibility,
+    isExtra: released.isExtra,
   });
 
   if (result.kind !== 'booked') {

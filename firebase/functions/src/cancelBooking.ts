@@ -81,8 +81,13 @@ export const cancelBooking = onCall(async (request) => {
     // seguro (nunca tinha incrementado usage nenhum, para começar).
     const serviceId = bookingData.serviceId as string | undefined;
     const period = bookingData.period as string | undefined;
+    // UC08-A — mesma correção de `lib/bookingLogic.ts#prepareRelease`:
+    // uma sessão EXTRA nunca incrementou `usage`, por isso cancelá-la
+    // não pode decrementar. Caso contrário o membro acabava com MENOS
+    // utilizações gastas do que as que realmente usou.
+    const isExtra = (bookingData.isExtra as boolean | undefined) ?? false;
     const usageRef =
-      withinWindow && serviceId && period
+      withinWindow && serviceId && period && !isExtra
         ? tenantRef.collection('usage').doc(`${memberId}_${serviceId}_${period}`)
         : null;
     const usageSnap = usageRef ? await tx.get(usageRef) : null;

@@ -69,6 +69,23 @@ export const createBooking = onCall(async (request) => {
   const serviceId = occurrenceData.serviceId as string;
   const startAt = (occurrenceData.startAt as Timestamp).toDate();
 
+  // UC06/UC07/UC08/UC09 (fechado) — "antecedência mínima para marcar,
+  // configurável pelo Gestor". Mesmo documento de `cancelBooking.ts`
+  // (`config/bookingPolicy`), campo irmão — só se aplica aqui
+  // (self-service): atribuição manual por Instrutor/Gestor
+  // (`assignMembersToOccurrence.ts`) nunca passa por isto.
+  const policySnap = await tenantRef.collection('config').doc('bookingPolicy').get();
+  const minNoticeMinutes =
+    (policySnap.data()?.minBookingNoticeMinutes as number | undefined) ?? 0;
+  const minutesUntilStart = (startAt.getTime() - Date.now()) / (60 * 1000);
+  if (minNoticeMinutes > 0 && minutesUntilStart < minNoticeMinutes) {
+    throw new HttpsError(
+      'failed-precondition',
+      `É preciso marcar com pelo menos ${minNoticeMinutes} minuto(s) de antecedência.`,
+      { reason: 'too-close-to-start', minutesRequired: minNoticeMinutes },
+    );
+  }
+
   const eligibility = await resolveEligibility(tenantRef, memberId, serviceId);
   if (!eligibility) {
     throw new HttpsError(

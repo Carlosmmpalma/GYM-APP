@@ -76,3 +76,11 @@ final minCancellationNoticeHoursProvider = FutureProvider.autoDispose<int>((ref)
   final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
   return ref.watch(tenantRepositoryProvider).getMinCancellationNoticeHours(tenantId);
 });
+
+/// Fase 8 (auditoria funcional) — "antecedência mínima para marcar",
+/// irmã de [minCancellationNoticeHoursProvider] mas para o lado
+/// oposto do booking (marcar, não cancelar).
+final minBookingNoticeMinutesProvider = FutureProvider.autoDispose<int>((ref) {
+  final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
+  return ref.watch(tenantRepositoryProvider).getMinBookingNoticeMinutes(tenantId);
+});

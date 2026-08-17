@@ -61,7 +61,8 @@ void main() {
         .doc(_tenantId)
         .collection('members')
         .doc('member_1')
-        .set({'memberNumber': 'M001', 'name': 'Ana Membro', 'status': 'active'});
+        .set(
+            {'memberNumber': 'M001', 'name': 'Ana Membro', 'status': 'active'});
     await firestore
         .collection('tenants')
         .doc(_tenantId)
@@ -123,6 +124,15 @@ void main() {
   testWidgets(
       'recalcula a utilização de um serviço único e mostra o resultado num diálogo',
       (tester) async {
+    // O cartão "Dados pessoais" (novo) empurra "Recalcular utilização"
+    // para fora da viewport padrão de teste (800x600) — sem isto, o
+    // `SliverList` nem chega a construir esses widgets (é lazy mesmo
+    // para um `ListView(children: ...)` fixo, não só para `.builder`).
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final firestore = await seedFirestore();
     final usageRepository = _FakeUsageRepository(
       recalculationResult: const [(period: '2026-W33', used: 2)],
@@ -148,6 +158,11 @@ void main() {
 
   testWidgets('mostra mensagem própria quando não há nada para recalcular',
       (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final firestore = await seedFirestore();
     final usageRepository = _FakeUsageRepository(recalculationResult: const []);
 
@@ -161,5 +176,43 @@ void main() {
       find.textContaining('Nada para recalcular'),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+      'Gestor edita os dados pessoais de um membro e ficam gravados no Firestore',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final firestore = await seedFirestore();
+    final usageRepository = _FakeUsageRepository();
+
+    await tester.pumpWidget(buildApp(firestore, usageRepository));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dados pessoais'), findsOneWidget);
+
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Telefone'), '912345678');
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Email de contacto'),
+      'ana@example.com',
+    );
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'NIF'), '123456789');
+    await tester.tap(find.text('Guardar dados'));
+    await tester.pumpAndSettle();
+
+    final doc = await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('members')
+        .doc('member_1')
+        .get();
+    expect(doc.data()?['phone'], '912345678');
+    expect(doc.data()?['email'], 'ana@example.com');
+    expect(doc.data()?['nif'], '123456789');
   });
 }

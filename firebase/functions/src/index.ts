@@ -54,3 +54,22 @@ export { cancelOccurrenceForStudio } from './cancelOccurrenceForStudio';
 export { deactivateInstructor } from './deactivateInstructor';
 export { rescheduleBooking } from './rescheduleBooking';
 export { sendNotification } from './sendNotification';
+
+// Pedido pelo Carlo depois de testar "Criar utilizador" — dados
+// pessoais editáveis pelo Gestor depois da criação (ver nota de
+// arquitetura em updateStaffProfile.ts sobre porque o staff precisa de
+// Cloud Function e o membro não).
+export { updateStaffProfile } from './updateStaffProfile';
+
+// Fase 7 — Treino livre (UC09/UC17-A). suggestFreeTrainingSchedule +
+// publishFreeTrainingSchedule controlam o estado draft/suggested/
+// published da grelha semanal; book/cancel/assign reutilizam
+// `lib/bookingLogic.ts` (mesma transação de capacidade/elegibilidade/
+// limite semanal da Fase 2/4/5), só apontando para
+// `freeTrainingSchedules/{weekId}/slots/{slotId}` em vez de
+// `sessionOccurrences/{id}`.
+export { suggestFreeTrainingSchedule } from './suggestFreeTrainingSchedule';
+export { publishFreeTrainingSchedule } from './publishFreeTrainingSchedule';
+export { bookFreeTrainingSlot } from './bookFreeTrainingSlot';
+export { cancelFreeTrainingBooking } from './cancelFreeTrainingBooking';
+export { assignMembersToFreeTrainingSlot } from './assignMembersToFreeTrainingSlot';

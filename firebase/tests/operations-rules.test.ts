@@ -261,3 +261,96 @@ describe('Security Rules — members.fcmTokens (Fase 6, UC21)', () => {
     );
   });
 });
+
+// Fase 8 (revisão geral) — duas lacunas de autorização que sobreviveram
+// desde a Fase 1 com o argumento "só o Gestor mexe nisto na UI":
+//   * `staff/{id}` tinha `allow read, write: if belongsToTenant`, ou
+//     seja qualquer ALUNO podia desativar/editar um instrutor;
+//   * `tenants/{id}` idem — qualquer aluno podia renomear o ginásio ou
+//     pô-lo a `suspended`.
+// Nenhuma das duas era escalada de privilégios (os roles vêm dos custom
+// claims, nunca destes documentos), mas ambas eram escrita indevida a
+// sério, não só um ecrã escondido.
+describe('Security Rules — staff e documento do tenant (Fase 8, revisão geral)', () => {
+  it('um membro NÃO consegue desativar um instrutor', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context
+        .firestore()
+        .doc(`tenants/${TENANT_A}/staff/instructor_1`)
+        .set({ name: 'Rita', roles: ['instructor'], status: 'active' });
+    });
+
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/staff/instructor_1`).update({ status: 'inactive' }),
+    );
+  });
+
+  it('um membro CONTINUA a poder LER o staff (nome do instrutor da sessão)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context
+        .firestore()
+        .doc(`tenants/${TENANT_A}/staff/instructor_1`)
+        .set({ name: 'Rita', roles: ['instructor'], status: 'active' });
+    });
+
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertSucceeds(db.doc(`tenants/${TENANT_A}/staff/instructor_1`).get());
+  });
+
+  it('um Manager CONSEGUE editar o staff', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context
+        .firestore()
+        .doc(`tenants/${TENANT_A}/staff/instructor_1`)
+        .set({ name: 'Rita', roles: ['instructor'], status: 'active' });
+    });
+
+    const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/staff/instructor_1`).update({ status: 'inactive' }),
+    );
+  });
+
+  it('o próprio staff CONSEGUE registar o seu token FCM (UC21)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context
+        .firestore()
+        .doc(`tenants/${TENANT_A}/staff/instructor_1`)
+        .set({ name: 'Rita', roles: ['instructor'], status: 'active' });
+    });
+
+    const db = contextFor('instructor_1', TENANT_A, ['instructor']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/staff/instructor_1`).update({ fcmTokens: ['token_1'] }),
+    );
+  });
+
+  it('o próprio staff NÃO consegue dar-se a si mesmo o role de manager', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context
+        .firestore()
+        .doc(`tenants/${TENANT_A}/staff/instructor_1`)
+        .set({ name: 'Rita', roles: ['instructor'], status: 'active' });
+    });
+
+    const db = contextFor('instructor_1', TENANT_A, ['instructor']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/staff/instructor_1`).update({ roles: ['manager'] }),
+    );
+  });
+
+  it('um membro NÃO consegue escrever no documento do tenant', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}`).update({ name: 'Ginásio Renomeado' }),
+    );
+  });
+
+  it('um Manager CONSEGUE escrever no documento do tenant', async () => {
+    const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}`).update({ name: 'NXT Performance Studio' }),
+    );
+  });
+});

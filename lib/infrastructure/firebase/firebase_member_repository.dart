@@ -12,6 +12,10 @@ MemberSummary _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     active: (data['status'] as String? ?? 'active') == 'active',
     phone: data['phone'] as String? ?? '',
     email: data['email'] as String? ?? '',
+    birthDate: (data['birthDate'] as Timestamp?)?.toDate(),
+    address: data['address'] as String? ?? '',
+    nif: data['nif'] as String? ?? '',
+    emergencyContact: data['emergencyContact'] as String? ?? '',
   );
 }
 
@@ -68,6 +72,29 @@ class FirebaseMemberRepository implements MemberRepository {
   }) async {
     await _members.doc(memberId).update({
       'fcmTokens': FieldValue.arrayUnion([token]),
+    });
+  }
+
+  @override
+  Future<void> updateMemberProfile({
+    required String memberId,
+    required String name,
+    required String phone,
+    required String email,
+    DateTime? birthDate,
+    required String address,
+    required String nif,
+    required String emergencyContact,
+  }) async {
+    await _members.doc(memberId).update({
+      'name': name,
+      'phone': phone,
+      'email': email,
+      'birthDate': birthDate != null ? Timestamp.fromDate(birthDate) : null,
+      'address': address,
+      'nif': nif,
+      'emergencyContact': emergencyContact,
+      'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 }

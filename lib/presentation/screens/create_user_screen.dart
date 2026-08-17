@@ -5,6 +5,7 @@ import '../../application/providers/admin_providers.dart';
 import '../../application/providers/modality_providers.dart';
 import '../../domain/entities/new_account_credentials.dart';
 import '../../domain/entities/role.dart';
+import '../widgets/personal_data_fields.dart';
 
 enum _UserType { aluno, staff }
 
@@ -30,7 +31,14 @@ class CreateUserScreen extends ConsumerStatefulWidget {
 class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  // Aluno: email de CONTACTO (login usa o nº de sócio sintético).
+  // Staff: email de LOGIN real (decisão fechada, ver createStaff.ts).
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _nifController = TextEditingController();
+  final _emergencyContactController = TextEditingController();
+  DateTime? _birthDate;
 
   _UserType _type = _UserType.aluno;
   final Set<Role> _staffRoles = {Role.instructor};
@@ -42,13 +50,18 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _nifController.dispose();
+    _emergencyContactController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_type == _UserType.staff && _staffRoles.isEmpty) {
-      setState(() => _errorMessage = 'Escolhe pelo menos um papel (Instrutor/Gestor).');
+      setState(() =>
+          _errorMessage = 'Escolhe pelo menos um papel (Instrutor/Gestor).');
       return;
     }
 
@@ -57,25 +70,53 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
       _errorMessage = null;
     });
 
+    // `_submitting` só cobre a chamada de rede (o spinner do botão),
+    // nunca o tempo em que o diálogo de credenciais fica aberto — um
+    // `CircularProgressIndicator` indeterminado ainda a animar por
+    // baixo do diálogo faz o `pumpAndSettle()` de um teste nunca
+    // estabilizar (mesma armadilha já documentada em
+    // `member_detail_screen.dart#_recalculate`).
+    NewAccountCredentials credentials;
     try {
       final repository = ref.read(userProvisioningRepositoryProvider);
-      final credentials = _type == _UserType.aluno
-          ? await repository.createMember(name: _nameController.text.trim())
+      credentials = _type == _UserType.aluno
+          ? await repository.createMember(
+              name: _nameController.text.trim(),
+              phone: _phoneController.text.trim(),
+              email: _emailController.text.trim(),
+              birthDate: _birthDate,
+              address: _addressController.text.trim(),
+              nif: _nifController.text.trim(),
+              emergencyContact: _emergencyContactController.text.trim(),
+            )
           : await repository.createStaff(
               name: _nameController.text.trim(),
               email: _emailController.text.trim(),
               roles: _staffRoles,
-              modalityIds: _staffRoles.contains(Role.instructor) ? _modalityIds : const {},
+              modalityIds: _staffRoles.contains(Role.instructor)
+                  ? _modalityIds
+                  : const {},
+              phone: _phoneController.text.trim(),
+              birthDate: _birthDate,
+              address: _addressController.text.trim(),
+              nif: _nifController.text.trim(),
+              emergencyContact: _emergencyContactController.text.trim(),
             );
-      if (!mounted) return;
-      await _showCredentialsDialog(credentials);
-      if (!mounted) return;
-      Navigator.of(context).pop();
     } catch (e) {
-      setState(() => _errorMessage = 'Não foi possível criar a conta: $e');
-    } finally {
-      if (mounted) setState(() => _submitting = false);
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Não foi possível criar a conta: $e';
+          _submitting = false;
+        });
+      }
+      return;
     }
+
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    await _showCredentialsDialog(credentials);
+    if (!mounted) return;
+    Navigator.of(context).pop();
   }
 
   /// Mockup ("Criar utilizador — Aluno"): "Credenciais comunicadas ao
@@ -150,6 +191,15 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
               ),
+              const SizedBox(height: 16),
+              PersonalDataFields(
+                phoneController: _phoneController,
+                addressController: _addressController,
+                nifController: _nifController,
+                emergencyContactController: _emergencyContactController,
+                birthDate: _birthDate,
+                onBirthDateChanged: (date) => setState(() => _birthDate = date),
+              ),
               if (_type == _UserType.aluno) ...[
                 const SizedBox(height: 16),
                 const Card(
@@ -162,12 +212,20 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _emailController,
+                  decoration:
+                      const InputDecoration(labelText: 'Email de contacto'),
+                  keyboardType: TextInputType.emailAddress,
+                ),
               ],
               if (_type == _UserType.staff) ...[
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _emailController,
-                  decoration: const InputDecoration(labelText: 'Email (usado para login)'),
+                  decoration: const InputDecoration(
+                      labelText: 'Email (usado para login)'),
                   keyboardType: TextInputType.emailAddress,
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return 'Obrigatório';
@@ -208,7 +266,8 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
                         loading: () => const LinearProgressIndicator(),
                         error: (error, stack) => Text('Erro: $error'),
                         data: (modalities) {
-                          final active = modalities.where((m) => m.active).toList();
+                          final active =
+                              modalities.where((m) => m.active).toList();
                           if (active.isEmpty) {
                             return const Text(
                               'Ainda não existe nenhuma modalidade ativa.',

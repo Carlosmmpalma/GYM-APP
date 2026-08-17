@@ -1986,12 +1986,996 @@ cobertos (passos 10-11). **Continua por confirmar manualmente por ti**
 Cloud Functions + Rules) passam, mas ninguém clicou ainda na app a
 sério para esta fase.
 
+## Extensão pedida: dados pessoais em falta (fora do guia)
+
+Reportaste que "Criar utilizador" pedia poucos dados (só nome para o
+Aluno; nome+email para o Staff), que o Staff devia ter os mesmos dados
+pessoais do Aluno, e que devia ser possível editar tudo isso depois de
+criado, não só o que já era editável. Antes de mexer, confirmei
+contigo duas decisões:
+
+1. **Que campos acrescentar** — confirmaste todos os sugeridos:
+   telefone, email, data de nascimento, morada, NIF, contacto de
+   emergência. Nenhum destes está em nenhum mockup/use case atual (o
+   mockup "Criar utilizador" só tem um único campo "Contacto"); ficam
+   documentados aqui como decisão tua, não como algo já pedido nos
+   documentos funcionais.
+2. **Email do staff, ao editar** — confirmaste que deve sincronizar
+   com o login (Firebase Auth), não ficar um campo solto.
+
+### O que foi acrescentado
+
+- **Domínio**: `MemberSummary` ganhou `birthDate`/`address`/`nif`/
+  `emergencyContact` (todos opcionais, `''`/`null` por omissão —
+  `phone`/`email` já existiam desde a Fase 5, UC02). `StaffSummary`
+  ganhou os mesmos cinco campos (incluindo `phone`, que não existia
+  para staff de todo).
+- **`createMember.ts`/`createStaff.ts`**: schemas zod ganharam estes
+  campos, todos opcionais — o Gestor pode não os ter à mão no momento
+  da criação, e continua a poder preenchê-los depois. `birthDate`
+  viaja como string ISO, guardado como `Timestamp`.
+- **`updateStaffProfile.ts`** (Cloud Function nova, `requireManager`):
+  única forma de editar dados de staff depois de criado. Ao contrário
+  do membro (ver abaixo), o `email` do staff É o login real (decisão
+  fechada da Fase 3) — por isso isto precisa de Admin SDK: se o email
+  mudar, `auth.updateUser(uid, {email})` sincroniza a credencial de
+  login junto com o Firestore, para nunca divergirem (editar só o
+  Firestore deixaria o staff a tentar entrar com um email que já não
+  bate certo). Trata `auth/email-already-exists` com uma mensagem
+  clara em vez de deixar rebentar um erro genérico.
+- **`MemberRepository.updateMemberProfile`** (novo): escrita direta do
+  cliente — `firestore.rules` já dava ao Manager escrita ampla em
+  `members/{id}` desde a Fase 1, e o email do membro nunca é o login
+  (é sempre sintético), por isso não há nada no Firebase Auth para
+  sincronizar aqui. Nenhuma alteração a `firestore.rules` foi
+  necessária.
+- **`PersonalDataFields`** (`lib/presentation/widgets/`, novo) —
+  primeiro widget verdadeiramente partilhado da app: telefone, data de
+  nascimento (com `showDatePicker`), morada, NIF e contacto de
+  emergência apareciam de forma idêntica em três sítios (criar,
+  editar Aluno, editar Staff) sem nenhuma lógica de negócio a variar
+  entre eles — justifica a pequena abstração, ao contrário do resto da
+  app, onde formulários parecidos ficam deliberadamente duplicados.
+  Nome/email ficam FORA deste widget de propósito (semântica diferente
+  em cada ecrã).
+- **`CreateUserScreen`**: Aluno ganhou um campo de email de contacto
+  (não existia nenhum) + `PersonalDataFields`; Staff ganhou
+  `PersonalDataFields` (o email de login já existia).
+- **`MemberDetailScreen`/`StaffDetailScreen`**: novo cartão "Dados
+  pessoais", sempre editável (mesmo espírito de `MyProfileScreen` —
+  campos + botão "Guardar", sem modo de edição à parte). O do Staff
+  mostra um aviso a dizer que mudar o email muda o login.
+- **Bug real apanhado a testar isto, não só uma lacuna de UI**:
+  `CreateUserScreen._submit()` só desligava o spinner do botão no
+  `finally`, DEPOIS do diálogo de credenciais (bloqueante) ter sido
+  fechado — o `CircularProgressIndicator` indeterminado ficava a
+  animar por baixo do diálogo enquanto este estava aberto. Invisível
+  ao utilizador (o diálogo tapa o botão), mas foi o que apanhou isto:
+  um `flutter test` a sério nunca estabilizava (`pumpAndSettle`
+  timeout) depois de criar uma conta. Corrigido: o spinner desliga
+  assim que a chamada de rede termina, antes de mostrar o diálogo —
+  mesmo padrão já usado em `member_detail_screen.dart#_recalculate`
+  desde a Fase 3.
+
+### Verificado
+
+- `dart format`, `flutter analyze --fatal-infos` (0 avisos), **`flutter
+  test` — 94/94 testes a passar**, incluindo os 9 novos
+  (`member_summary_test.dart`, `staff_summary_test.dart`,
+  `create_user_screen_test.dart`, mais testes novos em
+  `member_detail_screen_test.dart`/`staff_detail_screen_test.dart`).
+- `npm run build` + `npm run lint` em `firebase/functions` — 0 erros,
+  0 avisos, incluindo `updateStaffProfile.ts`.
+- `firebase emulators:exec --only firestore,functions,auth "npm
+  --prefix firebase/tests test"` — **73/73** (sem alterações a
+  `firestore.rules` nesta extensão, por isso sem testes de Rules
+  novos — `updateMemberProfile` usa a mesma regra de sempre para
+  Manager, `updateStaffProfile` é Cloud Function, Admin SDK, fora do
+  alcance das Rules).
+
+**Por confirmar manualmente**: criar um Aluno/Staff com os novos
+campos preenchidos; editar os dados de um membro e de um staff já
+existentes a partir do respetivo ecrã de detalhe; confirmar que mudar
+o email de um staff realmente muda o email de login (tentar entrar com
+o email novo depois).
+
+## Fase 7 — Treino livre
+
+**Objetivo do guia:** grelha semanal configurável pelo Gestor para o
+"Treino sem acompanhamento", com visibilidade diferente por papel —
+sugestão automática a partir da semana anterior, revista/publicada
+pelo Gestor, e só então visível ao Aluno.
+
+### Decisões de arquitetura
+
+Mockups (`Functional/nxt-studio-screens.html`) e use cases
+(`Functional/use-cases-update.md`, UC09/UC17-A/UC10-A fechados) já
+tinham isto bem definido — não precisei de perguntar nada de aberto
+antes de codificar, só documentar as decisões que já estavam
+fechadas:
+
+1. **Modelo de dados**: `freeTrainingSchedules/{weekId}` (estado
+   `draft`/`suggested`/`published`, Firestore Data Model v1 §39) +
+   subcoleção `slots/` (§40) — cada slot reutiliza o MESMO mecanismo
+   de capacidade/transação de `sessionOccurrences` (`lib/bookingLogic.ts`,
+   Fase 2/4/5), só o caminho muda. "Treino sem acompanhamento" é um
+   `Service` normal (Domain Model v1 §30) — nada de especial a criar
+   em Gestão → Serviços.
+2. **Visibilidade por papel** (UC09/UC17 fechado — o "Done" crítico
+   desta fase): Aluno só vê a CONTAGEM de vagas, nunca nomes;
+   Instrutor e Gestor veem nomes. Aplicado a sério nas Security Rules
+   (`firestore.rules`), não só escondido na UI — um Aluno não consegue
+   sequer `list` a subcoleção de bookings de um slot, só `get` a
+   própria (ver testes novos abaixo).
+3. **Presença** (UC10-A fechado): Manager-only para treino livre — ao
+   contrário de `sessionOccurrences/attendance` (Fase 6, Manager OU
+   Instrutor), aqui o Instrutor é sempre só leitura ("recurso
+   partilhado", sem instrutor "dono").
+4. **Sugestão automática** (UC17-A fechado): "nunca aplicada sozinha" —
+   uma semana sem grelha nasce `draft` (vazia, sem semana anterior
+   para copiar) ou `suggested` (copiada da semana anterior); só depois
+   de "Aprovar e publicar" é que o Aluno a vê.
+
+### O que foi acrescentado
+
+- **Domínio**: `FreeTrainingSchedule` (`weekId`, `weekStart`, `status`,
+  `createdBy`, `publishedAt`) e `FreeTrainingSlot` (`id`, `weekId`,
+  `serviceId`, `startAt`, `endAt`, `capacity`, `activeBookingCount` —
+  sem `status` próprio, ao contrário de `SessionOccurrence`: esta fase
+  não pede cancelar um bloco isolado). Reutiliza `Booking`/`Attendance`
+  tal como estão (Firestore Data Model v1 §40: "os bookings utilizam o
+  mesmo conceito geral de booking") — só o caminho muda
+  (`freeTrainingSchedules/{weekId}/slots/{slotId}/...`), por isso não
+  há entidades `FreeTrainingBooking` nenhumas. `isoWeek.dart`/`isoWeek.ts`
+  ganharam `weekIdForDate` (`YYYY-MM-DD` da segunda-feira da semana).
+- **Cloud Functions novas**: `suggestFreeTrainingSchedule` (idempotente
+  por `weekId` determinístico, mesmo padrão de
+  `generateRecurringOccurrences`) + `publishFreeTrainingSchedule`
+  (valida ≥1 slot, `status → published`) controlam o estado da semana.
+  `bookFreeTrainingSlot`/`cancelFreeTrainingBooking`/
+  `assignMembersToFreeTrainingSlot` reutilizam `resolveEligibility`/
+  `runBookingTransaction`/`prepareRelease`/`applyRelease` de
+  `lib/bookingLogic.ts` — mesma validação de elegibilidade/capacidade/
+  limite semanal de sempre, sem nenhuma lógica de negócio duplicada.
+  `cancelFreeTrainingBooking` não reutiliza `cancelBooking.ts` (a
+  janela de antecedência mínima já não usava `bookingLogic.ts` desde a
+  Fase 6) — duplicado deliberadamente em vez de refatorar código já
+  testado sem necessidade.
+- **`firestore.rules`**: `freeTrainingSchedules` — só Manager lê
+  rascunho/sugestão, qualquer membro do tenant lê uma semana
+  `published`; escrita sempre `false` (Cloud Functions). `slots` —
+  mesma visibilidade da semana-mãe (via `get()` explícito ao
+  documento pai — Rules não herdam a condição do `match` pai
+  automaticamente); Manager escreve diretamente para montar a grelha
+  (mesmo padrão de `sessionOccurrences` ad-hoc), `activeBookingCount`
+  exclusivo das Cloud Functions, `delete` sempre `false`. `bookings` —
+  um Aluno só consegue `get` a PRÓPRIA marcação, nunca `list` nem `get`
+  a de outro membro; Instrutor/Gestor listam todas. `attendance` —
+  Manager-only (não `isInstructor`, ao contrário de
+  `sessionOccurrences/attendance`).
+- **`FreeTrainingRepository`/`FirebaseFreeTrainingRepository`** (novo):
+  `watchSchedule`/`watchSlots`/`watchSlotBookings`/`getMyBooking`
+  (`get`, não `list` — é o único caminho que a Rule permite a um
+  Aluno)/`watchSlotAttendance`/`suggestSchedule`/`publishSchedule`/
+  `createSlot`/`updateSlotCapacity`/`bookSlot`/`cancelSlotBooking`/
+  `assignMembers`/`recordAttendance`. Reutiliza as mesmas exceções de
+  `BookingRepository` (`BookingCapacityExceededException`,
+  `AlreadyBookedException`, etc.) — mesmo mecanismo por baixo, não faz
+  sentido duplicar os tipos de erro.
+- **`FreeTrainingScreen`** (novo, 3º separador em `HomeScreen`,
+  "Livre") — navegação semana a semana, lista de horários da semana
+  `published` agrupada por dia, "HH:MM–HH:MM · N vaga(s)
+  restante(s)" + Reservar/Cancelar (nunca mostra quem mais está
+  inscrito — nem pede essa informação ao repository).
+- **`ManageFreeTrainingScreen`** (novo, "Gestão → Treino livre") —
+  gerar a sugestão da semana (escolhe o serviço), banner de estado
+  (rascunho/sugestão por aprovar/publicada), lista de blocos por dia,
+  "Adicionar bloco de horário" (dias da semana em chips + hora +
+  capacidade + serviço → cria um slot concreto por dia selecionado —
+  o "bloco" do mockup é só conveniência de autoria, por baixo são
+  sempre slots individuais), "Aprovar e publicar semana".
+- **`FreeTrainingSlotDetailScreen`** (novo) — roster COM nomes
+  (Manager/Instrutor), presença (Manager-only), atribuir membros
+  manualmente (Manager-only, `eligibleMembersProvider` já existia
+  desde a Fase 5).
+- **`InstructorCalendarScreen`** (Fase 6, estendido) — passou a
+  mesclar também os slots de treino livre publicados (semana atual +
+  seguinte) numa secção "Treino livre" por dia, mesmo espírito do
+  mockup "Semana — visão do gestor" (UC20 atualizado: "recurso
+  partilhado, visível a qualquer instrutor"). Só semanas `published`
+  entram aqui, mesma restrição que a Security Rule já aplica —
+  rascunho/sugestão ficam exclusivos de `ManageFreeTrainingScreen`.
+  Lacuna aceite e sinalizada no código: a janela de 2 semanas pode, em
+  teoria, tocar numa 3ª semana ISO parcial quando "hoje" não é
+  segunda-feira; cobrimos sempre a semana atual e a seguinte.
+
+### Verificado
+
+- `dart format`, `flutter analyze --fatal-infos` (0 avisos), **`flutter
+  test` — 107/107 testes a passar**, incluindo os 13 novos desta fase
+  (`free_training_schedule_test.dart`, `free_training_slot_test.dart`,
+  `free_training_screen_test.dart` — prova direta de que o ecrã do
+  Aluno só mostra contagem, nunca nomes —,
+  `manage_free_training_screen_test.dart`). `auth_gate_test.dart`
+  precisou de `initializeDateFormatting('pt_PT')` (o novo 3º tab de
+  `HomeScreen` formata uma data logo no primeiro build, mesmo sem
+  estar selecionado — `IndexedStack` constrói todos os tabs).
+- `npm run build` + `npm run lint` em `firebase/functions` — 0 erros,
+  0 avisos, incluindo as 5 Cloud Functions novas.
+- 🔴 `firebase emulators:exec --only firestore,functions,auth "npm
+  --prefix firebase/tests test"` — **97/97 testes de Security
+  Rules/Functions a passar**, incluindo os 24 novos de
+  `free-training-rules.test.ts` — a prova real do "Done" crítico desta
+  fase: um Aluno consegue ler a própria marcação mas falha a ler a de
+  outro membro (`get`) e falha a listar a subcoleção inteira (`list`);
+  Instrutor/Gestor conseguem ambos; um Instrutor falha a registar
+  presença (só Manager); ninguém escreve `freeTrainingSchedules`
+  diretamente, nem apaga um `slot`, mesmo sendo Manager.
+
+Um bug real apanhado ao testar a sério (não só uma lacuna de
+cobertura): `_FakeFreeTrainingRepository` nos testes de widgets usava
+`Stream.value(...)` para simular `watchSchedule`/`watchSlots` — isso
+só emite o valor capturado no momento em que o provider é observado
+pela primeira vez, nunca reflete mutações seguintes (gerar sugestão,
+adicionar bloco, publicar). Corrigido com `StreamController.broadcast`
+— mesma armadilha que um `FakeFirebaseFirestore` real não tem (o seu
+`snapshots()` já é reativo por natureza), só apanhada aqui por não
+haver Firestore nenhum a testar (o repository de treino livre é
+maioritariamente Cloud Functions).
+
+**Por confirmar manualmente**: gerar a sugestão de uma semana nova (com
+e sem semana anterior para copiar), adicionar/ajustar blocos, publicar
+e confirmar que só aí o Aluno passa a ver os horários; reservar e
+cancelar como Aluno (confirmar que a utilização semanal seguinte
+respeita `minCancellationNoticeHours` tal como as aulas); atribuir
+manualmente um membro como Gestor; registar presença; confirmar em
+Chrome (não só nos testes) que um Aluno nunca vê nomes em lado nenhum
+do fluxo de treino livre.
+
+### Passos para verificar a Fase 7 localmente
+
+Comandos em PowerShell — sem `&&`; cada passo em linhas separadas.
+
+```powershell
+# 1. Confirmar que tudo continua a compilar/passar
+dart format --output=none --set-exit-if-changed .
+flutter analyze --fatal-infos
+flutter test
+# Espera 107/107.
+
+# 2. Cloud Functions: build + lint
+cd firebase/functions
+npm run build
+npm run lint
+cd ../..
+
+# 3. 🔴 Security Rules + Functions
+firebase emulators:exec --project=demo-gym-saas-dev --only firestore,functions,auth "npm --prefix firebase/tests test"
+# Espera 97/97.
+
+# 4. Com o emulador completo a correr e o seed já feito:
+flutter run -t lib/main_development.dart
+
+# 5. Como o Leo (Gestor) — criar e publicar uma semana
+# Gestão → Treino livre → escolhe o serviço "Treino sem
+# acompanhamento" (cria-o primeiro em Gestão → Serviços, se ainda não
+# existir) → "Gerar grelha desta semana" → "Adicionar bloco de
+# horário" (ex.: Segunda a Sexta, 06:00–08:00, capacidade 10) →
+# confirma que aparecem os slots dessa semana → "Aprovar e publicar
+# semana".
+
+# 6. Como a Rita (Aluno)
+# Tab "Livre" → confirma que os horários da semana publicada aparecem
+# com contagem de vagas ("N vaga(s) restante(s)"), NUNCA nomes →
+# "Reservar" → confirma que passa a "Cancelar" → "Cancelar" → volta a
+# "Reservar".
+
+# 7. Confirmar a visibilidade por papel na UI do emulador
+# (localhost:4000/firestore) — tenants/nxt_performance_studio/
+# freeTrainingSchedules/{weekId}/slots/{slotId}/bookings deve ter o
+# booking da Rita; volta à app como o Leo → Gestão → Treino livre →
+# toca num slot → confirma que vês o NOME da Rita na lista de
+# inscritos (Gestor/Instrutor veem; Aluno nunca vê isto em lado
+# nenhum).
+
+# 8. Presença e atribuição manual
+# No mesmo ecrã de detalhe do slot, marca presença da Rita → confirma
+# que só aparece esse botão para o Leo (Gestor), não apareceria para
+# um Instrutor. "Atribuir" → escolhe outro membro elegível → confirma
+# que fica inscrito sem ele próprio ter reservado.
+
+# 9. Calendário mesclado
+# Gestão → Calendário (ou "As minhas aulas" como Instrutor) → confirma
+# que a semana com o treino livre publicado mostra também a secção
+# "Treino livre" por dia, com nomes.
+```
+
+### Critério "Done" da Fase 7
+
+> um Aluno nunca consegue, por rules nem por UI, ver o nome de outro
+> aluno inscrito no treino livre — mas o Gestor consegue.
+
+Os 24 testes de `free-training-rules.test.ts` provam exatamente isto
+do lado do servidor (não só a UI): um Aluno falha `get`/`list` sobre a
+marcação de outro membro, Instrutor/Gestor conseguem ambos. O passo 7
+acima confirma o mesmo comportamento a sério, em Chrome.
+**Continua por confirmar manualmente por ti** (ver "O que continua por
+verificar" acima) — o mecanismo está implementado e os testes
+automatizados (Dart + Cloud Functions + Rules) passam, mas ninguém
+clicou ainda na app a sério para esta fase.
+
+## Fase 8 — Avaliações e histórico de treino
+
+**Objetivo do guia:** dados históricos do aluno, nunca sobrescritos —
+avaliações físicas, evolução de carga por exercício, plano de treino
+montado a partir de uma biblioteca partilhada.
+
+### Decisões de arquitetura
+
+Os documentos técnicos (`Domain Model v1` §33-34, `Firestore Data
+Model v1` §43-44) descrevem a FORMA das coleções mas não enumeram
+campos nem resolvem tudo como caminhos Firestore literais — três
+decisões fechadas por mim ao codificar, documentadas aqui:
+
+1. **Os "17 campos" da avaliação** (UC04/UC14) só existem enumerados
+   no mockup (`Functional/nxt-studio-screens.html`), não nos
+   documentos técnicos. Contagem: idade + 9 campos de composição
+   corporal (peso, altura, IMC, %massa gorda, massa muscular, gordura
+   visceral, metabolismo basal, %água, idade metabólica) + 3 de saúde
+   (pressão arterial, perímetro cintura, perímetro abdominal) + 5
+   físicos (força MS/MI/core, flexibilidade, resistência) = 18 campos
+   mostrados, mas o IMC é `Auto` no mockup (sempre calculado de
+   peso/altura, nunca um input) — por isso "17 campos definidos" bate
+   certo com 18 mostrados menos 1 calculado.
+2. **Caminho do histórico de carga**: o guia escreve
+   `members/{id}/training/loadHistory/` — isto não resolve como um
+   caminho Firestore válido (segmentos ímpares, sem um documento fixo
+   intermédio claro). Modelado como subcoleção direta
+   `members/{id}/loadHistory/{recordId}`, mesmo padrão "flat" já usado
+   em todo o resto da app.
+3. **Plano de treino**: nenhum documento técnico modela isto (só
+   assessments/loadHistory têm secção própria), apesar do guia pedir
+   explicitamente o ecrã. Modelado como
+   `members/{id}/planEntries/{entryId}` — cada entrada referencia um
+   exercício da biblioteca partilhada + a prescrição específica deste
+   membro (séries/reps/carga).
+
+### O que foi acrescentado
+
+- **Domínio**: `Assessment` (17 campos + `imc` calculado como getter,
+  nunca persistido) — `updatedAt`/`updatedBy` só preenchidos numa
+  edição (UC04/UC14 fechado: "o Instrutor pode corrigir uma já
+  registada"). `LoadHistoryEntry` (append-only). `Exercise`
+  (nome/descrição/grupo muscular/`videoPath` opcional — o caminho no
+  Storage, nunca a URL de download, que pode expirar). `TrainingPlanEntry`
+  (séries/reps/`currentLoad` — sempre o valor mais recente, nunca a
+  fonte de verdade do histórico).
+- **Repositórios** (`AssessmentRepository`, `LoadHistoryRepository`,
+  `ExerciseRepository`, `TrainingPlanRepository`) — escrita direta do
+  cliente (Instrutor/Gestor), sem Cloud Function: nenhuma invariante
+  cross-documento a proteger, mesmo raciocínio já usado para
+  `AttendanceRepository` desde a Fase 6. Exceção:
+  `TrainingPlanRepository.updateLoad`/`addEntry` usam um `WriteBatch`
+  para gravar a entrada do plano E o novo registo de histórico juntos
+  — nunca um sem o outro, para os dois nunca divergirem.
+- **Storage — primeira vez a sério nesta app** (Platform Foundation
+  §19, já antecipava isto: "será implementado quando existir upload
+  real"). `storage.rules` deixou de ser deny-all: vídeo de exercício
+  em `tenants/{tenantId}/exercises/{exerciseId}/video`, leitura ampla
+  no tenant (o Aluno precisa de ver o vídeo do seu plano), escrita
+  Instrutor/Gestor, só `contentType` `video/*` até 100MB — "formato ou
+  tamanho inválido é rejeitado" (mockup) aplicado a sério no servidor,
+  não só na UI. `StorageRepository`/`FirebaseStorageRepository` (novo)
+  — abstração pedida explicitamente pela Platform Foundation §19,
+  mesmo princípio de `AuthRepository`. Dependências novas:
+  `file_picker` (devolve bytes, não `dart:io File` — único jeito de
+  funcionar sem ramificação por plataforma em Flutter Web) e
+  `video_player` (oficial do Flutter). Emulador de Storage ligado no
+  bootstrap (linha já preparada desde a Fase 0, só comentada).
+- **`firestore.rules`**: `assessments`/`loadHistory`/`planEntries`
+  (nested em `members/{memberId}`) — o próprio membro só LÊ o seu
+  (nunca escreve), Instrutor/Gestor leem e escrevem. `loadHistory` é
+  o único caso da app com `allow create` mas `update`/`delete` sempre
+  `false`, mesmo para Manager — "nunca sobrescrever o histórico"
+  (UC16 fechado) garantido a sério, não só por convenção do cliente.
+  `exercises` — leitura ampla, escrita Instrutor OU Gestor (não
+  Manager-only como `services`/`plans`/`modalities`: a biblioteca é
+  ferramenta do dia a dia do Instrutor, não decisão de negócio).
+- **Ecrãs Instrutor**: `InstructorStudentsScreen` ("Alunos", novo
+  ponto de entrada — reutiliza `membersProvider`, já existia desde a
+  Fase 3) → `StudentTrainingScreen` ("Ficha do aluno": plano + contagem
+  de avaliações + "Nova avaliação" em destaque) →
+  `AssessmentFormScreen` (criar/editar, mesmo formulário para os dois,
+  17 campos com validação obrigatória + pré-visualização do IMC) /
+  `TrainingPlanEditorScreen` (adicionar da biblioteca via
+  `AddPlanEntryScreen`, atualizar carga, remover). `ExerciseLibraryScreen`
+  + `ExerciseFormScreen` (criar/editar + upload de vídeo).
+- **Ecrãs Aluno** (ícones novos na AppBar de `HomeScreen`, visíveis só
+  quando `isMember`): `MyTrainingPlanScreen` ("O meu plano" — toca num
+  exercício → vídeo demonstrativo ou evolução de carga, exatamente as
+  duas ações do mockup). `LoadEvolutionScreen` (carga atual + delta
+  desde o primeiro registo + histórico completo, mais recente
+  primeiro). `AssessmentListScreen`/`AssessmentDetailScreen`
+  reutilizados tal como estão do lado do Instrutor — só o botão
+  "Editar" no detalhe fica escondido para um Aluno.
+
+### Verificado
+
+- `dart format`, `flutter analyze --fatal-infos` (0 avisos), **`flutter
+  test` — 127/127 testes a passar**, incluindo os 20 novos desta fase
+  (4 ficheiros de domínio + `assessment_form_screen_test.dart` —
+  prova que campos obrigatórios em falta bloqueiam a gravação e que o
+  IMC é calculado corretamente — + `training_plan_editor_screen_test.dart`
+  — prova que "Atualizar carga" chama sempre `updateLoad`, nunca um
+  `update` de campo isolado).
+- `npm run build` + `npm run lint` em `firebase/functions` — 0 erros
+  (sem alterações nesta fase — tudo escrita direta do cliente, sem
+  Cloud Function nova).
+- 🔴 `firebase emulators:exec --only firestore,functions,auth,storage
+  "npm --prefix firebase/tests test"` — **123/123 testes de Security
+  Rules/Functions a passar**, incluindo os 19 novos de
+  `training-rules.test.ts` (assessments/loadHistory/planEntries só o
+  próprio membro lê, `loadHistory` nunca aceita `update`/`delete` nem
+  para Manager, `exercises` aceita escrita de Instrutor) e os **7
+  primeiros testes de Storage Rules desta app**
+  (`storage-rules.test.ts` — leitura ampla no tenant, escrita
+  Instrutor/Gestor, `contentType` errado rejeitado, isolamento entre
+  tenants).
+
+**Por confirmar manualmente**: criar uma avaliação completa e depois
+editá-la; criar um exercício na biblioteca e carregar um vídeo mp4 a
+sério (confirmar que reproduz no ecrã do Aluno); montar um plano para
+um aluno e atualizar a carga de um exercício várias vezes, confirmando
+que o histórico completo aparece em "Evolução da carga"; confirmar que
+um Aluno nunca consegue editar nada disto, só ver o seu próprio.
+
+### Passos para verificar a Fase 8 localmente
+
+Comandos em PowerShell — sem `&&`; cada passo em linhas separadas.
+
+```powershell
+# 1. Instalar as dependências novas (file_picker, video_player) e
+#    confirmar que tudo continua a compilar/passar
+flutter pub get
+dart format --output=none --set-exit-if-changed .
+flutter analyze --fatal-infos
+flutter test
+# Espera 127/127.
+
+# 2. Cloud Functions: build + lint (sem alterações nesta fase, só para
+#    confirmar que nada regrediu)
+cd firebase/functions
+npm run build
+npm run lint
+cd ../..
+
+# 3. 🔴 Security Rules (Firestore + Storage) + Functions
+firebase emulators:exec --project=demo-gym-saas-dev --only firestore,functions,auth,storage "npm --prefix firebase/tests test"
+# Espera 123/123.
+
+# 4. Com o emulador completo a correr e o seed já feito:
+flutter run -t lib/main_development.dart
+
+# 5. Como o Leo (Instrutor/Gestor) — biblioteca + plano
+# Gestão → Biblioteca de exercícios → "+" → cria "Agachamento com
+# barra" (Pernas) → guarda → reabre o exercício → "Carregar vídeo
+# demonstrativo (mp4)" → escolhe um ficheiro .mp4 pequeno → confirma
+# "Vídeo carregado." e o pill muda para "Com vídeo".
+
+# 6. Avaliação da Rita
+# Gestão → Alunos → Rita Ferreira → "Nova avaliação" → tenta guardar
+# vazio (confirma "Obrigatório" nos campos) → preenche os 17 campos →
+# confirma que o IMC aparece calculado (não editável) → guarda →
+# confirma que aparece em "Avaliações (1)" → abre-a → "Editar" → muda
+# o peso → guarda → confirma que mostra "Editada em ..." no detalhe.
+
+# 7. Plano de treino da Rita
+# Na ficha da Rita → "Plano de treino" → "+" → procura "Agachamento" →
+# define séries/reps/carga inicial → "Adicionar ao plano" → confirma
+# que aparece na lista → menu (⋮) → "Atualizar carga" → novo valor →
+# "Guardar".
+
+# 8. Confirmar do lado da Rita (login "000001")
+# Ícone "O meu plano" → confirma o exercício com séries/reps/carga
+# atual → toca-lhe → "Ver vídeo demonstrativo" (se tiveres carregado
+# um no passo 5) → volta → "Ver evolução da carga" → confirma que
+# aparecem os DOIS registos (o inicial + a atualização do passo 7),
+# mais recente primeiro, com o delta calculado. Ícone "As minhas
+# avaliações" → confirma que vês a avaliação criada no passo 6, SEM
+# nenhum botão "Editar".
+```
+
+### Critério "Done" da Fase 8
+
+> atualizar uma carga nunca apaga a anterior, e o aluno consegue ver a
+> evolução completa.
+
+O passo 7-8 acima cobre exatamente isto — cada atualização de carga
+cria um `LoadHistoryEntry` novo (`firestore.rules` bloqueia `update`/
+`delete` mesmo para Manager, testado a sério em
+`training-rules.test.ts`), e "Evolução da carga" mostra a lista
+completa, não só o valor atual. **Continua por confirmar manualmente
+por ti** — o mecanismo está implementado e os testes automatizados
+(Dart + Rules, incluindo Storage pela primeira vez) passam, mas
+ninguém clicou ainda na app a sério para esta fase, em particular o
+upload de vídeo real (só testado via bytes sintéticos no emulador).
+
+## Auditoria funcional Fase 0-8 (mockups + use cases) — lote de correções
+
+Pedido teu depois de fechar a Fase 8: *"verifica se até esta fase está
+tudo implementado que deveria estar a nível funcional, vê os mockups e
+os use cases"*. Comparei `Functional/nxt-studio-screens.html` e
+`Functional/use-cases-update.md` contra o código, excluindo o que já
+estava assinalado como limitação conhecida nas secções anteriores
+deste README. Resultado: **7 lacunas reais** + 2 pontos ambíguos, todos
+corrigidos neste lote.
+
+### 1. UC08-A "Sessão extra" existia no modelo, mas nunca era `true`
+
+`Booking.isExtra` estava no domínio desde a Fase 2 e o mockup "Detalhe
+da aula" mostra um botão "+ Sessão extra" — mas
+`lib/bookingLogic.ts#runBookingTransaction` tinha `const isExtra =
+false` hardcoded, com um comentário a admitir que estava por
+implementar. Ou seja: a exceção do UC08 ("por omissão, atribuir =
+contar"; a única exceção é a sessão extra explícita) nunca era
+possível.
+
+- `runBookingTransaction` ganhou `isExtra` como parâmetro real.
+  `assignMembersToOccurrence.ts` ganhou-o no schema zod e passa-o
+  adiante; os restantes caminhos (self-service, geração de séries)
+  continuam a passar `false` por omissão.
+- **`isExtra` isenta do LIMITE SEMANAL do plano, nunca da capacidade
+  da sala** — são restrições diferentes e independentes. O
+  `activeCount >= capacity` continua a aplicar-se sempre. O "2/2
+  sessões" do mockup é o limite do plano, não a lotação.
+- `assignMembersToOccurrence` passou de `requireManager` para
+  `requireManagerOrInstructor`: passa a servir dois botões num ecrã
+  onde presença/reduzir vagas/cancelar/remarcar já eram Manager OU
+  Instrutor desde a Fase 6 — não fazia sentido só esta ação ser mais
+  restrita que as vizinhas na mesma tela.
+
+### 2. Antecedência mínima para MARCAR não existia (UC06/07/08/09 fechado)
+
+Havia `minCancellationNoticeHours` (Fase 4, para *cancelar*), mas o use
+case fechado pede explicitamente o lado oposto — *"não pode marcar-se,
+por exemplo, 5 minutos antes da aula começar, e esse valor deve ser
+configurável pelo Gestor"*. Não existia nada.
+
+- Campo irmão `minBookingNoticeMinutes` no mesmo documento
+  `tenants/{t}/config/bookingPolicy`, validado no servidor em
+  `createBooking.ts` **e** `bookFreeTrainingSlot.ts`.
+- Só se aplica ao caminho **self-service**. Atribuição manual por
+  Instrutor/Gestor nunca passa por esta validação — mesmo espírito do
+  UC08-A: o estúdio pode sempre decidir.
+- Nova `TooCloseToStartException` (Dart) para a UI mostrar a mensagem
+  exata em vez de um erro genérico; `TenantSettingsScreen` ganhou o
+  segundo campo, a par do de cancelamento.
+
+### 3. Blocos de treino livre não se podiam editar nem remover
+
+`updateSlotCapacity` existia no repository desde a Fase 7 mas **nunca
+foi ligado a nenhum ecrã** (código morto), e não havia forma nenhuma
+de apagar um bloco criado por engano — `firestore.rules` tinha `allow
+delete: if false` para `slots`.
+
+- `updateSlotCapacity` → `updateSlot` (ganhou `startAt`/`endAt`: não
+  fazia sentido só a capacidade ser editável) + `deleteSlot` novo,
+  ambos ligados a um menu (⋮) em `ManageFreeTrainingScreen`.
+- Security Rules: `delete` passa a ser permitido **só antes de a
+  semana ser publicada** e **só com `activeBookingCount == 0`**.
+  Depois de publicada continua `false` mesmo para o Gestor — alunos
+  podem já ter marcado; nesse caso reduz-se a capacidade, não se
+  apaga. Coberto por 4 testes novos em `free-training-rules.test.ts`.
+
+### 4. Texto desatualizado no diálogo de cancelar ocorrência
+
+`SeriesDetailScreen` ainda dizia *"Cancelar aqui NÃO cancela nem
+notifica essas marcações automaticamente (isso é Fase 6)"* — mentira
+desde a Fase 6, quando `cancelOccurrenceForStudio` passou a cascatar o
+cancelamento e a devolver a utilização. Corrigido para descrever o que
+realmente acontece.
+
+### 5. Calendário não tinha a navegação do mockup
+
+O mockup "Semana — visão do gestor" mostra navegação semana a semana +
+tabs Seg-Dom. `InstructorCalendarScreen` mostrava uma lista contínua
+de "próximas 2 semanas", sem forma de recuar nem de saltar para um dia.
+
+- Provider novo `occurrencesForWeekProvider` (família por semana ISO)
+  substitui `upcomingTwoWeeksOccurrencesProvider` (janela fixa a
+  partir de "agora", que não permitia navegar para trás).
+- Setas de semana + `ChoiceChip` Seg-Dom; a secção "Treino livre"
+  passou a ser do dia selecionado.
+- **Simplificação sinalizada:** o mockup mostra nomes na
+  pré-visualização ("9/12 · Rita, Miguel, Tiago..."). Isso exigiria
+  carregar os bookings de CADA sessão da semana só para a
+  pré-visualização (N+1 queries); mantive só a contagem — tocar na
+  sessão abre `OccurrenceDetailScreen`, que já mostra os nomes.
+
+### 6. Ocorrências ad-hoc não tinham "Editar aula" nem "Adicionar membro"
+
+Estas ações existiam, mas só no menu (⋮) da lista de
+`SeriesDetailScreen` — ou seja, **só para ocorrências geradas por uma
+série**. Uma sessão "só esta data" só era alcançável via
+`OccurrenceDetailScreen`, que não as tinha. `OccurrenceDetailScreen`
+ganhou "Editar aula", "Adicionar membro" e "+ Sessão extra" (o gatilho
+de UI do ponto 1), fechando a lacuna para ambos os tipos.
+
+### 7. Aviso de conflito de horário — e porque NÃO é "sala"
+
+O mockup diz *"Conflito de horário com outra aula da mesma sala é
+sinalizado antes de guardar"*. Procurei `Room`/`Sala` em todos os
+documentos técnicos (Domain Model v1, Firestore Data Model v1,
+Platform Foundation): **não existe em lado nenhum**. Inventar a
+entidade agora seria fabricar dados que ninguém decidiu.
+
+Implementei o proxy real e defensável: aviso quando **o mesmo
+instrutor** já tem outra sessão sobreposta (série recorrente no mesmo
+dia da semana, ou ocorrência já materializada no mesmo dia concreto).
+Nunca bloqueia — só avisa; a decisão é do Gestor. **Sinalizado, não
+escondido:** se quiseres a versão "sala" a sério, é preciso primeiro
+decidir a entidade `Room` e associá-la a séries/ocorrências.
+
+### Ambíguo #1 — exclusividade de nível de sala (UC26 atualizado)
+
+O UC26 fechado diz que "Sem acompanhamento" e Standard/Plus/Premium
+**não são produtos independentes, são níveis do mesmo produto** — e o
+mockup mostra-os como *radio buttons* ("escolha uma opção"), enquanto
+Aulas de grupo e PT continuam checkboxes livremente combináveis. O
+código só impedia duas subscriptions ativas para o **mesmo
+`serviceId`** (Fase 3), o que nunca apanhava "Sem acompanhamento" +
+"Standard" (serviços diferentes).
+
+- `Service` ganhou `exclusiveGroup` (identificador livre, `null` na
+  maioria). Serviços com o **mesmo** grupo passam a ser mutuamente
+  exclusivos.
+- `createSubscription.ts` valida agora conflito por serviço **ou** por
+  grupo. Coberto por 3 testes novos que chamam a Cloud Function a
+  sério no emulador (`subscription-exclusive-group.test.ts`),
+  incluindo o caso negativo (serviço sem grupo continua combinável).
+- `ManageServicesScreen` passou a permitir editar um serviço (nome +
+  grupo), não só criar/ativar.
+
+### Ambíguo #2 — home dedicada ao Instrutor puro
+
+O mockup tem um ecrã "Início — Dashboard do instrutor". Um Instrutor
+puro (sem `Role.manager` e sem `Role.member`) caía no `HomeScreen` do
+Aluno: via "Marcar treino"/"Treino livre"/"Minhas marcações" — que não
+se lhe aplicam, não tem plano nem marcações — com as ferramentas reais
+escondidas atrás de ícones na AppBar.
+
+`InstructorHomeScreen` novo: duas estatísticas ("Sessões hoje" só as
+dele, "Alunos ativos") + atalhos para Alunos / Biblioteca de
+exercícios / As minhas aulas / Enviar notificação. Um instrutor que
+**também** é membro continua a ver os separadores de Aluno (para esse
+lado da conta são reais).
+
+Duas notas honestas: "Nova avaliação" não é atalho de topo porque criar
+uma avaliação exige escolher o aluno primeiro (passa por "Alunos"); e
+"Alunos ativos" conta todos os alunos ativos do tenant, não só os da
+modalidade do instrutor — o âmbito por modalidade (UC28) nunca foi
+modelado como restrição real, é a mesma lacuna já assinalada na Fase 8,
+não uma nova.
+
+### Verificação
+
+```powershell
+dart format --output=none --set-exit-if-changed .
+flutter analyze --fatal-infos
+flutter test
+cd firebase/functions
+npm run build
+npm run lint
+cd ../..
+firebase emulators:exec --project=demo-gym-saas-dev --only firestore,functions,auth,storage "npm --prefix firebase/tests test"
+```
+
+Estado atual: `flutter analyze --fatal-infos` limpo, **141 testes Dart**
+a passar, `npm run build`/`lint` limpos, **131 testes** no emulador
+(10 ficheiros) a passar — incluindo os 9 testes novos deste lote
+(2 antecedência mínima, 4 delete de slots, 3 exclusividade de grupo).
+Corri a suite do emulador duas vezes seguidas para confirmar que não
+ficou nada instável.
+
+Dois problemas de fiabilidade de testes apanhados e corrigidos pelo
+caminho (ambos meus, introduzidos neste lote):
+
+- `subscription-exclusive-group.test.ts` rebentava por *timeout* de 5s
+  na primeira invocação — o arranque do runtime do Functions Emulator
+  soma-se ao tempo da função (~250ms), e este ficheiro corre em
+  paralelo com o de concorrência, que satura o emulador. Passou a ter
+  timeouts explícitos de 15s, tal como `booking-concurrency.test.ts`
+  já tinha pelo mesmo motivo.
+- `create_series_screen_test.dart` dependia da hora do dia: o caminho
+  "só esta data" compara contra ocorrências FUTURAS, por isso semear
+  "hoje às 18:00" passava de manhã e falhava a partir das 18:00 (foi
+  exatamente assim que reparei). Passou a substituir o provider em vez
+  de semear no Firestore — isola a lógica de sobreposição, que é o que
+  o teste quer mesmo verificar. `instructor_home_screen_test.dart`
+  tinha uma variante do mesmo problema (a "sessão noutro dia" caía em
+  cima de hoje sempre que a suite corresse a uma segunda-feira).
+
+⚠️ Nota sobre `dart format`: correr `--set-exit-if-changed .` na raiz
+falha em ~18 ficheiros que **não** foram tocados neste lote (drift
+pré-existente, ficheiros intocados no git face à versão atual do
+formatter). Formatei só os ficheiros deste lote — reformatar o resto
+seria uma alteração à parte, não a escondo mas também não a misturo
+aqui.
+
+### O que fica por confirmar
+
+**Nada disto foi clicado manualmente por ti ainda.** Tentei validar no
+browser (emulador + `flutter run -d web-server`) mas o painel de
+browser desta sessão não conseguiu compor frames, por isso não há
+verificação visual real — compensei com testes de widget que exercitam
+a lógica nova a sério (tabs por dia, filtro por instrutor, aviso de
+conflito nos dois modos, dashboard do instrutor, editar serviço com
+grupo). O manual continua por fazer:
+
+- "+ Sessão extra" numa sessão cheia para o limite semanal do aluno —
+  confirmar que entra e que NÃO consome utilização.
+- Configurar "antecedência mínima para marcar" em Gestão → Definições
+  e tentar marcar dentro da janela como aluno.
+- Remover um bloco de treino livre antes de publicar; confirmar que
+  depois de publicada a opção fica desativada.
+- Criar duas séries sobrepostas para o mesmo instrutor e ver o aviso.
+- Atribuir "Sem acompanhamento" e depois "Standard" ao mesmo aluno —
+  deve ser rejeitado com os nomes em conflito.
+- Entrar como um instrutor puro e confirmar o dashboard.
+
+## 2ª passagem: auditoria funcional final + varredura de performance/bugs
+
+Pedido teu a seguir ao lote acima: *"faz uma última avaliação dos
+requisitos funcionais e mockups até esta fase"* + *"varre todo o código
+à procura de problemas de performance, bugs, etc."*. Reli os UCs
+fechados linha a linha e varri o código. Encontrei **2 lacunas
+funcionais** e **5 problemas de código** — três deles bugs reais de
+correção, não só de performance.
+
+### Funcional #1 — notificações automáticas nunca existiram (UC11/UC18/UC24)
+
+Havia envio de push, mas **só manual** (um humano escreve título+corpo
+em "Notificar inscritos"). Os UCs fechados pedem envio **automático**
+quando é o estúdio a mexer na marcação de alguém:
+
+- UC18 — *"os alunos removidos são notificados (UC11)"*;
+- UC10/UC18 — cancelamento de aula pelo estúdio;
+- UC24 — desativar instrutor: *"alunos notificados e sessões devolvidas"*.
+
+Nada disto notificava ninguém. Extraí `lib/notifications.ts`
+(partilhado com o envio manual, que ficou a usá-lo) e liguei-o a
+`removeMembersFromOccurrence`, `cancelOccurrenceForStudio` e
+`deactivateInstructor`.
+
+Três decisões que vale a pena registar: o envio **nunca lança** — uma
+notificação que falha (sem VAPID key, token expirado) não pode desfazer
+um cancelamento que já aconteceu; corre **fora** da transação; e em
+`deactivateInstructor` é **uma notificação por aluno**, não uma por
+ocorrência cancelada (um aluno com 8 sessões desse instrutor receberia
+8 pushes idênticos).
+
+O texto da notificação diz o dia mas **não a hora**, de propósito: o
+runtime das Functions não sabe o fuso do dispositivo e não há
+biblioteca de timezone no projeto — imprimir a hora em UTC daria uma
+notificação com a hora errada metade do ano (`Europe/Lisbon` é UTC+1 no
+verão). Escrevi-a primeiro com hora, dei por isso a rever, e tirei-a.
+
+### Funcional #2 — nomes dos inscritos no calendário (UC20)
+
+O UC20 pede *"nº de inscritos **e lista de nomes** por slot"* e o
+mockup mostra "9/12 · Rita, Miguel, Tiago...". No lote anterior deixei
+só a contagem e assinalei como simplificação — por causa das N+1
+queries de carregar os inscritos de duas semanas inteiras.
+
+Revi essa decisão: **as tabs por dia que eu próprio adicionei tornaram
+o argumento inválido**. O ecrã mostra agora um só dia (3-8 sessões),
+por isso o nº de listeners é pequeno e limitado pelo próprio layout.
+Implementado, com os 3 primeiros nomes + "+N" como no mockup, e sem
+abrir listener nenhum para sessões canceladas ou vazias.
+
+### Bug #1 🔴 — cancelar uma sessão extra roubava uma utilização
+
+O mais sério. Uma sessão EXTRA (UC08-A) nunca incrementa `usage` — é
+esse o objetivo. Mas **todos** os caminhos de cancelamento
+(`cancelBooking.ts`, `prepareRelease`, `cancelFreeTrainingBooking.ts`)
+decrementavam `usage` a partir do `serviceId`/`period` do booking **sem
+olhar ao `isExtra`**.
+
+Efeito prático: marcar 1 sessão normal (1/2 usadas) + 1 extra (continua
+1/2) e cancelar a extra deixava o membro a **0/2** — ganhava uma sessão
+que nunca tinha gasto. Enquanto `isExtra` foi sempre `false` (até ao
+lote anterior) este caminho não podia estar errado; tornar a flag
+funcional expôs o bug.
+
+### Bug #2 🔴 — remarcar uma sessão extra convertia-a em normal
+
+`rescheduleBooking.ts` liberta a origem e cria uma marcação nova no
+destino — mas criava-a sempre com `isExtra: false`. Uma sessão extra
+remarcada pelo estúdio passava a consumir o limite semanal: o membro
+**perdia** uma sessão do plano só por ter sido mudado de horário.
+`ReleasePlan` passou a expor `isExtra` para a flag viajar da origem
+para o destino.
+
+Os dois bugs estão cobertos por `extra-session-usage.test.ts` (4 testes
+contra as Cloud Functions reais no emulador). **Confirmei que os testes
+falham sem a correção** — reverti os `!isExtra` de propósito, corri, vi
+2 testes a falhar, e restaurei. Um teste de regressão que passa nas
+duas versões não vale nada.
+
+### Bug #3 — query de marcações descarregava o histórico todo
+
+`watchMyBookings` fazia uma `collectionGroup` por `memberId` **sem
+filtrar `status` e sem limite**: um membro com dois anos de app
+descarregava centenas de bookings cancelados para mostrar as 2-3
+marcações ativas que tem — e o ecrã filtrava em Dart. Passou a filtrar
+`status == 'booked'` no servidor (índice novo:
+`bookings(memberId, status)` em COLLECTION_GROUP; o índice de 4 campos
+que já existia não serve, tem `serviceId` pelo meio).
+
+### Bug #4 — "próximas ocorrências" sem teto nenhum
+
+`watchUpcomingOccurrences`/`watchUpcomingOccurrencesAllServices` tinham
+`startAt >= now` **sem fronteira superior nem limite**, e alimentam o
+ecrã principal do Aluno. O cron diário empurra o horizonte de 8 semanas
+todos os dias, por isso o conjunto cresce com o nº de séries e nunca
+encolhe — e qualquer marcação de qualquer pessoa no tenant faz o
+snapshot inteiro voltar a chegar. Adicionado `.limit(200)`; como o
+`orderBy('startAt')` é ascendente, corta pelas mais distantes e as
+próximas — as únicas marcáveis na prática — ficam sempre.
+
+### O que verifiquei e estava bem
+
+Para não dar a ideia de que só encontrei problemas: `recalculateUsage`
+já filtrava `isExtra == false` corretamente (foi o único caminho de
+usage que estava certo desde o início); o picker de atribuição manual
+já filtra elegíveis server-side como o UC08-A exige; `Assessment` já
+guarda `updatedBy`/`updatedAt` (UC04/UC14); e os `context.mounted` a
+seguir a `await` estão todos no sítio. Os loops sequenciais nas Cloud
+Functions são exigidos pelo Firestore (leituras antes de escritas numa
+transação), não são descuido.
+
+### Verificação
+
+Estado final: `flutter analyze --fatal-infos` limpo, **142 testes
+Dart**, `npm run build`/`lint` limpos, **135 testes** no emulador
+(11 ficheiros). As mesmas ressalvas do lote anterior mantêm-se: sem
+validação manual no browser, e o `dart format` na raiz continua a
+acusar ficheiros pré-existentes que não toquei.
+
+⚠️ **Índice novo por implantar:** `firestore.indexes.json` ganhou
+`bookings(memberId, status)`. No emulador funciona sem mais nada, mas
+em produção é preciso `firebase deploy --only firestore:indexes` —
+sem isso, "Minhas marcações" passa a dar erro de índice em falta.
+
+## 3ª passagem: revisão geral do código (bugs, clean code, performance)
+
+Pedido teu: *"avaliação extensiva geral do código à procura de bugs,
+problemas de clean code, performance"*. Revi por camadas — 27 Cloud
+Functions, Security Rules, domínio/repositórios/providers, e os 44
+ecrãs. Seis correções, duas delas de segurança.
+
+### 🔴 Segurança #1 — qualquer aluno podia escrever no documento de staff
+
+`staff/{id}` tinha `allow read, write: if belongsToTenant` desde a
+Fase 1. Ou seja, qualquer **aluno** autenticado do tenant podia
+desativar um instrutor (`status: inactive` — negação de serviço na
+prática, o calendário e os ecrãs filtram por isso), alterar-lhe
+nome/email/dados pessoais, ou criar um `staff/{o-próprio-uid}`.
+
+Não era escalada de privilégios — os roles vêm dos custom claims do
+token, nunca deste documento — mas era escrita indevida a sério. É
+exatamente a lacuna que `members` fechou na Fase 5 e que aqui ficou por
+fechar com o argumento *"só o Gestor mexe em staff hoje"*: verdade na
+UI, nunca imposta pelo servidor.
+
+Escrita passou a Manager, com uma exceção estreita para o próprio staff
+registar o seu token FCM (UC21) — e um teste que confirma que um
+instrutor **não** se consegue promover a manager por essa via. Leitura
+mantém-se ampla porque o ecrã de marcação do Aluno mostra o nome do
+instrutor; isso implica que os dados pessoais do staff continuam
+legíveis por qualquer membro, o que fica **assinalado**: as Rules não
+filtram por campo, fechá-lo exigiria mover os dados pessoais para uma
+subcoleção — mudança de modelo, não de regra.
+
+### 🔴 Segurança #2 — qualquer aluno podia escrever no documento do tenant
+
+Mesma raiz: `tenants/{id}` com escrita ampla. Um aluno podia renomear o
+ginásio ou pôr o tenant a `suspended`. Nenhum ecrã de cliente escreve
+aqui (o seed usa Admin SDK), por isso apertar para Manager não parte
+nada.
+
+### 🟠 Bug — utilizador Auth órfão quando a criação falha a meio
+
+`createMember`/`createStaff` fazem `auth.createUser` e só depois
+escrevem o documento no Firestore. Se as claims ou a escrita falhassem,
+ficava uma conta no Firebase Auth **sem** `members/{uid}`/`staff/{uid}`
+e sem `tenantId` nas claims: a pessoa conseguia autenticar-se (a
+password temporária foi mesmo criada) e entrava num estado que nenhum
+ecrã trata — e o Gestor não a via na lista para a corrigir, porque a
+lista lê o Firestore. Ambas passaram a desfazer a conta no `catch`.
+
+### 🟠 Bug — datas malformadas rebentavam com erro cru
+
+`Timestamp.fromDate(new Date(input))` com o input validado só como
+`z.string()`: uma data inválida dava `RangeError` e o cliente recebia
+`INTERNAL`, sem pista do campo errado. Novo `lib/parseDate.ts` devolve
+`invalid-argument` com o nome do campo, como o resto das funções.
+
+Em `updateStaffProfile` isto era pior do que parecia: a ordem era
+`auth.updateUser` (que muda a **credencial de login**) e só depois o
+Firestore. Uma data má rebentava **depois** de o email de login já ter
+mudado — o staff deixava de conseguir entrar com o email antigo, e o
+Gestor continuava a ver o email antigo no ecrã, sem sinal nenhum de que
+estavam dessincronizados. Agora valida antes de tocar no Auth.
+
+### 🟠 Performance — 21 providers `.family` sem `autoDispose`
+
+O achado com mais impacto. Em Riverpod, um `.family` sem `autoDispose`
+cria uma instância **por argumento** e mantém-na viva o resto da
+sessão, com o listener Firestore aberto. Na prática:
+
+- abrir 30 sessões ao longo de um turno → 30 listeners permanentes em
+  `bookings`/`attendance`/ocorrência;
+- um instrutor a percorrer 40 alunos → 40+ listeners de
+  avaliações/planos/histórico de carga;
+- navegar 20 semanas no calendário → 20 listeners de intervalos de
+  ocorrências.
+
+Fuga de memória **e** custo real de Firestore (cada listener fatura
+leituras a cada alteração). Os 20 providers de âmbito de ecrã passaram
+a `autoDispose`; a exceção deliberada é o registo de token FCM, que tem
+de sobreviver à navegação.
+
+### 🟡 Clean code — diálogos duplicados (duplicação minha)
+
+`_EditOccurrenceDialog` e `_AssignMemberDialog` existiam quase
+byte-a-byte iguais em `series_detail_screen.dart` **e**
+`occurrence_detail_screen.dart` — porque no lote anterior acrescentei
+as ações ao segundo ecrã **copiando** as do primeiro em vez de as
+extrair. Duas cópias da mesma regra ("nunca selecionar mais do que as
+vagas disponíveis") divergem na primeira alteração que só apanhe uma
+delas. Extraídos para `lib/presentation/widgets/occurrence_dialogs.dart`
+(−345 linhas), com o subtítulo "altera só esta semana" como parâmetro,
+por ser a única diferença real entre os dois usos. Também removi um
+parâmetro (`servicesById`) que era passado a cada tile de inscrito e
+nunca lido.
+
+### O que verifiquei e estava bem
+
+As 27 Cloud Functions têm todas guarda de autorização, incluindo a
+variante callable do gerador de séries. `nextMemberNumber` é
+transacional a sério (sem race na geração do nº de sócio). Os loops
+sequenciais nas transações são exigidos pelo Firestore, não descuido.
+As listas grandes usam `ListView.builder`/`separated`; as que usam
+`Column` são limitadas pela capacidade da sessão. Os `catch (_)` que
+existem são os dois deliberados e documentados.
+
+### Verificação
+
+Estado final: `flutter analyze --fatal-infos` limpo, **142 testes
+Dart**, `npm run build`/`lint` limpos, **142 testes** no emulador
+(11 ficheiros) — 7 deles novos, a cobrir as duas regras de segurança
+apertadas. Mantêm-se as ressalvas de sempre: sem validação manual no
+browser, e o `dart format` na raiz continua a acusar ficheiros
+pré-existentes que não toquei.
+
+⚠️ **Continua por implantar** o índice `bookings(memberId, status)` do
+lote anterior (`firebase deploy --only firestore:indexes`). As Rules
+apertadas nesta passagem também precisam de
+`firebase deploy --only firestore:rules` para valerem em produção.
+
 ## Próximo passo
 
-Fase 6 está fechada. Os próximos passos ficam ao teu critério —
-sugestões abertas: revisitar se o Instrutor deve poder criar/gerir as
-suas próprias séries (Fase 5 deixou isso deliberadamente só para o
-Gestor); configurar a VAPID key/certificado APNs para as notificações
-push entregarem de facto; decidir um fornecedor de SMS/email para a
-recuperação de password self-service de membros. `Technical/guia-desenvolvimento.md`
-não lista Fase 7 ainda — a definir contigo quando quiseres avançar.
+Fase 8 está fechada, as duas auditorias funcionais e a revisão geral de
+código acima também.
+`Technical/guia-desenvolvimento.md` já lista a Fase 9 — "Pagamentos
+(registo, não processamento)" — como próxima; a definir contigo quando
+quiseres avançar. Sugestões abertas de fases anteriores continuam por
+decidir: revisitar se o Instrutor deve poder criar/gerir as suas
+próprias séries (Fase 5); configurar a VAPID key/certificado APNs para
+as notificações push entregarem de facto (Fase 6); decidir um
+fornecedor de SMS/email para a recuperação de password self-service de
+membros (Fase 6); e, novo deste lote, decidir se a entidade `Room`/
+`Sala` deve existir (para o conflito de horário ser por sala, como o
+mockup descreve) e se o âmbito por modalidade do Instrutor (UC28) deve
+passar a ser uma restrição real em vez de informativa.

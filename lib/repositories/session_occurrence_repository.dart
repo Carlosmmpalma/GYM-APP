@@ -75,9 +75,16 @@ abstract class SessionOccurrenceRepository {
   /// `source: manager`. Devolve, por `memberId`, se a atribuição teve
   /// sucesso — a falha de um membro (sem vaga, sem plano ativo) nunca
   /// impede os restantes.
+  ///
+  /// [isExtra] — UC08-A (fechado), "+ Sessão extra" no mockup: isenta
+  /// estes membros do limite semanal do PRÓPRIO plano (nunca da
+  /// capacidade da sala, que se aplica sempre). `false` por omissão —
+  /// atribuição manual normal conta para o limite como uma marcação
+  /// qualquer (UC08 fechado: "por omissão, atribuir = contar").
   Future<Map<String, bool>> assignMembers({
     required String occurrenceId,
     required List<String> memberIds,
+    bool isExtra = false,
   });
 
   /// UC18 (atualizado) — "reduzir vagas com seleção explícita de quem

@@ -111,3 +111,19 @@ class UsageLimitReachedException implements Exception {
   String toString() =>
       'Já atingiste o limite semanal deste serviço ($used/$limit).';
 }
+
+/// Fase 8 (auditoria funcional, UC06/UC07/UC08/UC09 fechado) —
+/// "antecedência mínima para marcar, configurável pelo Gestor"
+/// (`tenants/{t}/config/bookingPolicy.minBookingNoticeMinutes`).
+/// Lançada só pelo caminho self-service (`createBooking`/
+/// `bookFreeTrainingSlot`) — atribuição manual por Instrutor/Gestor
+/// nunca passa por esta validação.
+class TooCloseToStartException implements Exception {
+  const TooCloseToStartException({required this.minutesRequired});
+
+  final int minutesRequired;
+
+  @override
+  String toString() =>
+      'É preciso marcar com pelo menos $minutesRequired minuto(s) de antecedência.';
+}

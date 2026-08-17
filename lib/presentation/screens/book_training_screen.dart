@@ -148,6 +148,8 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
       setState(() => _error = e.toString());
     } on UsageLimitReachedException catch (e) {
       setState(() => _error = e.toString());
+    } on TooCloseToStartException catch (e) {
+      setState(() => _error = e.toString());
     } catch (e) {
       setState(() => _error = 'Não foi possível marcar. Tenta novamente.');
     } finally {

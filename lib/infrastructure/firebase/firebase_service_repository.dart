@@ -9,6 +9,7 @@ Service _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     id: doc.id,
     name: data['name'] as String? ?? '',
     active: data['active'] as bool? ?? false,
+    exclusiveGroup: data['exclusiveGroup'] as String?,
   );
 }
 
@@ -18,10 +19,8 @@ class FirebaseServiceRepository implements ServiceRepository {
   final FirebaseFirestore _firestore;
   final String _tenantId;
 
-  CollectionReference<Map<String, dynamic>> get _services => _firestore
-      .collection('tenants')
-      .doc(_tenantId)
-      .collection('services');
+  CollectionReference<Map<String, dynamic>> get _services =>
+      _firestore.collection('tenants').doc(_tenantId).collection('services');
 
   @override
   Future<List<Service>> getActiveServices() async {
@@ -37,10 +36,14 @@ class FirebaseServiceRepository implements ServiceRepository {
   }
 
   @override
-  Future<String> createService({required String name}) async {
+  Future<String> createService({
+    required String name,
+    String? exclusiveGroup,
+  }) async {
     final ref = await _services.add({
       'name': name,
       'active': true,
+      'exclusiveGroup': exclusiveGroup,
       'createdAt': FieldValue.serverTimestamp(),
     });
     return ref.id;
@@ -52,5 +55,17 @@ class FirebaseServiceRepository implements ServiceRepository {
     required bool active,
   }) async {
     await _services.doc(serviceId).update({'active': active});
+  }
+
+  @override
+  Future<void> updateService({
+    required String serviceId,
+    required String name,
+    String? exclusiveGroup,
+  }) async {
+    await _services.doc(serviceId).update({
+      'name': name,
+      'exclusiveGroup': exclusiveGroup,
+    });
   }
 }

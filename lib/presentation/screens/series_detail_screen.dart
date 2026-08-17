@@ -5,6 +5,7 @@ import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/session_series.dart';
+import '../widgets/occurrence_dialogs.dart';
 import 'manage_series_screen.dart';
 import 'occurrence_detail_screen.dart';
 
@@ -213,9 +214,14 @@ class _OccurrenceTile extends ConsumerWidget {
   }
 
   Future<void> _edit(BuildContext context, WidgetRef ref) async {
-    final result = await showDialog<({DateTime startAt, int capacity})>(
+    final result = await showEditOccurrenceDialog(
       context: context,
-      builder: (_) => _EditOccurrenceDialog(occurrence: occurrence),
+      occurrence: occurrence,
+      title: 'Editar esta ocorrência',
+      // Nota de UX do UC17/UC19: numa série, tem de ficar sempre claro
+      // que a alteração é só desta semana.
+      subtitle:
+          'Altera só esta semana — a série e as restantes ocorrências não mudam.',
     );
     if (result == null) return;
     try {
@@ -244,8 +250,9 @@ class _OccurrenceTile extends ConsumerWidget {
         content: occurrence.activeBookingCount > 0
             ? Text(
                 'Esta ocorrência tem ${occurrence.activeBookingCount} marcação(ões) ativa(s). '
-                'Cancelar aqui NÃO cancela nem notifica essas marcações automaticamente '
-                '(isso é Fase 6) — a série continua a gerar as próximas semanas normalmente.',
+                'Cancelar aqui cancela essas marcações e devolve a utilização '
+                'semanal a cada membro — a série continua a gerar as próximas '
+                'semanas normalmente.',
               )
             : const Text(
                 'A série continua a gerar as próximas semanas normalmente.'),
@@ -276,10 +283,10 @@ class _OccurrenceTile extends ConsumerWidget {
   }
 
   Future<void> _assign(BuildContext context, WidgetRef ref) async {
-    final memberIds = await showDialog<List<String>>(
+    final memberIds = await showAssignMemberDialog(
       context: context,
-      builder: (_) =>
-          _AssignMemberDialog(serviceId: serviceId, occurrence: occurrence),
+      serviceId: serviceId,
+      occurrence: occurrence,
     );
     if (memberIds == null || memberIds.isEmpty) return;
 
@@ -307,171 +314,5 @@ class _OccurrenceTile extends ConsumerWidget {
         SnackBar(content: Text('Não foi possível atribuir: $e')),
       );
     }
-  }
-}
-
-class _EditOccurrenceDialog extends StatefulWidget {
-  const _EditOccurrenceDialog({required this.occurrence});
-
-  final SessionOccurrence occurrence;
-
-  @override
-  State<_EditOccurrenceDialog> createState() => _EditOccurrenceDialogState();
-}
-
-class _EditOccurrenceDialogState extends State<_EditOccurrenceDialog> {
-  late DateTime _date = widget.occurrence.startAt;
-  late TimeOfDay _time = TimeOfDay.fromDateTime(widget.occurrence.startAt);
-  late final _capacityController =
-      TextEditingController(text: widget.occurrence.capacity.toString());
-
-  @override
-  void dispose() {
-    _capacityController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Editar esta ocorrência'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'Altera só esta semana — a série e as restantes ocorrências não mudam.',
-            style: TextStyle(fontStyle: FontStyle.italic),
-          ),
-          const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Data'),
-            subtitle: Text('${_date.day}/${_date.month}/${_date.year}'),
-            trailing: const Icon(Icons.calendar_today_outlined),
-            onTap: () async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: _date,
-                firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-              );
-              if (picked != null) setState(() => _date = picked);
-            },
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Hora'),
-            subtitle: Text(_time.format(context)),
-            trailing: const Icon(Icons.access_time_outlined),
-            onTap: () async {
-              final picked =
-                  await showTimePicker(context: context, initialTime: _time);
-              if (picked != null) setState(() => _time = picked);
-            },
-          ),
-          TextField(
-            controller: _capacityController,
-            decoration: const InputDecoration(labelText: 'Capacidade'),
-            keyboardType: TextInputType.number,
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final capacity = int.tryParse(_capacityController.text.trim());
-            if (capacity == null || capacity <= 0) return;
-            final startAt = DateTime(
-                _date.year, _date.month, _date.day, _time.hour, _time.minute);
-            Navigator.of(context).pop((startAt: startAt, capacity: capacity));
-          },
-          child: const Text('Guardar'),
-        ),
-      ],
-    );
-  }
-}
-
-class _AssignMemberDialog extends ConsumerStatefulWidget {
-  const _AssignMemberDialog(
-      {required this.serviceId, required this.occurrence});
-
-  final String serviceId;
-  final SessionOccurrence occurrence;
-
-  @override
-  ConsumerState<_AssignMemberDialog> createState() =>
-      _AssignMemberDialogState();
-}
-
-class _AssignMemberDialogState extends ConsumerState<_AssignMemberDialog> {
-  final Set<String> _selected = {};
-
-  @override
-  Widget build(BuildContext context) {
-    final eligibleAsync = ref.watch(eligibleMembersProvider(widget.serviceId));
-    final availableSlots = widget.occurrence.availableSlots;
-
-    return AlertDialog(
-      title: const Text('Adicionar membro'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: eligibleAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stack) => Text('Erro: $error'),
-          data: (members) {
-            if (members.isEmpty) {
-              return const Text(
-                'Nenhum membro tem ainda um plano ativo com acesso a este serviço.',
-              );
-            }
-            return SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('$availableSlots vaga(s) disponível(eis).'),
-                  for (final member in members)
-                    CheckboxListTile(
-                      title: Text('${member.name} (${member.memberNumber})'),
-                      value: _selected.contains(member.uid),
-                      onChanged: (v) {
-                        if (v == true && _selected.length >= availableSlots) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content:
-                                    Text('Não há mais vagas disponíveis.')),
-                          );
-                          return;
-                        }
-                        setState(() {
-                          if (v == true) {
-                            _selected.add(member.uid);
-                          } else {
-                            _selected.remove(member.uid);
-                          }
-                        });
-                      },
-                    ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_selected.toList()),
-          child: const Text('Adicionar'),
-        ),
-      ],
-    );
   }
 }

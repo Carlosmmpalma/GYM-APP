@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'assign_subscription_screen.dart';
 import 'gestor_dashboard_screen.dart';
+import 'exercise_library_screen.dart';
 import 'instructor_calendar_screen.dart';
+import 'instructor_students_screen.dart';
+import 'manage_free_training_screen.dart';
 import 'manage_members_screen.dart';
 import 'manage_modalities_screen.dart';
 import 'manage_plans_screen.dart';
@@ -98,6 +101,33 @@ class ManagerScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Card(
             child: ListTile(
+              leading: const Icon(Icons.groups_outlined),
+              title: const Text('Alunos'),
+              subtitle: const Text('Avaliações e plano de treino (Fase 8)'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const InstructorStudentsScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.video_library_outlined),
+              title: const Text('Biblioteca de exercícios'),
+              subtitle:
+                  const Text('Partilhada por todos os instrutores (UC15)'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const ExerciseLibraryScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
               leading: const Icon(Icons.badge_outlined),
               title: const Text('Staff'),
               subtitle:
@@ -124,10 +154,24 @@ class ManagerScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Card(
             child: ListTile(
+              leading: const Icon(Icons.self_improvement_outlined),
+              title: const Text('Treino livre'),
+              subtitle:
+                  const Text('Configurar, aprovar e publicar a grelha semanal'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const ManageFreeTrainingScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
               leading: const Icon(Icons.calendar_month_outlined),
               title: const Text('Calendário'),
-              subtitle:
-                  const Text('Próximas 2 semanas, todas as sessões (UC20)'),
+              subtitle: const Text(
+                  'Semana a semana, por dia, todas as sessões (UC20)'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(

@@ -1,9 +1,10 @@
-import { getFirestore } from 'firebase-admin/firestore';
+import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManagerOrInstructor } from './lib/callerContext';
 import { applyRelease, prepareRelease, ReleasePlan } from './lib/bookingLogic';
+import { describeOccurrence, notifyMembers } from './lib/notifications';
 
 const inputSchema = z.object({
   occurrenceId: z.string().min(1),
@@ -60,8 +61,25 @@ export const removeMembersFromOccurrence = onCall(async (request) => {
       ...(newCapacity !== undefined ? { capacity: newCapacity } : {}),
     });
 
-    return { removed: plans.map((p) => p.memberId) };
+    return {
+      removed: plans.map((p) => p.memberId),
+      startAt: (occSnap.data()?.startAt as Timestamp | undefined)?.toDate(),
+    };
   });
 
-  return result;
+  // UC18 (fechado) — "os alunos removidos são notificados (UC11)".
+  // FORA da transação, e sem `await` a bloquear o resultado em caso de
+  // erro: o `notifyMembers` nunca lança (ver `lib/notifications.ts`),
+  // mas mesmo assim a remoção já está confirmada neste ponto.
+  if (result.removed.length > 0) {
+    const when = result.startAt ? describeOccurrence(result.startAt) : 'uma sessão marcada';
+    await notifyMembers(
+      tenantRef,
+      result.removed,
+      'Marcação cancelada pelo estúdio',
+      `A tua marcação de ${when} foi cancelada. A sessão volta ao teu limite semanal.`,
+    );
+  }
+
+  return { removed: result.removed };
 });
