@@ -76,4 +76,24 @@ class FirebaseUserProvisioningRepository implements UserProvisioningRepository {
       temporaryPassword: data['temporaryPassword'] as String,
     );
   }
+
+  @override
+  Future<String> resetUserPassword(String userId) async {
+    final result =
+        await _functions.httpsCallable('resetUserPassword').call<Object?>({
+      'userId': userId,
+    });
+    return _asMap(result.data)['temporaryPassword'] as String;
+  }
+
+  @override
+  Future<void> updateStaffRoles({
+    required String staffId,
+    required Set<Role> roles,
+  }) async {
+    await _functions.httpsCallable('updateStaffRoles').call<Object?>({
+      'staffId': staffId,
+      'roles': roles.map((r) => r.name).toList(),
+    });
+  }
 }

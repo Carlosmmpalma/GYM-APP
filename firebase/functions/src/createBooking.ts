@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireAuthenticated } from './lib/callerContext';
+import { enforceRateLimit } from './lib/rateLimit';
 import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
 
 const inputSchema = z.object({
@@ -42,6 +43,13 @@ const inputSchema = z.object({
  */
 export const createBooking = onCall(async (request) => {
   const caller = requireAuthenticated(request);
+  // marcar 30 vezes num minuto não é uma pessoa a usar a app
+  await enforceRateLimit({
+    uid: caller.uid,
+    operation: 'createBooking',
+    maxCalls: 30,
+    windowSeconds: 60,
+  });
 
   const parsed = inputSchema.safeParse(request.data);
   if (!parsed.success) {

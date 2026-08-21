@@ -5,6 +5,7 @@ import '../../application/providers/modality_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/modality.dart';
 import '../../domain/entities/service.dart';
+import '../widgets/design_system.dart';
 
 /// Fase 6 (Domain Model v1 §8-9) — Ecrã Gestor: criar/ativar/desativar
 /// modalidades e escolher a que serviços cada uma se aplica. Mesmo
@@ -27,18 +28,17 @@ class ManageModalitiesScreen extends ConsumerWidget {
       ),
       body: modalitiesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Erro: $error')),
+        error: (error, stack) => ErrorState(error: error),
         data: (modalities) {
           if (modalities.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Ainda não existe nenhuma modalidade. Usa o botão "+" para '
-                  'criar a primeira (ex.: Pilates, Hyrox).',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+            return EmptyState(
+              icon: Icons.category_outlined,
+              title: 'Ainda não há modalidades',
+              message: 'Uma modalidade agrupa serviços por tipo de treino '
+                  '(Pilates, Hyrox, Musculação) e serve para dizer o que '
+                  'cada instrutor dá e para filtrar o horário.',
+              actionLabel: 'Criar a primeira modalidade',
+              onAction: () => _createModality(context, ref),
             );
           }
           return ListView.separated(
@@ -119,7 +119,8 @@ class _CreateModalityDialogState extends State<_CreateModalityDialog> {
           controller: _nameController,
           decoration: const InputDecoration(labelText: 'Nome'),
           autofocus: true,
-          validator: (v) => (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
           onFieldSubmitted: (_) => _submit(),
         ),
       ),
@@ -141,11 +142,12 @@ class ModalityDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentModality = ref.watch(modalitiesProvider).valueOrNull?.firstWhere(
-              (m) => m.id == modality.id,
-              orElse: () => modality,
-            ) ??
-        modality;
+    final currentModality =
+        ref.watch(modalitiesProvider).valueOrNull?.firstWhere(
+                  (m) => m.id == modality.id,
+                  orElse: () => modality,
+                ) ??
+            modality;
     final servicesAsync = ref.watch(servicesProvider);
 
     return Scaffold(
@@ -177,7 +179,7 @@ class ModalityDetailScreen extends ConsumerWidget {
           const SizedBox(height: 8),
           servicesAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stack) => Text('Erro: $error'),
+            error: (error, stack) => ErrorState(error: error, compact: true),
             data: (services) {
               final active = services.where((s) => s.active).toList();
               if (active.isEmpty) {
@@ -191,7 +193,8 @@ class ModalityDetailScreen extends ConsumerWidget {
                       (service) => _ServiceTile(
                         modalityId: currentModality.id,
                         service: service,
-                        enabled: currentModality.serviceIds.contains(service.id),
+                        enabled:
+                            currentModality.serviceIds.contains(service.id),
                       ),
                     )
                     .toList(),

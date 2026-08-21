@@ -95,4 +95,56 @@ void main() {
       findsOneWidget,
     );
   });
+
+  group('estado da mensalidade (Fase 9, UC27 fechado)', () {
+    testWidgets('sem registo nenhum → "Sem registo"', (tester) async {
+      final firestore = await seedFirestore();
+      await tester.pumpWidget(buildApp(firestore));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Sem registo'), findsOneWidget);
+    });
+
+    testWidgets('registo do mês atual "overdue" → "Em atraso"', (tester) async {
+      final firestore = await seedFirestore();
+      final now = DateTime.now();
+      final periodKey = '${now.year.toString().padLeft(4, '0')}-'
+          '${now.month.toString().padLeft(2, '0')}';
+      await firestore
+          .collection('tenants')
+          .doc(_tenantId)
+          .collection('members')
+          .doc(_memberId)
+          .update({
+        'currentPaymentStatus': 'overdue',
+        'currentPaymentPeriod': periodKey,
+      });
+
+      await tester.pumpWidget(buildApp(firestore));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Em atraso'), findsOneWidget);
+    });
+
+    testWidgets(
+        'registo "overdue" de um mês ANTERIOR não aparece como em atraso',
+        (tester) async {
+      final firestore = await seedFirestore();
+      await firestore
+          .collection('tenants')
+          .doc(_tenantId)
+          .collection('members')
+          .doc(_memberId)
+          .update({
+        'currentPaymentStatus': 'overdue',
+        'currentPaymentPeriod': '2000-01',
+      });
+
+      await tester.pumpWidget(buildApp(firestore));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Sem registo'), findsOneWidget);
+      expect(find.textContaining('Em atraso'), findsNothing);
+    });
+  });
 }

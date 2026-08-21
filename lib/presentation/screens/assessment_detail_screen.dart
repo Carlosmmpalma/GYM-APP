@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../domain/entities/assessment.dart';
 import '../../domain/entities/member_summary.dart';
+import '../../core/theme/app_colors.dart';
 import 'assessment_form_screen.dart';
 
 final _dateFormat = DateFormat('d MMM yyyy', 'pt_PT');
@@ -109,7 +110,7 @@ class AssessmentDetailScreen extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(label, style: const TextStyle(color: AppColors.mute)),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),

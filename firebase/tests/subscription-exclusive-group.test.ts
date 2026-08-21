@@ -39,6 +39,8 @@ const PROJECT_ID = 'demo-gym-saas-dev';
 const TENANT_ID = 'tenant_exclusive_group_test';
 const MEMBER_ID = 'member_exclusive_group_test';
 
+const FUNCTIONS_REGION = 'europe-west1';
+
 process.env.FIRESTORE_EMULATOR_HOST ??= 'localhost:8080';
 process.env.FIREBASE_AUTH_EMULATOR_HOST ??= 'localhost:9099';
 
@@ -62,7 +64,11 @@ async function signedInFunctionsClient(
   const customToken = await adminAuth.createCustomToken(uid, claims);
   await signInWithCustomToken(auth, customToken);
 
-  const functions = getFunctions(app);
+  // A região TEM de bater certo com o `setGlobalOptions` de
+  // `functions/src/index.ts`: com a região errada, o cliente procura as
+  // funções em `us-central1`, onde não existe nada, e recebe
+  // `not-found` em tudo.
+  const functions = getFunctions(app, FUNCTIONS_REGION);
   connectFunctionsEmulator(functions, 'localhost', 5001);
   return functions;
 }

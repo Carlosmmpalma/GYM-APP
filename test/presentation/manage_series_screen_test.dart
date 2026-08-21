@@ -84,8 +84,7 @@ void main() {
     await tester.pumpWidget(buildApp(firestore));
     await tester.pumpAndSettle();
 
-    expect(
-        find.textContaining('Ainda não existe nenhuma série'), findsOneWidget);
+    expect(find.textContaining('Horário vazio'), findsOneWidget);
   });
 
   testWidgets('mostra série ativa e série cancelada com os dados corretos',

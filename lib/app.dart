@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'core/theme/app_theme.dart';
 import 'presentation/widgets/auth_gate.dart';
 
 class GymSaasApp extends StatelessWidget {
@@ -10,7 +11,12 @@ class GymSaasApp extends StatelessWidget {
     return MaterialApp(
       title: 'Gym SaaS',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: Colors.red, useMaterial3: true),
+      // Fase 10 — tema escuro do mockup (ver `core/theme/app_theme.dart`).
+      // Só existe modo escuro: o mockup define UM produto, não um par
+      // claro/escuro, e inventar uma variante clara seria desenhar algo
+      // que ninguém aprovou. `darkTheme`/`themeMode` ficam de fora de
+      // propósito — `theme` sozinho aplica-se sempre.
+      theme: AppTheme.dark,
       // Substituir por um router real (ver Platform Foundation §10 —
       // camada Presentation) quando existir mais do que um punhado de
       // ecrãs. Por agora, AuthGate decide sozinho entre login/troca de

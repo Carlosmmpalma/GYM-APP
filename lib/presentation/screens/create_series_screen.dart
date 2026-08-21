@@ -10,6 +10,7 @@ import '../../domain/entities/role.dart';
 import '../../domain/entities/service.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/session_series.dart';
+import '../widgets/design_system.dart';
 import 'manage_series_screen.dart';
 
 final _conflictTimeFormat = DateFormat('HH:mm', 'pt_PT');
@@ -21,7 +22,20 @@ final _conflictTimeFormat = DateFormat('HH:mm', 'pt_PT');
 /// modelo híbrido: pré-atribuir membros elegíveis já aqui, deixando o
 /// resto da capacidade aberta para auto-marcação.
 class CreateSeriesScreen extends ConsumerStatefulWidget {
-  const CreateSeriesScreen({super.key});
+  const CreateSeriesScreen({
+    super.key,
+    this.restrictedServiceIds,
+    this.lockedInstructorId,
+  });
+
+  /// Fase 11 — quando é um Instrutor a criar, só pode escolher entre os
+  /// serviços que o Gestor lhe associou. `null` = sem restrição (é o
+  /// Gestor a criar).
+  final Set<String>? restrictedServiceIds;
+
+  /// Quando definido, a aula é obrigatoriamente deste instrutor e o
+  /// campo deixa de ser escolha. `null` = o Gestor escolhe.
+  final String? lockedInstructorId;
 
   @override
   ConsumerState<CreateSeriesScreen> createState() => _CreateSeriesScreenState();
@@ -34,7 +48,11 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
 
   bool _recurring = true;
   Service? _service;
-  String? _instructorId;
+
+  /// Quando o ecrã é aberto por um Instrutor, nasce já com ele — é a
+  /// única hipótese que as Security Rules aceitam, e sem isto a série
+  /// seria criada sem instrutor e recusada pelo servidor.
+  late String? _instructorId = widget.lockedInstructorId;
   String? _modalityId;
   int _dayOfWeek = DateTime.monday;
   DateTime _date = DateTime.now();
@@ -77,10 +95,32 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
               const SizedBox(height: 16),
               servicesAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, stack) =>
-                    Text('Erro a carregar serviços: $error'),
+                error: (error, stack) => ErrorState(
+                  error: error,
+                  message: 'Não foi possível carregar serviços.',
+                  compact: true,
+                ),
                 data: (services) {
-                  final active = services.where((s) => s.active).toList();
+                  var active = services.where((s) => s.active).toList();
+                  // Fase 11 — um Instrutor só vê os serviços que o
+                  // Gestor lhe associou. As Security Rules recusam os
+                  // outros de qualquer forma; mostrar o que vai ser
+                  // recusado seria oferecer uma porta fechada.
+                  if (widget.restrictedServiceIds != null) {
+                    active = active
+                        .where(
+                            (s) => widget.restrictedServiceIds!.contains(s.id))
+                        .toList();
+                  }
+                  if (active.isEmpty) {
+                    return const EmptyState(
+                      icon: Icons.lock_outline,
+                      title: 'Sem serviços atribuídos',
+                      message: 'Ainda não tens nenhum serviço associado ao '
+                          'teu perfil, por isso não podes criar aulas. Pede '
+                          'ao Gestor para te atribuir os que lecionas.',
+                    );
+                  }
                   return DropdownButtonFormField<Service>(
                     initialValue: _service,
                     decoration: const InputDecoration(labelText: 'Serviço'),
@@ -128,9 +168,25 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
               const SizedBox(height: 16),
               staffAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, stack) =>
-                    Text('Erro a carregar instrutores: $error'),
+                error: (error, stack) => ErrorState(
+                  error: error,
+                  message: 'Não foi possível carregar instrutores.',
+                  compact: true,
+                ),
                 data: (staff) {
+                  // Um Instrutor cria em nome PRÓPRIO e mais nada — as
+                  // Rules verificam-no. Sem escolha para fazer, o campo
+                  // deixa de ser um dropdown e passa a dizer o que é.
+                  if (widget.lockedInstructorId != null) {
+                    final me = staff.firstWhere(
+                      (s) => s.uid == widget.lockedInstructorId,
+                      orElse: () => staff.first,
+                    );
+                    return InputDecorator(
+                      decoration: const InputDecoration(labelText: 'Instrutor'),
+                      child: Text(me.name),
+                    );
+                  }
                   final instructors = staff
                       .where((s) => s.roles.contains(Role.instructor))
                       .toList();
@@ -577,8 +633,11 @@ class _EligibleMembersPicker extends ConsumerWidget {
 
     return eligibleAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) =>
-          Text('Erro a carregar membros elegíveis: $error'),
+      error: (error, stack) => ErrorState(
+        error: error,
+        message: 'Não foi possível carregar membros elegíveis.',
+        compact: true,
+      ),
       data: (members) {
         if (members.isEmpty) {
           return const Text(

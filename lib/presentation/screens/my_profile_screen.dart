@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/plan_providers.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_theme.dart';
 import '../../domain/entities/member_summary.dart';
+import '../../domain/entities/payment_record.dart';
+import '../widgets/design_system.dart';
+import '../widgets/privacy_section.dart';
 
 /// UC02 — "Perfil": o próprio membro vê o número de sócio (gerido pelo
 /// Gestor, UC22) e edita só o telefone/email de contacto. Nome/nº de
@@ -26,7 +31,7 @@ class MyProfileScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Perfil')),
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Erro: $error')),
+        error: (error, stack) => ErrorState(error: error),
         data: (member) {
           if (member == null) {
             return const Center(
@@ -98,29 +103,49 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(member.name,
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(
-                  'Nº de sócio ${member.memberNumber}${member.active ? '' : ' · inativo'}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Nome e nº de sócio são geridos pelo Gestor do ginásio.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
+        PanelCard(
+          gradient: true,
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Avatar(member.name, size: 44),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(member.name,
+                            style: AppTheme.display(fontSize: 17)),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Nº de sócio ${member.memberNumber}'
+                          '${member.active ? '' : ' · inativo'}',
+                          style: const TextStyle(
+                              color: AppColors.mute, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _PaymentStatusPill(member: member),
+                ],
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
+        const SectionLabel('Os meus contactos'),
+        const SizedBox(height: 2),
+        // Dizer o que NÃO se pode mudar aqui, e por quem, evita a
+        // procura por um campo de nome que nunca vai existir neste ecrã.
+        const Text(
+          'Só o telefone e o email são teus para editar. Nome, nº de sócio '
+          'e estado da conta são geridos pelo estúdio.',
+          style: TextStyle(color: AppColors.dim, fontSize: 11, height: 1.4),
+        ),
+        const SizedBox(height: 12),
         TextField(
           controller: _phoneController,
           decoration: const InputDecoration(labelText: 'Telefone'),
@@ -133,17 +158,52 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
           keyboardType: TextInputType.emailAddress,
         ),
         const SizedBox(height: 24),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: _saving
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Guardar'),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _saving ? null : _save,
+            child: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Guardar'),
+          ),
         ),
+        const PrivacySection(),
       ],
     );
+  }
+}
+
+/// Fase 9 (UC27 fechado) — mockup do "Início" mostra "Mensalidade: Em
+/// dia" no card de topo; este ecrã (`MyProfileScreen`) é o equivalente
+/// real desta app (`HomeScreen`, Fase 2, é uma navegação por separadores
+/// sem card de topo — não há um sítio direto para replicar esse layout
+/// sem o reconstruir de raiz, fora de âmbito de uma fase sobre
+/// pagamentos). Só o estado do MÊS ATUAL — o histórico completo é
+/// exclusivo do Gestor (`PaymentHistoryScreen`, `firestore.rules`), o
+/// próprio Aluno não tem, hoje, nenhum ecrã que navegue para lá.
+class _PaymentStatusPill extends StatelessWidget {
+  const _PaymentStatusPill({required this.member});
+
+  final MemberSummary member;
+
+  @override
+  Widget build(BuildContext context) {
+    // Fase 10 — era texto colorido com `Colors.green`/`Colors.orange`,
+    // cores fora da paleta do mockup; passou ao `Pill`, que é como todos
+    // os outros estados da app se mostram. As etiquetas encurtaram para
+    // caber num pill: o detalhe ("contacta o estúdio") já está no ecrã
+    // de conta inativa, que é onde a ação é preciso.
+    final (String label, PillTone tone) =
+        switch (member.currentMonthStatus(DateTime.now())) {
+      PaymentStatus.paid => ('Em dia', PillTone.ok),
+      PaymentStatus.paidLate => ('Paga com atraso', PillTone.warn),
+      PaymentStatus.overdue => ('Em atraso', PillTone.danger),
+      null => ('Sem registo', PillTone.neutral),
+    };
+    return Pill(label, tone: tone);
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/notification_providers.dart';
 import '../../application/providers/plan_providers.dart';
+import '../widgets/design_system.dart';
 
 /// Fase 6 (UC21) — enviar uma notificação push. Dois modos, conforme
 /// [occurrenceId]:
@@ -59,7 +60,8 @@ class _SendNotificationScreenState
             else
               membersAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, stack) => Text('Erro: $error'),
+                error: (error, stack) =>
+                    ErrorState(error: error, compact: true),
                 data: (members) => DropdownButtonFormField<String>(
                   initialValue: _selectedMemberId,
                   decoration: const InputDecoration(labelText: 'Membro'),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/tenant_context_providers.dart';
 import '../../domain/entities/app_user.dart';
+import '../widgets/design_system.dart';
 
 /// UC22 — "password inicial é temporária... obriga o utilizador a
 /// definir uma password nova logo no primeiro login". O AuthGate só
@@ -113,11 +114,7 @@ class _ForcePasswordChangeScreenState
                   ),
                   if (_errorMessage != null) ...[
                     const SizedBox(height: 16),
-                    Text(
-                      _errorMessage!,
-                      style: const TextStyle(color: Colors.red),
-                      textAlign: TextAlign.center,
-                    ),
+                    AppBanner(text: _errorMessage!, tone: PillTone.danger),
                   ],
                 ],
               ),

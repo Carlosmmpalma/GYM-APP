@@ -7,7 +7,7 @@ TrainingPlanEntry _entry({double? currentLoad}) {
     memberId: 'member_1',
     exerciseId: 'exercise_1',
     sets: 4,
-    reps: 8,
+    reps: '8',
     currentLoad: currentLoad,
   );
 }

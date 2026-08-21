@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../application/providers/training_providers.dart';
+import '../widgets/design_system.dart';
 
 final _dateFormat = DateFormat('dd/MM/yyyy', 'pt_PT');
 
@@ -32,7 +33,7 @@ class LoadEvolutionScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(exerciseName)),
       body: historyAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Erro: $error')),
+        error: (error, stack) => ErrorState(error: error),
         data: (history) {
           if (history.isEmpty) {
             return const Center(

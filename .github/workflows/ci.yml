@@ -55,13 +55,31 @@ jobs:
         working-directory: firebase/tests
         run: npm ci || npm install
 
+      - name: Instalar dependências das Cloud Functions
+        working-directory: firebase/functions
+        run: npm ci || npm install
+
+      # O emulador serve o JavaScript de `functions/lib`, não o
+      # TypeScript. Sem compilar antes, arranca sem funções nenhumas e
+      # metade da suite falha com `not-found`.
+      - name: Build das Cloud Functions
+        working-directory: firebase/functions
+        run: npm run build
+
       # Corre TODOS os *.test.ts em firebase/tests (vitest apanha-os
-      # automaticamente): isolamento entre tenants (Fase 1) +
-      # concorrência na última vaga de uma marcação (Fase 2) + rules de
-      # plans/subscriptions (Fase 3).
-      - name: Correr testes de Security Rules contra o emulador do Firestore
+      # automaticamente).
+      #
+      # Fase 11 — isto corria com `--only firestore`, o que deixava de
+      # fora os cinco ficheiros que chamam Cloud Functions a sério:
+      # concorrência na última vaga, sessões extra, grupos exclusivos,
+      # RGPD e poderes do Gestor. Precisam de `functions` (a função em
+      # si), `auth` (tokens com custom claims) e `storage` (rules de
+      # vídeos). Ou seja: os testes de MAIOR valor da suite não estavam
+      # a ser corridos em CI nenhuma.
+      - name: Correr a suite completa contra o Emulator Suite
         run: |
-          firebase emulators:exec --project=demo-gym-saas-dev --only firestore \
+          firebase emulators:exec --project=demo-gym-saas-dev \
+            --only firestore,functions,auth,storage \
             "npm --prefix firebase/tests test"
 
   functions:

@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireAuthenticated } from './lib/callerContext';
+import { enforceRateLimit } from './lib/rateLimit';
 
 const inputSchema = z.object({
   weekId: z.string().min(1),
@@ -24,6 +25,13 @@ const inputSchema = z.object({
  */
 export const cancelFreeTrainingBooking = onCall(async (request) => {
   const caller = requireAuthenticated(request);
+  // mesmo raciocínio de createBooking
+  await enforceRateLimit({
+    uid: caller.uid,
+    operation: 'cancelFreeTrainingBooking',
+    maxCalls: 30,
+    windowSeconds: 60,
+  });
 
   const parsed = inputSchema.safeParse(request.data);
   if (!parsed.success) {

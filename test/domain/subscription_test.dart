@@ -35,7 +35,9 @@ void main() {
       expect(sub.grantsAccessTo('service_b'), isFalse);
     });
 
-    test('cancelled, mesmo com o serviço na lista → false (Domain Model v1 §16)', () {
+    test(
+        'cancelled, mesmo com o serviço na lista → false (Domain Model v1 §16)',
+        () {
       final sub = _sub(
         status: SubscriptionStatus.cancelled,
         activeServiceIds: {'service_a'},
@@ -61,11 +63,13 @@ void main() {
 
     test('isActive reflete só o status', () {
       expect(
-        _sub(status: SubscriptionStatus.active, activeServiceIds: const {}).isActive,
+        _sub(status: SubscriptionStatus.active, activeServiceIds: const {})
+            .isActive,
         isTrue,
       );
       expect(
-        _sub(status: SubscriptionStatus.paused, activeServiceIds: const {}).isActive,
+        _sub(status: SubscriptionStatus.paused, activeServiceIds: const {})
+            .isActive,
         isFalse,
       );
     });
@@ -73,7 +77,8 @@ void main() {
 
   group('SubscriptionServiceConflictException.toString()', () {
     test('com nomes de serviços em conflito, lista-os', () {
-      const exception = SubscriptionServiceConflictException(['Aula de Grupo', 'Pilates']);
+      const exception =
+          SubscriptionServiceConflictException(['Aula de Grupo', 'Pilates']);
       expect(exception.toString(), contains('Aula de Grupo'));
       expect(exception.toString(), contains('Pilates'));
     });

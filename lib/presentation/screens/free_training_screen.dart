@@ -6,6 +6,8 @@ import '../../application/providers/free_training_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../core/utils/iso_week.dart';
 import '../../domain/entities/free_training_slot.dart';
+import '../../application/providers/plan_providers.dart';
+import '../widgets/design_system.dart';
 
 final _dayFormat = DateFormat('EEE, d MMM', 'pt_PT');
 final _timeFormat = DateFormat('HH:mm', 'pt_PT');
@@ -64,17 +66,16 @@ class _FreeTrainingScreenState extends ConsumerState<FreeTrainingScreen> {
         Expanded(
           child: scheduleAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stack) => Center(child: Text('Erro: $error')),
+            error: (error, stack) => ErrorState(error: error),
             data: (schedule) {
               if (schedule == null || !schedule.isPublished) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'Ainda não há grelha publicada para esta semana.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+                return const EmptyState(
+                  icon: Icons.self_improvement_outlined,
+                  title: 'Semana ainda não publicada',
+                  message: 'O treino livre funciona por blocos de horário '
+                      'que o ginásio publica todas as semanas. Quando esta '
+                      'semana for publicada, aparecem aqui os blocos com '
+                      'as vagas disponíveis.',
                 );
               }
               if (memberId == null) return const SizedBox.shrink();
@@ -96,14 +97,37 @@ class _SlotsList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final slotsAsync = ref.watch(freeTrainingSlotsProvider(weekId));
+    final eligibleAsync = ref.watch(myEligibleServiceIdsProvider);
 
     return slotsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => Center(child: Text('Erro: $error')),
-      data: (slots) {
+      error: (error, stack) => ErrorState(error: error),
+      data: (allSlots) {
+        // Fase 11 — o treino livre também é um serviço, e nem todos os
+        // planos lhe dão acesso. Mesmo raciocínio (e mesma fonte) do
+        // filtro em "Marcar treino": não mostrar portas fechadas, sem
+        // deixar de contar com o servidor para as fechar.
+        final eligible = eligibleAsync.valueOrNull;
+        final slots = eligible == null
+            ? allSlots
+            : allSlots.where((s) => eligible.contains(s.serviceId)).toList();
+
+        if (slots.isEmpty && allSlots.isNotEmpty) {
+          return const EmptyState(
+            icon: Icons.lock_outline,
+            title: 'O teu plano não inclui treino livre',
+            message: 'Há blocos publicados esta semana, mas o teu plano não '
+                'dá acesso a treino livre. Fala com o estúdio se quiseres '
+                'acrescentá-lo.',
+          );
+        }
+
         if (slots.isEmpty) {
-          return const Center(
-            child: Text('Nenhum horário nesta semana.'),
+          return const EmptyState(
+            icon: Icons.self_improvement_outlined,
+            title: 'Sem blocos nesta semana',
+            message: 'A grelha desta semana está publicada mas ainda não tem '
+                'nenhum bloco. Usa as setas em cima para ver outra semana.',
           );
         }
 

@@ -61,6 +61,15 @@ class _FakeUserProvisioningRepository implements UserProvisioningRepository {
     String emergencyContact = '',
   }) async =>
       throw UnimplementedError();
+
+  @override
+  Future<String> resetUserPassword(String userId) async => 'temp-password';
+
+  @override
+  Future<void> updateStaffRoles({
+    required String staffId,
+    required Set<Role> roles,
+  }) async {}
 }
 
 void main() {

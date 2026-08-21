@@ -203,6 +203,16 @@ void main() {
         .collection('services')
         .doc('service_1')
         .set({'name': 'Treino sem acompanhamento', 'active': true});
+    // Fase 11 — o serviço de treino livre passou a ser uma definição do
+    // estúdio, escolhida uma vez. Sem ela o ecrã diz o que falta em vez
+    // de mostrar a grelha, e é isso que o teste `sem configuração`
+    // verifica logo abaixo.
+    await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('config')
+        .doc('bookingPolicy')
+        .set({'freeTrainingServiceId': 'service_1'});
     return firestore;
   }
 
@@ -220,8 +230,25 @@ void main() {
     );
   }
 
+  testWidgets('sem serviço de treino livre configurado, diz o que falta',
+      (tester) async {
+    // Fase 11 — pedido depois de testar: o serviço era perguntado ao
+    // criar a grelha E outra vez em cada bloco. Passou a ser uma
+    // definição única; sem ela, o ecrã explica onde se escolhe em vez
+    // de mostrar um seletor a cada passo.
+    final firestore = FakeFirebaseFirestore();
+    final repository = _FakeFreeTrainingRepository();
+
+    await tester.pumpWidget(buildApp(firestore, repository));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Treino livre por configurar'), findsOneWidget);
+    expect(find.textContaining('Definições'), findsOneWidget);
+    expect(find.text('Gerar grelha desta semana'), findsNothing);
+  });
+
   testWidgets(
-      'semana sem grelha: escolher serviço e gerar grelha chama suggestSchedule',
+      'semana sem grelha: gerar usa o serviço configurado, sem perguntar',
       (tester) async {
     final firestore = await seedFirestore();
     final repository = _FakeFreeTrainingRepository();
@@ -233,11 +260,8 @@ void main() {
       find.text('Esta semana ainda não tem nenhuma grelha de treino livre.'),
       findsOneWidget,
     );
-
-    await tester.tap(find.byType(DropdownButtonFormField<Service>).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Treino sem acompanhamento').last);
-    await tester.pumpAndSettle();
+    // Já não há nada a escolher: o serviço vem das Definições.
+    expect(find.byType(DropdownButtonFormField<Service>), findsNothing);
 
     await tester.tap(find.text('Gerar grelha desta semana'));
     await tester.pumpAndSettle();
@@ -273,16 +297,16 @@ void main() {
     await tester.tap(find.widgetWithText(FilterChip, 'Ter'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(DropdownButtonFormField<Service>).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Treino sem acompanhamento').last);
-    await tester.pumpAndSettle();
+    // Fase 11 — o diálogo do bloco já não pergunta o serviço: herda-o
+    // da definição do estúdio, que é a mesma que a grelha usa.
+    expect(find.byType(DropdownButtonFormField<Service>), findsNothing);
 
     await tester.tap(find.text('Adicionar'));
     await tester.pumpAndSettle();
 
     expect(repository.slots.length, 2);
     expect(repository.lastCreateSlotCall?.capacity, 10);
+    expect(repository.lastCreateSlotCall?.serviceId, 'service_1');
 
     await tester.tap(publishButtonFinder);
     await tester.pumpAndSettle();

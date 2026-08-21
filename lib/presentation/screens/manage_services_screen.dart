@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/service.dart';
+import '../widgets/design_system.dart';
 
 /// UC26 — Ecrã Gestor: criar e ativar/desativar Services.
 ///
@@ -28,18 +29,18 @@ class ManageServicesScreen extends ConsumerWidget {
       ),
       body: servicesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Erro: $error')),
+        error: (error, stack) => ErrorState(error: error),
         data: (services) {
           if (services.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Ainda não existe nenhum serviço. Usa o botão "+" para '
-                  'criar o primeiro.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+            return EmptyState(
+              icon: Icons.local_activity_outlined,
+              title: 'Ainda não há serviços',
+              message: 'Um serviço é aquilo que o ginásio oferece: Aula de '
+                  'Grupo, Pilates, PT, Treino Livre. É a peça base — os '
+                  'planos dão acesso a serviços e cada aula do horário é '
+                  'de um serviço.',
+              actionLabel: 'Criar o primeiro serviço',
+              onAction: () => _createService(context, ref),
             );
           }
           return ListView.separated(

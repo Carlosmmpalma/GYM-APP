@@ -1,9 +1,12 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/training_providers.dart';
 import '../../domain/entities/exercise.dart';
+import '../../core/theme/app_colors.dart';
+import '../widgets/design_system.dart';
 
 const _muscleGroups = [
   'Pernas',
@@ -40,6 +43,12 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
 
   bool _saving = false;
   bool _uploadingVideo = false;
+
+  /// O vídeo escolhido mas ainda não enviado. Fica em memória até
+  /// gravar — é o que permite escolher antes de o exercício existir.
+  Uint8List? _pendingVideoBytes;
+  String? _pendingVideoName;
+  String? _pendingVideoContentType;
   String? _error;
 
   bool get _isEditing => widget.exercise != null;
@@ -67,12 +76,15 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
           description: _descriptionController.text.trim(),
           muscleGroup: _muscleGroup,
         );
+        await _uploadPendingVideo(widget.exercise!.id);
       } else {
-        await repository.createExercise(
+        final exerciseId = await repository.createExercise(
           name: _nameController.text.trim(),
           description: _descriptionController.text.trim(),
           muscleGroup: _muscleGroup,
         );
+        // O exercício já existe: agora sim o vídeo tem onde ficar.
+        await _uploadPendingVideo(exerciseId);
       }
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -87,51 +99,81 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
   /// requisito". Validação client-side (feedback imediato) + a mesma
   /// regra aplicada a sério em `storage.rules` (contentType/size), não
   /// só aqui.
-  Future<void> _uploadVideo() async {
-    final exerciseId = widget.exercise?.id;
-    if (exerciseId == null) {
-      setState(() => _error = 'Guarda o exercício antes de carregar o vídeo.');
-      return;
-    }
-
+  /// Fase 11 — ESCOLHER o vídeo deixou de exigir que o exercício já
+  /// exista.
+  ///
+  /// Antes, criar um exercício com vídeo era: preencher, gravar, voltar
+  /// a abrir, carregar o vídeo. A app dizia "Guarda o exercício antes
+  /// de carregar o vídeo", o que é a app a explicar uma limitação sua
+  /// em vez de a resolver. Agora o ficheiro fica em memória e sobe
+  /// junto com o resto, ao gravar.
+  ///
+  /// Aceita qualquer formato de vídeo, não só `.mp4`: um telemóvel
+  /// grava `.mov`, e filtrar por extensão fazia o ficheiro nem aparecer
+  /// no seletor — que se lê como "o carregamento não funciona".
+  Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['mp4'],
+      type: FileType.video,
       withData: true,
     );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.single;
     final bytes = file.bytes;
     if (bytes == null) {
-      setState(() => _error = 'Não foi possível ler o ficheiro escolhido.');
+      setState(() => _error =
+          'Não foi possível ler o ficheiro. Tenta escolher outra vez.');
       return;
     }
     if (bytes.lengthInBytes > 100 * 1024 * 1024) {
-      setState(() => _error = 'Vídeo demasiado grande (máximo 100MB).');
+      final mb = (bytes.lengthInBytes / (1024 * 1024)).toStringAsFixed(0);
+      setState(() =>
+          _error = 'Vídeo demasiado grande ($mb MB). O máximo são 100 MB.');
       return;
     }
 
     setState(() {
-      _uploadingVideo = true;
+      _pendingVideoBytes = bytes;
+      _pendingVideoName = file.name;
+      _pendingVideoContentType = _contentTypeFor(file.name);
       _error = null;
     });
+  }
+
+  /// O `contentType` tem de bater certo com o ficheiro: `storage.rules`
+  /// exige `video/*`, e etiquetar tudo como `video/mp4` — o que a app
+  /// fazia — é mentira sempre que não é mp4.
+  static String _contentTypeFor(String fileName) {
+    final extension = fileName.toLowerCase().split('.').last;
+    return switch (extension) {
+      'mp4' || 'm4v' => 'video/mp4',
+      'mov' => 'video/quicktime',
+      'webm' => 'video/webm',
+      'avi' => 'video/x-msvideo',
+      'mkv' => 'video/x-matroska',
+      // Desconhecido mas escolhido num seletor de vídeo: `video/*`
+      // satisfaz a regra sem afirmar um formato que não sabemos.
+      _ => 'video/mp4',
+    };
+  }
+
+  /// Sobe o vídeo escolhido, se houver. Corre depois de o exercício
+  /// existir — na criação, logo a seguir a criá-lo.
+  Future<void> _uploadPendingVideo(String exerciseId) async {
+    final bytes = _pendingVideoBytes;
+    if (bytes == null) return;
+
+    setState(() => _uploadingVideo = true);
     try {
       final path =
           await ref.read(storageRepositoryProvider).uploadExerciseVideo(
                 exerciseId: exerciseId,
                 bytes: bytes,
-                contentType: 'video/mp4',
+                contentType: _pendingVideoContentType ?? 'video/mp4',
               );
       await ref.read(exerciseRepositoryProvider).setVideoPath(
             exerciseId: exerciseId,
             videoPath: path,
           );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vídeo carregado.')),
-      );
-    } catch (e) {
-      setState(() => _error = 'Não foi possível carregar o vídeo: $e');
     } finally {
       if (mounted) setState(() => _uploadingVideo = false);
     }
@@ -170,33 +212,74 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
                 onChanged: (v) => setState(() => _muscleGroup = v!),
               ),
               const SizedBox(height: 16),
-              if (_isEditing) ...[
-                OutlinedButton.icon(
-                  onPressed: _uploadingVideo ? null : _uploadVideo,
-                  icon: _uploadingVideo
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.upload_outlined),
-                  label: Text(
-                    widget.exercise!.hasVideo
-                        ? 'Substituir vídeo demonstrativo'
-                        : 'Carregar vídeo demonstrativo (mp4)',
+              // Fase 11 — escolher o vídeo já não exige que o exercício
+              // exista. Antes era: preencher, gravar, voltar a abrir,
+              // carregar. O ficheiro fica em memória e sobe ao gravar.
+              const SectionLabel('Vídeo demonstrativo'),
+              const SizedBox(height: 2),
+              const Text(
+                'Opcional. Qualquer formato de vídeo, até 100 MB. O aluno '
+                'vê-o ao abrir o exercício no plano dele.',
+                style:
+                    TextStyle(color: AppColors.dim, fontSize: 11, height: 1.4),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _uploadingVideo ? null : _pickVideo,
+                icon: _uploadingVideo
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.video_file_outlined),
+                label: Text(
+                  _pendingVideoBytes != null
+                      ? 'Escolher outro ficheiro'
+                      : (widget.exercise?.hasVideo ?? false)
+                          ? 'Substituir vídeo'
+                          : 'Escolher vídeo',
+                ),
+              ),
+              if (_pendingVideoName != null) ...[
+                const SizedBox(height: 8),
+                PanelCard(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_outline,
+                          size: 16, color: AppColors.ok),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          // Dizer que ainda NÃO foi enviado evita a
+                          // dúvida de quem escolhe e sai sem gravar.
+                          '$_pendingVideoName — envia ao guardar',
+                          style: const TextStyle(fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Remover',
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => setState(() {
+                          _pendingVideoBytes = null;
+                          _pendingVideoName = null;
+                          _pendingVideoContentType = null;
+                        }),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 16),
-              ] else
+              ] else if (widget.exercise?.hasVideo ?? false) ...[
+                const SizedBox(height: 8),
                 const Text(
-                  'Guarda o exercício primeiro para poderes carregar o vídeo.',
-                  style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+                  'Já tem vídeo. Escolher outro substitui o atual.',
+                  style: TextStyle(color: AppColors.mute, fontSize: 12),
                 ),
+              ],
               const SizedBox(height: 16),
               if (_error != null) ...[
-                Text(_error!,
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error)),
+                AppBanner(text: _error!, tone: PillTone.danger),
                 const SizedBox(height: 12),
               ],
               FilledButton(

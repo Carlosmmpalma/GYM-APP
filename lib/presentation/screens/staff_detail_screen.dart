@@ -5,7 +5,12 @@ import '../../application/providers/admin_providers.dart';
 import '../../application/providers/modality_providers.dart';
 import '../../domain/entities/role.dart';
 import '../../domain/entities/staff_summary.dart';
+import '../../application/providers/tenant_context_providers.dart';
+import '../../application/providers/plan_providers.dart';
+import '../../core/theme/app_colors.dart';
+import '../widgets/design_system.dart';
 import '../widgets/personal_data_fields.dart';
+import '../widgets/manager_account_actions.dart';
 
 /// Detalhe de staff (Instrutor/Gestor): dados + toggle ativo/inativo.
 /// Mesmo raciocínio de `MemberDetailScreen` (desativar, nunca eliminar
@@ -51,6 +56,22 @@ class StaffDetailScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           _EditStaffProfileCard(staff: currentStaff),
+          const SizedBox(height: 16),
+          Consumer(
+            builder: (context, ref, _) {
+              final me = ref.watch(currentAppUserProvider).valueOrNull;
+              return StaffRolesCard(
+                staffId: currentStaff.uid,
+                currentRoles: currentStaff.roles,
+                isSelf: me?.uid == currentStaff.uid,
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          ResetPasswordTile(
+            userId: currentStaff.uid,
+            displayName: currentStaff.name,
+          ),
           const SizedBox(height: 8),
           Card(
             child: SwitchListTile(
@@ -76,7 +97,8 @@ class StaffDetailScreen extends ConsumerWidget {
                 return modalitiesAsync.when(
                   loading: () =>
                       const Center(child: CircularProgressIndicator()),
-                  error: (error, stack) => Text('Erro: $error'),
+                  error: (error, stack) =>
+                      ErrorState(error: error, compact: true),
                   data: (modalities) {
                     final active = modalities.where((m) => m.active).toList();
                     if (active.isEmpty) {
@@ -104,6 +126,70 @@ class StaffDetailScreen extends ConsumerWidget {
                                       .setModalityIds(
                                         staffId: currentStaff.uid,
                                         modalityIds: updated,
+                                      );
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text(
+                                            'Não foi possível atualizar: $e')),
+                                  );
+                                }
+                              },
+                            ),
+                          )
+                          .toList(),
+                    );
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            const SectionLabel('Serviços que pode lecionar'),
+            const SizedBox(height: 2),
+            const Text(
+              'Isto AUTORIZA: o instrutor só consegue criar aulas dos '
+              'serviços marcados aqui, e o servidor recusa as outras. Sem '
+              'nenhum marcado, não cria aulas nenhumas.',
+              style: TextStyle(color: AppColors.dim, fontSize: 11, height: 1.4),
+            ),
+            const SizedBox(height: 8),
+            Consumer(
+              builder: (context, ref, _) {
+                final servicesAsync = ref.watch(servicesProvider);
+                return servicesAsync.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (error, stack) =>
+                      ErrorState(error: error, compact: true),
+                  data: (services) {
+                    final active = services.where((s) => s.active).toList();
+                    if (active.isEmpty) {
+                      return const Text(
+                        'Ainda não existe nenhum serviço ativo.',
+                        style: TextStyle(fontStyle: FontStyle.italic),
+                      );
+                    }
+                    return Column(
+                      children: active
+                          .map(
+                            (service) => CheckboxListTile(
+                              title: Text(service.name),
+                              value:
+                                  currentStaff.serviceIds.contains(service.id),
+                              onChanged: (checked) async {
+                                final updated = {...currentStaff.serviceIds};
+                                if (checked ?? false) {
+                                  updated.add(service.id);
+                                } else {
+                                  updated.remove(service.id);
+                                }
+                                try {
+                                  await ref
+                                      .read(staffRepositoryProvider)
+                                      .setStaffServices(
+                                        staffId: currentStaff.uid,
+                                        serviceIds: updated,
                                       );
                                 } catch (e) {
                                   if (!context.mounted) return;

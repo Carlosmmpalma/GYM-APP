@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../application/providers/free_training_providers.dart';
-import '../../application/providers/plan_providers.dart';
 import '../../core/utils/iso_week.dart';
 import '../../domain/entities/free_training_schedule.dart';
 import '../../domain/entities/free_training_slot.dart';
-import '../../domain/entities/service.dart';
+import '../../application/providers/tenant_context_providers.dart';
+import '../widgets/design_system.dart';
 import 'free_training_slot_detail_screen.dart';
 
 final _dayFormat = DateFormat('EEE, d MMM', 'pt_PT');
@@ -39,7 +39,6 @@ class ManageFreeTrainingScreen extends ConsumerStatefulWidget {
 class _ManageFreeTrainingScreenState
     extends ConsumerState<ManageFreeTrainingScreen> {
   late DateTime _weekAnchor = DateTime.now();
-  Service? _serviceForNewWeek;
   bool _suggesting = false;
 
   @override
@@ -77,15 +76,12 @@ class _ManageFreeTrainingScreenState
           Expanded(
             child: scheduleAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(child: Text('Erro: $error')),
+              error: (error, stack) => ErrorState(error: error),
               data: (schedule) {
                 if (schedule == null) {
                   return _NoScheduleView(
                     weekAnchor: _weekAnchor,
-                    selectedService: _serviceForNewWeek,
                     suggesting: _suggesting,
-                    onServiceChanged: (s) =>
-                        setState(() => _serviceForNewWeek = s),
                     onSuggest: _suggest,
                   );
                 }
@@ -99,13 +95,15 @@ class _ManageFreeTrainingScreenState
   }
 
   Future<void> _suggest() async {
-    final service = _serviceForNewWeek;
-    if (service == null) return;
+    // Fase 11 — o serviço deixou de ser perguntado aqui: é sempre o
+    // mesmo, e passou a ser escolhido uma vez nas Definições.
+    final serviceId = await ref.read(freeTrainingServiceIdProvider.future);
+    if (!mounted || serviceId == null) return;
     setState(() => _suggesting = true);
     try {
       await ref.read(freeTrainingRepositoryProvider).suggestSchedule(
             weekStart: _weekAnchor,
-            serviceId: service.id,
+            serviceId: serviceId,
           );
     } catch (e) {
       if (!mounted) return;
@@ -121,21 +119,30 @@ class _ManageFreeTrainingScreenState
 class _NoScheduleView extends ConsumerWidget {
   const _NoScheduleView({
     required this.weekAnchor,
-    required this.selectedService,
     required this.suggesting,
-    required this.onServiceChanged,
     required this.onSuggest,
   });
 
   final DateTime weekAnchor;
-  final Service? selectedService;
   final bool suggesting;
-  final ValueChanged<Service?> onServiceChanged;
   final VoidCallback onSuggest;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final servicesAsync = ref.watch(servicesProvider);
+    // Sem serviço de treino livre configurado não há grelha nenhuma
+    // para gerar. Dizer o que falta, e onde, em vez de mostrar um botão
+    // que não faz nada.
+    final serviceId = ref.watch(freeTrainingServiceIdProvider).valueOrNull;
+    if (serviceId == null) {
+      return const EmptyState(
+        icon: Icons.self_improvement_outlined,
+        title: 'Treino livre por configurar',
+        message: 'O treino livre precisa de um serviço associado — é o que '
+            'liga cada bloco ao plano do aluno e ao limite semanal.',
+        prerequisite: 'Escolhe-o uma vez em Gestão › Definições › Serviço '
+            'de treino livre.',
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -147,26 +154,8 @@ class _NoScheduleView extends ConsumerWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          servicesAsync.when(
-            loading: () => const CircularProgressIndicator(),
-            error: (error, stack) => Text('Erro: $error'),
-            data: (services) {
-              final active = services.where((s) => s.active).toList();
-              return DropdownButtonFormField<Service>(
-                initialValue: selectedService,
-                decoration: const InputDecoration(
-                    labelText: 'Serviço (ex.: Treino sem acompanhamento)'),
-                items: active
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s.name)))
-                    .toList(),
-                onChanged: onServiceChanged,
-              );
-            },
-          ),
-          const SizedBox(height: 16),
           FilledButton(
-            onPressed:
-                (selectedService == null || suggesting) ? null : onSuggest,
+            onPressed: suggesting ? null : onSuggest,
             child: suggesting
                 ? const SizedBox(
                     width: 16,
@@ -222,7 +211,7 @@ class _ScheduleView extends ConsumerWidget {
         const SizedBox(height: 12),
         slotsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stack) => Text('Erro: $error'),
+          error: (error, stack) => ErrorState(error: error, compact: true),
           data: (slots) {
             final byDay = <DateTime, List<FreeTrainingSlot>>{};
             for (final slot in slots) {
@@ -323,6 +312,26 @@ class _ScheduleView extends ConsumerWidget {
     );
     if (result == null) return;
 
+    // O serviço vem da configuração do estúdio, não do diálogo: é
+    // sempre o mesmo, e é o que a grelha desta semana já usa.
+    //
+    // `.future` e não `.valueOrNull`: quando já existe grelha, ninguém
+    // neste ecrã observa este provider, e um `read` devolveria
+    // "a carregar" — ou seja `null`, e o bloco não era criado, em
+    // silêncio. Apanhado por um teste, não à vista.
+    final serviceId = await ref.read(freeTrainingServiceIdProvider.future);
+    if (!context.mounted) return;
+    if (serviceId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Falta escolher o serviço de treino livre em Definições.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final monday = isoWeekRange(schedule.weekStart).start;
     final repository = ref.read(freeTrainingRepositoryProvider);
     try {
@@ -330,7 +339,7 @@ class _ScheduleView extends ConsumerWidget {
         final day = monday.add(Duration(days: weekday - DateTime.monday));
         await repository.createSlot(
           weekId: weekId,
-          serviceId: result.serviceId,
+          serviceId: serviceId,
           startAt: DateTime(day.year, day.month, day.day, result.start.hour,
               result.start.minute),
           endAt: DateTime(
@@ -512,20 +521,20 @@ class _EditSlotDialogState extends State<_EditSlotDialog> {
   }
 }
 
+/// O que o diálogo devolve. Sem `serviceId`: o serviço do treino livre
+/// é uma definição do estúdio, não uma escolha por bloco.
 class _NewBlock {
   const _NewBlock({
     required this.weekdays,
     required this.start,
     required this.end,
     required this.capacity,
-    required this.serviceId,
   });
 
   final Set<int> weekdays;
   final TimeOfDay start;
   final TimeOfDay end;
   final int capacity;
-  final String serviceId;
 }
 
 class _AddSlotBlockDialog extends ConsumerStatefulWidget {
@@ -541,7 +550,6 @@ class _AddSlotBlockDialogState extends ConsumerState<_AddSlotBlockDialog> {
   TimeOfDay _start = const TimeOfDay(hour: 6, minute: 0);
   TimeOfDay _end = const TimeOfDay(hour: 8, minute: 0);
   final _capacityController = TextEditingController(text: '10');
-  Service? _service;
 
   @override
   void dispose() {
@@ -551,8 +559,6 @@ class _AddSlotBlockDialogState extends ConsumerState<_AddSlotBlockDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final servicesAsync = ref.watch(servicesProvider);
-
     return AlertDialog(
       title: const Text('Novo bloco de horário'),
       content: SingleChildScrollView(
@@ -606,23 +612,11 @@ class _AddSlotBlockDialogState extends ConsumerState<_AddSlotBlockDialog> {
               decoration: const InputDecoration(labelText: 'Capacidade'),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 8),
-            servicesAsync.when(
-              loading: () => const CircularProgressIndicator(),
-              error: (error, stack) => Text('Erro: $error'),
-              data: (services) {
-                final active = services.where((s) => s.active).toList();
-                return DropdownButtonFormField<Service>(
-                  initialValue: _service,
-                  decoration: const InputDecoration(labelText: 'Serviço'),
-                  items: active
-                      .map((s) =>
-                          DropdownMenuItem(value: s, child: Text(s.name)))
-                      .toList(),
-                  onChanged: (s) => setState(() => _service = s),
-                );
-              },
-            ),
+            // Fase 11 — havia aqui um segundo seletor de serviço, a
+            // pedir outra vez o que já tinha sido escolhido para a
+            // semana. Um bloco de treino livre é sempre do serviço de
+            // treino livre do estúdio; não há escolha nenhuma para
+            // fazer, e oferecê-la só criava a hipótese de a errar.
           ],
         ),
       ),
@@ -641,10 +635,7 @@ class _AddSlotBlockDialogState extends ConsumerState<_AddSlotBlockDialog> {
 
   bool _canSubmit() {
     final capacity = int.tryParse(_capacityController.text.trim());
-    return _weekdays.isNotEmpty &&
-        _service != null &&
-        capacity != null &&
-        capacity > 0;
+    return _weekdays.isNotEmpty && capacity != null && capacity > 0;
   }
 
   void _submit() {
@@ -654,7 +645,6 @@ class _AddSlotBlockDialogState extends ConsumerState<_AddSlotBlockDialog> {
         start: _start,
         end: _end,
         capacity: int.parse(_capacityController.text.trim()),
-        serviceId: _service!.id,
       ),
     );
   }

@@ -300,6 +300,9 @@ class FirebaseFreeTrainingRepository implements FreeTrainingRepository {
     required String recordedBy,
   }) async {
     await _slotDoc(weekId, slotId).collection('attendance').doc(memberId).set({
+      // Ver nota em `firebase_attendance_repository.dart`: campo
+      // necessário para o apagamento RGPD encontrar estes registos.
+      'memberId': memberId,
       'status': status == AttendanceStatus.attended ? 'attended' : 'no_show',
       'recordedBy': recordedBy,
       'recordedAt': FieldValue.serverTimestamp(),

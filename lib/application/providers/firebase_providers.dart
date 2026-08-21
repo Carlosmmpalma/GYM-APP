@@ -4,9 +4,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/environment.dart';
-import '../../infrastructure/firebase/firebase_ping_repository.dart';
-import '../../repositories/ping_repository.dart';
-import '../use_cases/ping_firestore_use_case.dart';
 
 /// Injetado no bootstrap consoante o ambiente ativo (ver
 /// lib/core/bootstrap/bootstrap.dart). Nenhum provider abaixo deste ponto
@@ -30,23 +27,16 @@ final firestoreProvider = Provider<FirebaseFirestore>((ref) {
 /// membro, o que não dá para exprimir com a mesma robustez em Security
 /// Rules (ver nota em firebase_subscription_repository.dart).
 final functionsProvider = Provider<FirebaseFunctions>((ref) {
-  return FirebaseFunctions.instance;
+  // `instanceFor`, não `instance`: as funções estão implantadas em
+  // `europe-west1` (ver `firebase/functions/src/index.ts`) e
+  // `FirebaseFunctions.instance` aponta para `us-central1`. Com a
+  // região errada, TODAS as chamadas falham com `not-found` — e a
+  // mensagem não deixa perceber que o problema é geográfico.
+  return FirebaseFunctions.instanceFor(region: kFunctionsRegion);
 });
 
 /// Fase 8 — primeiro provider a precisar de Storage a sério (vídeo de
 /// exercícios, UC15).
 final firebaseStorageProvider = Provider<FirebaseStorage>((ref) {
   return FirebaseStorage.instance;
-});
-
-/// Repository Pattern (Platform Foundation §12): a camada acima só conhece
-/// a interface [PingRepository]. Trocar a implementação (ex: para uma
-/// infraestrutura dedicada, ou para um fake em testes) não deve exigir
-/// alterações fora deste ficheiro.
-final pingRepositoryProvider = Provider<PingRepository>((ref) {
-  return FirebasePingRepository(ref.watch(firestoreProvider));
-});
-
-final pingFirestoreUseCaseProvider = Provider<PingFirestoreUseCase>((ref) {
-  return PingFirestoreUseCase(ref.watch(pingRepositoryProvider));
 });

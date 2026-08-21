@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/plan_providers.dart';
+import '../../core/utils/search_text.dart';
+import '../../domain/entities/member_summary.dart';
+import '../widgets/design_system.dart';
 import 'student_training_screen.dart';
 
 /// Fase 8 — "Alunos": ponto de entrada do Instrutor para UC13/UC14/UC16
@@ -11,50 +14,90 @@ import 'student_training_screen.dart';
 /// `ManageMembersScreen` (Gestor) vai para `MemberDetailScreen`
 /// (subscriptions); este vai para `StudentTrainingScreen` (plano de
 /// treino + avaliações), um conceito diferente.
-class InstructorStudentsScreen extends ConsumerWidget {
+class InstructorStudentsScreen extends ConsumerStatefulWidget {
   const InstructorStudentsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<InstructorStudentsScreen> createState() =>
+      _InstructorStudentsScreenState();
+}
+
+class _InstructorStudentsScreenState
+    extends ConsumerState<InstructorStudentsScreen> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
     final membersAsync = ref.watch(membersProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Alunos')),
       body: membersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Erro: $error')),
+        error: (error, stack) => ErrorState(error: error),
         data: (members) {
           final active = members.where((m) => m.active).toList();
           if (active.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('Ainda não existe nenhum aluno ativo.'),
-              ),
+            return const EmptyState(
+              icon: Icons.groups_outlined,
+              title: 'Sem alunos ativos',
+              message: 'A partir daqui abres o treino de cada aluno: '
+                  'avaliações, plano de treino e evolução de carga. Só '
+                  'aparecem membros ativos.',
             );
           }
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: active.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final member = active[index];
-              return Card(
-                child: ListTile(
-                  title: Text(member.name),
-                  subtitle: Text('Nº ${member.memberNumber}'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => StudentTrainingScreen(member: member),
-                    ),
-                  ),
+          // Sem filtro de estado aqui: o ecrã já só mostra ativos, e um
+          // Instrutor não tem nada a fazer com a ficha de quem saiu.
+          final visible = active
+              .where((m) => searchMatchesAny([m.name, m.memberNumber], _query))
+              .toList();
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: SearchField(
+                  hintText: 'Procurar aluno',
+                  onChanged: (value) => setState(() => _query = value),
                 ),
-              );
-            },
+              ),
+              if (visible.isEmpty)
+                Expanded(
+                  child: EmptyState(
+                    icon: Icons.search_off,
+                    title: 'Nada encontrado',
+                    message: 'Nenhum aluno corresponde a "$_query".',
+                  ),
+                )
+              else
+                Expanded(child: _buildList(visible)),
+            ],
           );
         },
       ),
+    );
+  }
+
+  Widget _buildList(List<MemberSummary> active) {
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      itemCount: active.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final member = active[index];
+        return Card(
+          child: ListTile(
+            title: Text(member.name),
+            subtitle: Text('Nº ${member.memberNumber}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => StudentTrainingScreen(member: member),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

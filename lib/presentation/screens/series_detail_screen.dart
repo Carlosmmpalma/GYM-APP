@@ -5,6 +5,7 @@ import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/session_series.dart';
+import '../widgets/design_system.dart';
 import '../widgets/occurrence_dialogs.dart';
 import 'manage_series_screen.dart';
 import 'occurrence_detail_screen.dart';
@@ -83,16 +84,23 @@ class SeriesDetailScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 24),
-          Text('Ocorrências geradas',
+          Text('Próximas ocorrências',
               style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 2),
+          Text(
+            'De hoje em diante. As aulas passadas não aparecem aqui — já '
+            'não há nada a ajustar nelas.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           const SizedBox(height: 8),
           occurrencesAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stack) => Text('Erro: $error'),
+            error: (error, stack) => ErrorState(error: error, compact: true),
             data: (occurrences) {
               if (occurrences.isEmpty) {
                 return const Text(
-                  'Ainda não há ocorrências geradas. Usa "Gerar agora".',
+                  'Não há nenhuma ocorrência futura desta série. Usa '
+                  '"Gerar agora" para materializar as próximas semanas.',
                   style: TextStyle(fontStyle: FontStyle.italic),
                 );
               }

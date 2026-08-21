@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/session_occurrence.dart';
+import 'design_system.dart';
 
 /// Fase 8 (revisão geral) — estes dois diálogos existiam DUPLICADOS em
 /// `series_detail_screen.dart` (Fase 5) e `occurrence_detail_screen.dart`
@@ -184,7 +185,7 @@ class _AssignMemberDialogState extends ConsumerState<_AssignMemberDialog> {
         width: double.maxFinite,
         child: eligibleAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stack) => Text('Erro: $error'),
+          error: (error, stack) => ErrorState(error: error, compact: true),
           data: (members) {
             if (members.isEmpty) {
               return const Text(

@@ -138,7 +138,7 @@ void main() {
     await tester.tap(find.text('Ter'));
     await tester.pumpAndSettle();
     expect(find.text('Treino livre'), findsNothing);
-    expect(find.text('Sem sessões neste dia.'), findsOneWidget);
+    expect(find.text('Dia livre'), findsOneWidget);
   });
 
   testWidgets(

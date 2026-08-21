@@ -4,6 +4,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
+import { enforceRateLimit } from './lib/rateLimit';
 import { buildSyntheticEmail } from './lib/loginIdentifier';
 import { nextMemberNumber } from './lib/memberNumber';
 import { parseOptionalDate } from './lib/parseDate';
@@ -34,6 +35,15 @@ const inputSchema = z.object({
  */
 export const createMember = onCall(async (request) => {
   const caller = requireManager(request);
+  // cada chamada cria uma conta no Firebase Auth; 20 em 5 minutos
+  // cobre a inscrição de uma turma inteira e trava a criação em
+  // massa
+  await enforceRateLimit({
+    uid: caller.uid,
+    operation: 'createMember',
+    maxCalls: 20,
+    windowSeconds: 300,
+  });
 
   const parsed = inputSchema.safeParse(request.data);
   if (!parsed.success) {

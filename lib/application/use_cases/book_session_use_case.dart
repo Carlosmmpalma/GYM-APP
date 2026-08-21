@@ -9,7 +9,8 @@ import '../../repositories/subscription_repository.dart';
 /// elegibilidade), por isso não há vantagem em pagar o custo de a
 /// meter dentro do `runTransaction`.
 class BookSessionUseCase {
-  const BookSessionUseCase(this._bookingRepository, this._subscriptionRepository);
+  const BookSessionUseCase(
+      this._bookingRepository, this._subscriptionRepository);
 
   final BookingRepository _bookingRepository;
   final SubscriptionRepository _subscriptionRepository;

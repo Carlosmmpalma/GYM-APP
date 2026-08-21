@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireAuthenticated } from './lib/callerContext';
+import { enforceRateLimit } from './lib/rateLimit';
 
 const inputSchema = z.object({
   occurrenceId: z.string().min(1),
@@ -23,6 +24,14 @@ const inputSchema = z.object({
  */
 export const cancelBooking = onCall(async (request) => {
   const caller = requireAuthenticated(request);
+  // mesmo raciocínio de createBooking — marcar/cancelar em ciclo
+  // custa transações
+  await enforceRateLimit({
+    uid: caller.uid,
+    operation: 'cancelBooking',
+    maxCalls: 30,
+    windowSeconds: 60,
+  });
 
   const parsed = inputSchema.safeParse(request.data);
   if (!parsed.success) {

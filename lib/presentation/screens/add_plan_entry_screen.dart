@@ -5,14 +5,29 @@ import '../../application/providers/tenant_context_providers.dart';
 import '../../application/providers/training_providers.dart';
 import '../../domain/entities/exercise.dart';
 import '../../domain/entities/member_summary.dart';
+import '../widgets/design_system.dart';
 
 /// Fase 8 (UC13 — "seleção a partir da biblioteca", UC15) — procurar
 /// um exercício da biblioteca partilhada e defini-lo (séries/reps/
 /// carga) para o plano deste membro.
 class AddPlanEntryScreen extends ConsumerStatefulWidget {
-  const AddPlanEntryScreen({super.key, required this.member});
+  const AddPlanEntryScreen({
+    super.key,
+    required this.member,
+    this.workoutId,
+    this.nextPosition = 0,
+  });
 
   final MemberSummary member;
+
+  /// Fase 11 — a que treino do plano este exercício vai. `null` só
+  /// acontece se este ecrã for aberto fora de um treino, e nesse caso o
+  /// exercício fica no grupo "sem treino atribuído".
+  final String? workoutId;
+
+  /// Onde entra na ordem do treino — no fim, que é onde um exercício
+  /// novo pertence até o instrutor decidir outra coisa.
+  final int nextPosition;
 
   @override
   ConsumerState<AddPlanEntryScreen> createState() => _AddPlanEntryScreenState();
@@ -42,7 +57,7 @@ class _AddPlanEntryScreenState extends ConsumerState<AddPlanEntryScreen> {
           Expanded(
             child: exercisesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(child: Text('Erro: $error')),
+              error: (error, stack) => ErrorState(error: error),
               data: (exercises) {
                 final filtered = _query.isEmpty
                     ? exercises
@@ -65,6 +80,7 @@ class _AddPlanEntryScreenState extends ConsumerState<AddPlanEntryScreen> {
                         subtitle:
                             Text('Grupo muscular: ${exercise.muscleGroup}'),
                         trailing: IconButton(
+                          tooltip: 'Adicionar ao plano',
                           icon: const Icon(Icons.add_circle_outline),
                           onPressed: () => _configureAndAdd(context, exercise),
                         ),
@@ -81,7 +97,14 @@ class _AddPlanEntryScreenState extends ConsumerState<AddPlanEntryScreen> {
   }
 
   Future<void> _configureAndAdd(BuildContext context, Exercise exercise) async {
-    final result = await showDialog<({int sets, int reps, double? load})>(
+    final result = await showDialog<
+        ({
+          int sets,
+          String reps,
+          double? load,
+          int? restSeconds,
+          String notes
+        })>(
       context: context,
       builder: (_) => _ConfigureEntryDialog(exercise: exercise),
     );
@@ -96,6 +119,10 @@ class _AddPlanEntryScreenState extends ConsumerState<AddPlanEntryScreen> {
             reps: result.reps,
             initialLoad: result.load,
             recordedBy: recordedBy,
+            workoutId: widget.workoutId,
+            position: widget.nextPosition,
+            restSeconds: result.restSeconds,
+            notes: result.notes,
           );
       if (!context.mounted) return;
       Navigator.of(context).pop();
@@ -121,12 +148,16 @@ class _ConfigureEntryDialogState extends State<_ConfigureEntryDialog> {
   final _setsController = TextEditingController(text: '4');
   final _repsController = TextEditingController(text: '10');
   final _loadController = TextEditingController();
+  final _restController = TextEditingController();
+  final _notesController = TextEditingController();
 
   @override
   void dispose() {
     _setsController.dispose();
     _repsController.dispose();
     _loadController.dispose();
+    _restController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
@@ -145,8 +176,14 @@ class _ConfigureEntryDialogState extends State<_ConfigureEntryDialog> {
           const SizedBox(height: 12),
           TextField(
             controller: _repsController,
-            decoration: const InputDecoration(labelText: 'Repetições'),
-            keyboardType: TextInputType.number,
+            // Texto e não número: um instrutor prescreve "8-12", "45s"
+            // ou "até à falha", e o modelo antigo — um inteiro — não
+            // conseguia representar nada disso. O comentário do próprio
+            // domínio dava o exemplo da prancha, que não cabia lá.
+            decoration: const InputDecoration(
+              labelText: 'Repetições',
+              hintText: '10, 8-12, 45s, até à falha',
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -156,6 +193,24 @@ class _ConfigureEntryDialogState extends State<_ConfigureEntryDialog> {
               hintText: 'Deixa em branco se não aplicável (ex.: Prancha)',
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _restController,
+            decoration: const InputDecoration(
+              labelText: 'Descanso entre séries (segundos)',
+              hintText: 'Opcional',
+            ),
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _notesController,
+            decoration: const InputDecoration(
+              labelText: 'Nota',
+              hintText: 'Cadência, amplitude, cuidados — opcional',
+            ),
+            maxLines: 2,
           ),
         ],
       ),
@@ -167,13 +222,19 @@ class _ConfigureEntryDialogState extends State<_ConfigureEntryDialog> {
         FilledButton(
           onPressed: () {
             final sets = int.tryParse(_setsController.text.trim());
-            final reps = int.tryParse(_repsController.text.trim());
-            if (sets == null || reps == null) return;
+            final reps = _repsController.text.trim();
+            if (sets == null || reps.isEmpty) return;
             final loadText = _loadController.text.trim();
             final load = loadText.isEmpty
                 ? null
                 : double.tryParse(loadText.replaceAll(',', '.'));
-            Navigator.of(context).pop((sets: sets, reps: reps, load: load));
+            Navigator.of(context).pop((
+              sets: sets,
+              reps: reps,
+              load: load,
+              restSeconds: int.tryParse(_restController.text.trim()),
+              notes: _notesController.text.trim(),
+            ));
           },
           child: const Text('Adicionar ao plano'),
         ),

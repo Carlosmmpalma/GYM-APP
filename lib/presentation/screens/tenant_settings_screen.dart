@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/tenant_context_providers.dart';
+import '../../application/providers/plan_providers.dart';
+import '../widgets/design_system.dart';
 
 /// Fase 4 — Ecrã Gestor: "antecedência mínima para cancelar" (horas).
 /// Único campo por agora — não havia nenhum sítio para configurar isto
@@ -59,10 +61,30 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     }
   }
 
+  /// Guarda logo à escolha, sem esperar pelo botão "Guardar": é uma
+  /// escolha única e discreta, e obrigar a submeter o formulário todo
+  /// por causa dela seria pedir dois passos onde basta um.
+  Future<void> _setFreeTrainingService(String? serviceId) async {
+    try {
+      await ref.read(tenantRepositoryProvider).setFreeTrainingServiceId(
+            tenantId: ref.read(tenantAppConfigProvider).tenantId,
+            serviceId: serviceId,
+          );
+      ref.invalidate(freeTrainingServiceIdProvider);
+      if (!mounted) return;
+      setState(() => _message = 'Serviço de treino livre atualizado.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _message = 'Não foi possível guardar: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final hoursAsync = ref.watch(minCancellationNoticeHoursProvider);
     final minutesAsync = ref.watch(minBookingNoticeMinutesProvider);
+    final freeTrainingAsync = ref.watch(freeTrainingServiceIdProvider);
+    final servicesAsync = ref.watch(servicesProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Definições')),
@@ -70,11 +92,11 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
         padding: const EdgeInsets.all(16),
         child: hoursAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stack) => Text('Erro: $error'),
+          error: (error, stack) => ErrorState(error: error, compact: true),
           data: (hours) {
             return minutesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Text('Erro: $error'),
+              error: (error, stack) => ErrorState(error: error, compact: true),
               data: (minutes) {
                 if (!_initialized) {
                   _hoursController.text = hours.toString();
@@ -135,6 +157,62 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
                             return 'Introduz um número inteiro';
                           }
                           return parsed < 0 ? 'Não pode ser negativo' : null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      // Fase 11 — o treino livre precisa de um serviço,
+                      // como qualquer marcação: é o que o liga ao plano
+                      // do aluno e ao limite semanal. Mas é SEMPRE o
+                      // mesmo, e a app pedia-o duas vezes — ao criar a
+                      // grelha da semana e outra vez em cada bloco.
+                      // Escolhe-se aqui, uma vez.
+                      const Text(
+                        'Qual dos teus serviços é o treino livre. É o '
+                        'serviço que fica associado a cada bloco da grelha '
+                        'semanal, e é o que decide que planos dão acesso ao '
+                        'treino livre. Escolhe-se uma vez: depois disto, '
+                        'criar a grelha e os blocos deixa de perguntar.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      const SizedBox(height: 16),
+                      servicesAsync.when(
+                        loading: () => const LinearProgressIndicator(),
+                        error: (error, stack) =>
+                            ErrorState(error: error, compact: true),
+                        data: (services) {
+                          final active =
+                              services.where((s) => s.active).toList();
+                          if (active.isEmpty) {
+                            return const AppBanner(
+                              text: 'Cria primeiro um serviço (Gestão › '
+                                  'Serviços) — por exemplo "Treino Livre".',
+                              tone: PillTone.neutral,
+                              icon: Icons.info_outline,
+                            );
+                          }
+                          final current = freeTrainingAsync.valueOrNull;
+                          return DropdownButtonFormField<String?>(
+                            initialValue: active.any((s) => s.id == current)
+                                ? current
+                                : null,
+                            decoration: const InputDecoration(
+                              labelText: 'Serviço de treino livre',
+                            ),
+                            items: [
+                              const DropdownMenuItem(
+                                value: null,
+                                child: Text('Nenhum — treino livre desligado'),
+                              ),
+                              ...active.map(
+                                (s) => DropdownMenuItem(
+                                  value: s.id,
+                                  child: Text(s.name),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) =>
+                                _setFreeTrainingService(value),
+                          );
                         },
                       ),
                       const SizedBox(height: 24),

@@ -4,7 +4,11 @@ import 'package:intl/intl.dart';
 
 import '../../application/providers/training_providers.dart';
 import '../../domain/entities/member_summary.dart';
+import '../../application/providers/plan_providers.dart';
+import '../../application/providers/tenant_context_providers.dart';
+import '../widgets/design_system.dart';
 import 'assessment_detail_screen.dart';
+import 'assessment_form_screen.dart';
 
 final _dateFormat = DateFormat('d MMM yyyy', 'pt_PT');
 
@@ -21,26 +25,79 @@ class AssessmentListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final assessmentsAsync = ref.watch(assessmentsProvider(member.uid));
+    final appUser = ref.watch(currentAppUserProvider).valueOrNull;
+
+    // Fase 11 — "Nova avaliação" vivia no ecrã de CIMA, ao lado dos
+    // cartões "Plano de treino" e "Avaliações". Criar uma avaliação
+    // pertence a onde se veem as avaliações: é aí que se percebe se já
+    // há uma deste mês, e é aí que se está quando a vontade aparece.
+    //
+    // Nunca para o Aluno: ele lê o seu histórico, não se avalia a si
+    // próprio. Era o que a documentação desta classe já dizia — só que
+    // o botão nunca chegou a existir aqui.
+    final canCreate =
+        appUser != null && (appUser.isInstructor || appUser.isManager);
+
+    // As Security Rules recusam escrever uma avaliação sem o
+    // consentimento do membro para dados de saúde (RGPD, artigo 9.º).
+    // Mostrar o botão nesse caso seria oferecer um caminho que termina
+    // numa recusa do servidor.
+    final profile = ref.watch(memberProfileProvider(member.uid)).valueOrNull;
+    final hasConsent = profile?.consent.healthDataGranted ?? false;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Avaliações')),
-      body: assessmentsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Erro: $error')),
-        data: (assessments) {
-          if (assessments.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Ainda não existe nenhuma avaliação.',
-                  textAlign: TextAlign.center,
+      floatingActionButton: canCreate && hasConsent
+          ? FloatingActionButton.extended(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AssessmentFormScreen(member: member),
                 ),
               ),
+              icon: const Icon(Icons.add),
+              label: const Text('Nova avaliação'),
+            )
+          : null,
+      body: assessmentsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stack) => ErrorState(error: error),
+        data: (assessments) {
+          if (canCreate && !hasConsent) {
+            return EmptyState(
+              icon: Icons.lock_outline,
+              title: 'Sem autorização para avaliações',
+              message: '${member.name} não autorizou o tratamento de dados '
+                  'de saúde, por isso não podem ser registadas avaliações '
+                  'físicas. É uma escolha dele, que pode mudar a qualquer '
+                  'momento no perfil.',
+              prerequisite: 'O servidor recusa a escrita mesmo que a app '
+                  'a permitisse — não é uma limitação do ecrã.',
+            );
+          }
+
+          if (assessments.isEmpty) {
+            return EmptyState(
+              icon: Icons.monitor_heart_outlined,
+              title: 'Sem avaliações',
+              message: canCreate
+                  ? 'As avaliações registam medidas e composição corporal '
+                      'ao longo do tempo, para acompanhar a evolução.'
+                  : 'As avaliações registam medidas e composição corporal '
+                      'ao longo do tempo. Assim que o instrutor fizer a '
+                      'primeira, aparece aqui o histórico.',
+              actionLabel: canCreate ? 'Fazer a primeira avaliação' : null,
+              onAction: canCreate
+                  ? () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => AssessmentFormScreen(member: member),
+                        ),
+                      )
+                  : null,
             );
           }
           return ListView.separated(
-            padding: const EdgeInsets.all(16),
+            // Espaço para o botão flutuante não tapar a última linha.
+            padding: EdgeInsets.fromLTRB(16, 16, 16, canCreate ? 88 : 16),
             itemCount: assessments.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, index) {

@@ -9,6 +9,7 @@ StaffSummary _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
   final data = doc.data() ?? const {};
   final rolesRaw = (data['roles'] as List?) ?? const [];
   final modalityIdsRaw = (data['modalityIds'] as List?) ?? const [];
+  final serviceIdsRaw = (data['serviceIds'] as List?) ?? const [];
   return StaffSummary(
     uid: doc.id,
     name: data['name'] as String? ?? '(sem nome)',
@@ -16,6 +17,7 @@ StaffSummary _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     roles: rolesRaw.map((r) => Role.fromClaim(r as String)).toSet(),
     active: (data['status'] as String? ?? 'active') == 'active',
     modalityIds: modalityIdsRaw.map((e) => e as String).toSet(),
+    serviceIds: serviceIdsRaw.map((e) => e as String).toSet(),
     phone: data['phone'] as String? ?? '',
     birthDate: (data['birthDate'] as Timestamp?)?.toDate(),
     address: data['address'] as String? ?? '',
@@ -57,6 +59,14 @@ class FirebaseStaffRepository implements StaffRepository {
     required Set<String> modalityIds,
   }) async {
     await _staff.doc(staffId).update({'modalityIds': modalityIds.toList()});
+  }
+
+  @override
+  Future<void> setStaffServices({
+    required String staffId,
+    required Set<String> serviceIds,
+  }) async {
+    await _staff.doc(staffId).update({'serviceIds': serviceIds.toList()});
   }
 
   @override

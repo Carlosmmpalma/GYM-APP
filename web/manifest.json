@@ -1,11 +1,11 @@
 {
-    "name": "gym_saas",
-    "short_name": "gym_saas",
+    "name": "NXT Performance Studio",
+    "short_name": "NXT Studio",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0B0B0C",
+    "theme_color": "#E11D2E",
+    "description": "Marcações, planos de treino e gestão do NXT Performance Studio.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

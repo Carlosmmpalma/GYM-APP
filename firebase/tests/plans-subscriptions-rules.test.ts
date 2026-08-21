@@ -89,6 +89,17 @@ beforeEach(async () => {
       currency: 'EUR',
       activeServiceIds: ['service_1'],
     });
+    // Fase 11 — uma subscrição de OUTRO membro, para provar que um
+    // aluno não lhe chega (o `agreedPrice` de cada pessoa é dela).
+    await db.doc(`tenants/${TENANT_A}/subscriptions/sub_outro_membro`).set({
+      memberId: 'member_a2',
+      planId: 'plan_1',
+      status: 'active',
+      startDate: new Date(),
+      agreedPrice: 75,
+      currency: 'EUR',
+      activeServiceIds: ['service_1'],
+    });
     await db.doc(`tenants/${TENANT_A}/services/service_1`).set({
       name: 'Aula de Grupo',
       active: true,
@@ -218,10 +229,49 @@ describe('Security Rules — services (Fase 3, correção)', () => {
 });
 
 describe('Security Rules — subscriptions (Fase 3, 🔴 crítico)', () => {
-  it('um membro consegue LER as subscriptions do próprio tenant', async () => {
+  it('um membro consegue LER a SUA própria subscription', async () => {
     const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
     await assertSucceeds(db.doc(`tenants/${TENANT_A}/subscriptions/sub_1`).get());
   });
+
+  // Fase 11 — até aqui a regra era `belongsToTenant(tenantId)` e
+  // qualquer aluno lia as subscrições de TODOS os outros, com o
+  // `agreedPrice` incluído: o preço que cada pessoa negociou, à vista de
+  // toda a gente do ginásio. Encontrado ao ligar o filtro de
+  // elegibilidade em "Marcar treino", que passou a ler subscrições a
+  // partir do cliente do Aluno.
+  it('um membro NÃO consegue ler a subscription de OUTRO membro', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/subscriptions/sub_outro_membro`).get(),
+    );
+  });
+
+  it('um membro NÃO consegue listar as subscriptions todas', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(db.collection(`tenants/${TENANT_A}/subscriptions`).get());
+  });
+
+  it('mas CONSEGUE listar as suas, filtrando por memberId', async () => {
+    // É esta a query que `myEligibleServiceIdsProvider` faz. Numa lista,
+    // a regra é avaliada por documento devolvido: filtrada por
+    // `memberId`, só devolve os próprios e passa.
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertSucceeds(
+      db
+        .collection(`tenants/${TENANT_A}/subscriptions`)
+        .where('memberId', '==', 'member_a1')
+        .get(),
+    );
+  });
+
+  it('um Instrutor continua a ler todas (pré-atribuição a sessões)',
+    async () => {
+      const db = contextFor('instructor_a', TENANT_A, ['instructor']).firestore();
+      await assertSucceeds(
+        db.collection(`tenants/${TENANT_A}/subscriptions`).get(),
+      );
+    });
 
   it('um membro de OUTRO tenant NÃO consegue ler subscriptions do tenant A', async () => {
     const db = contextFor('member_b1', TENANT_B, ['member']).firestore();

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../domain/entities/plan.dart';
 import '../../domain/entities/plan_service.dart';
@@ -49,7 +50,9 @@ PlanService _planServiceFromDoc(
 }
 
 class FirebasePlanRepository implements PlanRepository {
-  FirebasePlanRepository(this._firestore, this._tenantId);
+  FirebasePlanRepository(this._firestore, this._functions, this._tenantId);
+
+  final FirebaseFunctions _functions;
 
   final FirebaseFirestore _firestore;
   final String _tenantId;
@@ -115,5 +118,17 @@ class FirebasePlanRepository implements PlanRepository {
       'enabled': enabled,
       'usage': _usageRuleToMap(usage),
     });
+  }
+
+  @override
+  Future<int> syncSubscriptions(String planId) async {
+    // Cloud Function: `firestore.rules` bloqueia toda a escrita em
+    // `subscriptions` desde a Fase 3.
+    final result =
+        await _functions.httpsCallable('syncPlanSubscriptions').call<Object?>({
+      'planId': planId,
+    });
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return (data['updated'] as num?)?.toInt() ?? 0;
   }
 }

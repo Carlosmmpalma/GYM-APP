@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../domain/entities/consent.dart';
 import '../../domain/entities/member_summary.dart';
+import '../../domain/entities/payment_record.dart';
 import '../../repositories/member_repository.dart';
 
 MemberSummary _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -16,6 +18,27 @@ MemberSummary _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     address: data['address'] as String? ?? '',
     nif: data['nif'] as String? ?? '',
     emergencyContact: data['emergencyContact'] as String? ?? '',
+    // Fase 9 — denormalizado por `FirebasePaymentRepository.setPaymentStatus`.
+    // `null` até o Gestor marcar a primeira mensalidade deste membro.
+    currentPaymentStatus: (data['currentPaymentStatus'] as String?) == null
+        ? null
+        : PaymentStatus.fromValue(data['currentPaymentStatus'] as String),
+    currentPaymentPeriod: data['currentPaymentPeriod'] as String?,
+    consent: _consentFromMap(data['consent'] as Map<String, dynamic>?),
+  );
+}
+
+/// Fase 11 (RGPD) — o mapa `consent` só existe em contas que já
+/// passaram pelo ecrã de consentimento. Ausente devolve
+/// [MemberConsent] vazio, que é diferente de ter recusado: o
+/// `ConsentGate` volta a perguntar.
+MemberConsent _consentFromMap(Map<String, dynamic>? data) {
+  if (data == null) return const MemberConsent();
+  return MemberConsent(
+    privacyPolicyVersion: (data['privacyPolicyVersion'] as num?)?.toInt(),
+    acceptedAt: (data['acceptedAt'] as Timestamp?)?.toDate(),
+    healthDataGranted: data['healthDataGranted'] as bool? ?? false,
+    healthDataUpdatedAt: (data['healthDataUpdatedAt'] as Timestamp?)?.toDate(),
   );
 }
 

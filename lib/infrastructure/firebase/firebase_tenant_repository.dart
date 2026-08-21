@@ -65,4 +65,24 @@ class FirebaseTenantRepository implements TenantRepository {
       'minBookingNoticeMinutes': minutes,
     }, SetOptions(merge: true));
   }
+
+  @override
+  Future<String?> getFreeTrainingServiceId(String tenantId) async {
+    final snapshot = await _bookingPolicyDoc(tenantId).get();
+    if (!snapshot.exists) return null;
+    final value = snapshot.data()?['freeTrainingServiceId'] as String?;
+    // String vazia conta como não configurado — é o que fica se alguém
+    // limpar o campo em vez de o apagar.
+    return (value == null || value.isEmpty) ? null : value;
+  }
+
+  @override
+  Future<void> setFreeTrainingServiceId({
+    required String tenantId,
+    required String? serviceId,
+  }) async {
+    await _bookingPolicyDoc(tenantId).set({
+      'freeTrainingServiceId': serviceId ?? '',
+    }, SetOptions(merge: true));
+  }
 }

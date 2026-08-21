@@ -9,7 +9,8 @@ marcadas 🔴).
 
 Camadas Flutter (`presentation/domain/application/repositories/infrastructure`),
 Riverpod, três ambientes (development/staging/production), Firebase
-Emulator Suite, CI (lint+test), Crashlytics, e um "hello world" que
+Emulator Suite, CI (lint+test), Crashlytics, e um "hello world" (desde
+então removido — ver "Restos da fase de arranque") que
 escreve/lê no Firestore emulado — tudo confirmado a correr localmente
 (`flutter pub get`, `flutter create`, `dart format`, `flutter analyze`,
 `flutter test` e o ecrã em Chrome, todos com sucesso).
@@ -156,7 +157,7 @@ flutter run -t lib/main_development.dart
 # Nº de sócio "000001", password "MemberPass123!" — esta build aponta
 # para o tenant nxt_performance_studio (TenantAppConfig.development).
 # Deve entrar direto (passwordTemporaria já vem false do seed) e mostrar
-# o HelloWorldScreen. Confirma também que a MESMA combinação de nº
+# o ecrã "Início" do Aluno. Confirma também que a MESMA combinação de nº
 # "000001" mas password "GhostPass123!" falha (é o membro do tenant
 # fantasma, com o mesmo número mas noutro tenant).
 ```
@@ -2964,18 +2965,1340 @@ lote anterior (`firebase deploy --only firestore:indexes`). As Rules
 apertadas nesta passagem também precisam de
 `firebase deploy --only firestore:rules` para valerem em produção.
 
+## Fase 9 — Pagamentos (registo, não processamento)
+
+**Objetivo:** histórico mensal de mensalidades, sem gateway (Domain
+Model v1 §36, D17 — "apenas registo no MVP"); e o próprio UC01 (fechado)
+a bloquear o login quando a mensalidade está em atraso.
+
+### O que foi construído
+
+- **Domínio** — `PaymentRecord` (`memberId`, `year`, `month`, `status`,
+  `amount?`, `subscriptionId?`, `changedAt`, `changedBy`) e
+  `PaymentStatus` — TRÊS estados, não um booleano: `paid`/`overdue`/
+  `paidLate` (o mockup distingue "pago a tempo" de "pago com atraso";
+  só `overdue` bloqueia o login). `paymentPeriodKey(DateTime)` e
+  `paymentMonthLabel(month, year)` são helpers partilhados
+  (`"2026-08"`/`"Agosto 2026"`), cálculo em UTC — mesma limitação já
+  assinalada em `core/utils/iso_week.dart`.
+- **`PaymentRepository`/`FirebasePaymentRepository`** —
+  `tenants/{t}/members/{memberId}/paymentRecords/{YYYY-MM}`. Ao
+  contrário de `loadHistory` (Fase 8, imutável por decisão explícita do
+  UC16), aqui a correção de um mês já registado é esperada (Domain
+  Model v1 §46: "append/update CONTROLADO") — o mesmo documento é
+  atualizado, não duplicado.
+- **Denormalização deliberada** — `MemberSummary` ganhou
+  `currentPaymentStatus`/`currentPaymentPeriod`, escritos por
+  `setPaymentStatus` no MESMO `WriteBatch` que o registo do mês, mas
+  SÓ quando esse mês é o mês atual (corrigir Junho em Agosto nunca pode
+  fazer `members/{id}` "esquecer" que Agosto está pago). Mesmo padrão
+  já usado para `TrainingPlanEntry.currentLoad`/`loadHistory` na Fase
+  8. Sem isto, tanto a lista "Mensalidades — mês atual" (todos os
+  membros) como o bloqueio de login (UC01, disparado em TODA sessão
+  aberta por um Aluno) exigiriam uma query extra à subcoleção — aqui
+  ficam de borla, reaproveitando `membersProvider`/`memberProfileProvider`
+  já existentes.
+- **`MemberSummary.currentMonthStatus(now)`/`isOverdueFor(now)`** —
+  "ausência de registo NUNCA bloqueia, só uma marcação EXPLÍCITA de
+  atraso" (decisão fechada): um `currentPaymentPeriod` de um mês
+  ANTERIOR ao atual conta como "sem registo este mês", nunca como "em
+  atraso esquecido". As três leituras do estado do mês atual (lista do
+  Gestor, `MyProfileScreen`, gate de login) passam todas por este único
+  método — nunca podem divergir sobre o que conta como "mês atual".
+- **Security Rules** — `paymentRecords`: leitura só ao PRÓPRIO membro
+  e ao Manager (ao contrário de assessments/loadHistory/planEntries, o
+  Instrutor NÃO lê — o mockup coloca "pagamentos" explicitamente na
+  secção exclusiva do Gestor); escrita Manager-only, incluindo `update`
+  (correção de mês já registado). Índice novo:
+  `paymentRecords(year DESC, month DESC)`, `COLLECTION` scope.
+- **`ManagePaymentsScreen`** (Gestor, "Mensalidades — mês atual") —
+  reaproveita `membersProvider` sem NENHUM listener novo (a
+  denormalização acima é o que torna isto possível); um pill por
+  membro (✓ Pago / ⚠ Em atraso / ⚠ Pago com atraso / "Sem registo" —
+  cinzento, nunca vermelho, para não confundir "por marcar" com
+  "atrasado"); tocar abre um diálogo com 3 opções + valor opcional.
+- **`PaymentHistoryScreen`** (Gestor) — "um registo por mês, nunca só o
+  estado atual" (mockup); cada linha do histórico é tocável para
+  corrigir esse mês especificamente, reaproveitando o mesmo diálogo
+  (`showPaymentStatusDialog`, partilhado entre os dois ecrãs).
+- **Bloqueio de login (UC01 fechado)** — `AuthGate` ganhou um terceiro
+  gate, depois do de password temporária: `isBlockedForOverduePaymentProvider`
+  lê `memberProfileProvider` (já existente) e, se `isOverdueFor(now)`,
+  mostra `AccountBlockedScreen` em vez de `HomeScreen` — mesma cópia do
+  mockup ("Login — exceções"): *"Conta inativa — Mensalidade em atraso.
+  Contacta o estúdio para reativar o acesso."*, com um botão "Sair"
+  (sem auto-resolução — a decisão é sempre do Gestor).
+
+  **Decisão pragmática, sinalizada:** o bloqueio só se aplica a contas
+  PURAMENTE de Aluno (`roles == {member}`). Um Instrutor/Gestor que
+  também seja membro (Domain Model v1 §6 admite isto) nunca fica
+  bloqueado por causa da própria mensalidade — o risco operacional de
+  um Gestor ficar sem acesso à própria gestão do ginásio seria pior do
+  que aplicar a regra também a ele. O mockup não cobre este caso
+  (só mostra o ecrã de bloqueio a partir do login de Aluno).
+- **`MyProfileScreen`** ganhou uma linha "Mensalidade: {estado}" —
+  equivalente real ao card "Mensalidade: Em dia" do mockup do "Início"
+  (`HomeScreen`, Fase 2, é uma navegação por separadores sem card de
+  topo — reconstruir esse layout ficaria fora do âmbito de uma fase
+  sobre pagamentos; sinalizado). Só o mês atual — o histórico completo
+  continua exclusivo do Gestor.
+
+### Testes
+
+**165 testes Dart** (12 novos): `payment_record_test.dart` (enum,
+helpers, Equatable), `member_summary_test.dart` estendido
+(`currentMonthStatus`/`isOverdueFor`, incluindo o caso "mês anterior
+não bloqueia"), `firebase_payment_repository_test.dart` (o
+`WriteBatch` fica coerente — mês atual denormaliza, mês passado NÃO
+mexe no denormalizado), `manage_payments_screen_test.dart`,
+`my_profile_screen_test.dart` estendido, `auth_gate_test.dart`
+estendido (bloqueia quando `overdue`, não bloqueia quando não).
+
+**148 testes no emulador** (6 novos, `operations-rules.test.ts`):
+próprio membro lê o seu histórico / não lê o de outro; Instrutor NÃO
+lê (Manager-only, ao contrário dos outros dados históricos da Fase 8);
+Manager lê e escreve (incluindo `update`); membro não consegue
+marcar-se a si próprio como pago; isolamento entre tenants.
+
+### Verificação
+
+`flutter analyze --fatal-infos` limpo, 165 testes Dart, `npm run
+build`/`lint` limpos, 148 testes no emulador (11 ficheiros).
+
+⚠️ **Índice novo por implantar:** `paymentRecords(year DESC, month
+DESC)` — `firebase deploy --only firestore:indexes`. Sem isto,
+`PaymentHistoryScreen` dá erro de índice em falta em produção (o
+emulador não exige índices pré-implantados, por isso os testes
+passam sem isto).
+
+⚠️ **Fora de âmbito, sinalizado:** processamento de pagamentos em si
+(gateway) — D17 do Domain Model já deixa isso explicitamente fora do
+MVP. `subscriptionId` existe no modelo (Firestore Data Model v1 §46)
+mas nunca é usado pela UI: um membro pode ter várias subscriptions
+ativas em simultâneo e o mockup mostra sempre UM pill por membro por
+mês, nunca um por subscription — a decisão de "a que subscription
+pertence a mensalidade" continua por tomar, tal como o próprio
+documento técnico já assinalava.
+
+## Fase 10 — Identidade visual e paridade com os mockups
+
+**Porque existe esta fase.** Ao testar a app a sério depois da Fase 9,
+a conclusão foi que o passo seguinte do guia (lançamento) não fazia
+sentido: a UI não se parecia com os mockups, havia muita coisa difícil
+de perceber, e a criação de utilizadores "parecia estar em falta".
+Auditei os mockups (`Functional/nxt-studio-screens.html`) contra a app
+ecrã a ecrã e escrevi o resultado como uma fase nova no guia
+(`Technical/guia-desenvolvimento.md`, Fase 10, sub-fases 10.1 a 10.5);
+a antiga Fase 10 (lançamento) passou a Fase 11.
+
+O diagnóstico não era "vários ecrãs mal feitos": era a falta de uma
+base. O tema da app era **uma linha** (`ThemeData(colorSchemeSeed:
+Colors.indigo)`) em modo claro, enquanto o mockup é escuro com paleta e
+tipografia próprias. Sem tokens e componentes partilhados, qualquer
+melhoria por ecrã seria trabalho perdido.
+
+### 10.1 — Design system
+
+- `lib/core/theme/app_colors.dart` — os tokens do `:root` do mockup,
+  com os mesmos nomes (`void_`, `panel`, `panel2`, `red`, `redDeep`,
+  `bone`, `mute`, `dim`, `ok`, `warn`) para se poder comparar com o CSS
+  sem tradução mental. `statusFill()` dá o fundo a 10% que o CSS usa em
+  pills e banners — nunca a cor cheia, ilegível em texto pequeno.
+- `lib/core/theme/app_theme.dart` — `AppTheme.dark`, com um
+  `ColorScheme.dark` **explícito** e não `fromSeed` (uma seed
+  redistribui as cores por conta própria e deixa de ser a paleta do
+  mockup). Tipografia via `google_fonts`: Oswald itálico para display
+  (`AppTheme.display()`), Inter para corpo.
+- `lib/presentation/widgets/design_system.dart` — os componentes
+  repetidos do mockup: `Pill`, `PanelCard`, `IconBox`, `Avatar`,
+  `SlashDivider`, `ScreenHeader`, `PillTabs`, `StatNumber`, `UsageBar`,
+  `AppBanner`, `FieldBlock`, `SectionLabel`, `EmptyState`. 16 testes —
+  do que pode regredir sem ninguém dar por isso (as iniciais do avatar,
+  a fração da barra, o mapeamento estado→cor), não da aparência.
+
+### 10.2 — Estrutura e navegação
+
+Esta parte não é pintura: mexe em navegação.
+
+- **"Início" do Aluno** (`MemberHomeScreen`), que não existia: card de
+  estado da conta (nº de sócio, planos ativos, pill da mensalidade),
+  "Próxima marcação" e a grelha 2×2 de atalhos.
+- **Shell por papel** (`HomeScreen`): três shells em vez de um só com
+  ícones condicionais na `AppBar`. Um Gestor via "Marcar treino",
+  "Treino livre" e "Minhas marcações" — coisas que não faz — e a Gestão
+  estava atrás de um ícone sem rótulo no canto. Agora: Gestor →
+  `Visão global · Gestão` (+ `Treino` **só** se também tiver conta de
+  membro); Instrutor puro → dashboard sem barra inferior; Aluno →
+  `Início · Marcar · Livre · Marcações`. Quem acumula papéis vê o shell
+  do papel mais abrangente, e as funções do outro continuam alcançáveis
+  a partir dele.
+- **Gestão reorganizada** (`ManagerScreen`): de 14 cards chapados para
+  cinco grupos com rótulo e uma linha de explicação — Pessoas, Oferta
+  (Planos → Serviços → Modalidades, a ordem em que se pensa neles),
+  Agenda, Dinheiro, Conteúdos e definições. Cada entrada ganhou um
+  subtítulo que diz o que se faz lá dentro. "Atribuir um plano a um
+  membro" passou a botão de ação no fim do grupo Oferta em vez de mais
+  um card de navegação: é um verbo no meio de substantivos.
+- **"Utilizadores" numa lista só** (`ManageUsersScreen`): alunos e
+  staff juntos, ordenados por nome, com avatar de iniciais, subtítulo
+  de papel/nº/modalidade e pill de estado, separadores
+  Todos/Alunos/Staff, procura por nome ou nº de sócio, e UM "+".
+  Confirmou-se a suspeita: a criação de utilizadores nunca esteve em
+  falta — `CreateUserScreen` está completa desde a Fase 6, mas estava
+  enterrada atrás de dois FABs em ecrãs diferentes.
+- **Separadores por modalidade em "Marcar treino"**, como no mockup.
+- **Estados vazios explicativos** (`EmptyState`): ~20 listas diziam só
+  "Ainda não existe nenhum X". Passaram a dizer o que o ecrã é, porque
+  está vazio e qual é o próximo passo, com o botão de criar quando faz
+  sentido. Onde um ecrã depende de outro, o pré-requisito aparece dito
+  à cabeça (um plano sem serviços não dá acesso a nada; uma aula tem de
+  ser de um serviço) em vez de se descobrir mais tarde.
+
+### Decisões e desvios (deliberados, não omissões)
+
+- **Barra inferior mantida no Aluno, com "Início" à frente.** O mockup
+  não usa barra inferior em ecrã nenhum — a classe `.bottom-nav` existe
+  no CSS mas nunca é usada; a navegação é toda por dashboard. Mantive os
+  separadores: dá o dashboard sem um refactor de navegação arriscado, e
+  "Marcar"/"Livre"/"Marcações" continuam a um toque em vez de dois. Os
+  atalhos do dashboard que correspondem a separadores trocam de tab em
+  vez de empilhar um ecrã (senão ficava um "voltar" para um sítio de
+  onde nunca se saiu). Efeito secundário útil: a `AppBar` do Aluno
+  chegou a ter SEIS ícones sem rótulo; "O meu plano" e "As minhas
+  avaliações" saíram de lá e passaram a cards nomeados.
+- **Separadores de modalidade construídos a partir das modalidades que
+  TÊM sessões futuras.** Um separador que abre vazio é pior do que não
+  existir, e um ginásio que não usa modalidades não vê separadores
+  nenhuns. O estado guarda o ID e não o índice: a lista muda quando uma
+  sessão é marcada ou cancelada, e um índice passaria a apontar para
+  outra modalidade sem ninguém tocar em nada.
+- **"Livre" continua separador de nível de cima**, não uma modalidade.
+  É outra coleção (`freeTrainingSlots`), com regras e ecrã próprios —
+  juntá-los fingiria uma unidade que o modelo de dados não tem.
+- **`ManageMembersScreen`/`ManageStaffScreen` não foram apagados.**
+  Continuam no código e navegáveis; a Gestão é que passa pela lista
+  unificada.
+- **Foto de perfil continua fora de âmbito** (exigia Storage +
+  picker), como já estava sinalizado desde a Fase 5.
+
+### Testes acrescentados em 10.1/10.2
+
+16 do design system (incluindo 3 do `EmptyState`), 8 do
+`MemberHomeScreen`, 4 do `ManageUsersScreen`, 2 dos separadores de
+modalidade e 2 do shell do Gestor (que um Gestor abre em "Visão global"
+e **não** vê separadores de marcação — a regra que foi pedida
+explicitamente).
+
+Duas armadilhas encontradas ao escrever estes testes, que vale a pena
+não repetir: um teste do `AuthGate` passou a verde pela razão errada
+(procurava o texto "Marcar treino", que passou a existir como card do
+dashboard e não só como título da `AppBar`); e os taps em
+`find.byIcon(Icons.add)` tornaram-se ambíguos quando o `EmptyState`
+ganhou um botão de criar com o mesmo ícone do FAB — passaram a
+`find.byType(FloatingActionButton)`.
+
+Uma terceira apareceu em 10.5: os testes do picker agrupado falhavam a
+tocar em opções que existiam. Um `tap()` num alvo fora do viewport de
+teste (800x600) não falha — simplesmente não acerta em nada, e o teste
+passa a depender de posição em vez de comportamento. Resolvido a
+aumentar a superfície (`tester.view.physicalSize`), como já se fazia em
+`create_series_screen_test.dart`.
+
+### 10.5 — Gestor: "Atribuir serviço/plano" (a peça com substância)
+
+Este era o único item da Fase 10 que mexia num fluxo de negócio e não só
+na apresentação. O mockup mostra a atribuição orientada a **serviços**,
+agrupada: "Nível de treino de sala" em seleção única (Sem
+acompanhamento / Standard / Plus / Premium), "Aulas de grupo" em seleção
+múltipla, "PT de Pilates" única. A app eram dois dropdowns — membro +
+UM plano — e dar a alguém "sala Plus + Aula Hyrox + PT Pilates" eram
+três voltas ao mesmo formulário, com a exclusividade a aparecer só como
+erro depois de submeter.
+
+`AssignSubscriptionScreen` foi reescrito para esse formato. O que
+importa é de onde vem o agrupamento: **deriva** do
+`Service.exclusiveGroup` dos serviços que cada plano dá
+(`planExclusiveGroupsProvider`), nunca de uma lista fixa de categorias
+no código — Domain Model v1 §10 é explícito em que "Standard"/"Plus"/
+"Premium" são nomes que cada tenant escolhe.
+
+Três decisões que vale a pena ter escritas:
+
+- **Um plano cujos serviços caiam em dois grupos exclusivos diferentes
+  conta como avulso.** Não pode ser a opção única de nenhum dos dois — a
+  alternativa era escolher um grupo à sorte.
+- **Um grupo que o membro já ocupa aparece bloqueado**, a dizer qual é o
+  plano atual e que para trocar tem de se cancelar primeiro. A Cloud
+  Function recusaria qualquer outro nível do mesmo grupo; mostrar botões
+  que só levam a um erro garantido é pior do que explicar.
+- **Não é atómico.** São N chamadas a `createSubscription`, uma por
+  plano, e não há transação que as cubra. Se a terceira falhar, as duas
+  primeiras ficaram feitas — a mensagem final diz o que passou **e** o
+  que falhou, e a seleção do que falhou fica marcada para se corrigir sem
+  remarcar tudo. Mesmo princípio já usado em `rescheduleBooking`. Há um
+  teste dedicado a este caso.
+
+### 10.3 / 10.4 — re-skin do Aluno e do Instrutor
+
+Aluno, completo menos o detalhe das avaliações: login (marca + claim em
+Oswald, erro genérico antes do botão, rodapé "Só o estúdio pode criar o
+teu acesso"), conta inativa, "O meu plano" (▶ + carga em vermelho
+itálico à direita + linha de ajuda), "Marcar" (vagas em `Pill`,
+`UsageBar` a sério, banner do UC08-A), "Minhas marcações" e Perfil.
+
+Instrutor, parcial: dashboard (avatar, `StatNumber`, atalhos com
+`IconBox`) e os separadores de dia do calendário em `PillTabs`.
+
+Quatro correções que saíram deste re-skin e não eram cosméticas:
+
+- **O nome do estúdio no login** vinha do `tenantId` — um ID, não um
+  nome ("NXT_PERFORMANCE_STUDIO"), e transbordava a linha. Passou a
+  `TenantAppConfig.displayName`, config de build. Não pode vir do
+  documento `tenants/{id}`: as Rules exigem sessão para o ler, e este é
+  precisamente o ecrã de antes da sessão.
+- **O erro de cancelamento de uma marcação** era a segunda linha do
+  subtítulo, no mesmo cinzento do resto do texto — lia-se como
+  informação normal. Passou a banner.
+- **O estado da mensalidade no perfil** usava `Colors.green`/
+  `Colors.orange`, cores fora da paleta. Passou a `Pill`.
+- **Os separadores de dia do calendário** eram sete `ChoiceChip`
+  esticados por `Expanded`: num ecrã de telefone cortavam o texto.
+
+Nos subtítulos do dashboard do Instrutor tirei os códigos de use case
+("UC13/14/16"): dizem algo a quem escreveu os documentos, nada a quem
+usa a app.
+
+### Verificação
+
+```powershell
+dart format --output=none --set-exit-if-changed .
+flutter analyze --fatal-infos
+flutter test
+```
+
+Estado: `dart format` limpo, `flutter analyze --fatal-infos` sem
+problemas, **196 testes a passar** (eram 201 antes de remover os 7
+testes da sonda de diagnóstico da Fase 0 — ver "Correções depois de
+testar a app a sério") e **150 contra o Emulator Suite**.
+
+### Ainda em aberto nesta fase
+
+- **Avaliações do Aluno (detalhe dos 17 campos)** continuam em
+  `ListTile`s em vez de `FieldBlock`.
+- **Os ecrãs de formulário do Instrutor/Gestor** ("Ficha do aluno",
+  "Editor de plano", "Nova avaliação", "Criar aula", "Detalhe da aula",
+  "Reduzir vagas", "Enviar notificação") continuam em `Card`/`ListTile`
+  Material. Funcionam e já estão no tema escuro, mas não usam os
+  componentes partilhados.
+
+## Correções depois de testar a app a sério (Fase 10)
+
+Quatro coisas encontradas a usar a app como Aluno e como Gestor.
+
+### 1. "Treino livre" dava permission-denied a um Aluno
+
+O ecrã mostrava `[cloud_firestore/permission-denied] Null value error
+for 'get'` sempre que a semana ainda não tinha grelha nenhuma. A causa
+estava nas Security Rules, não na app:
+
+```
+allow read: if isManager(tenantId)
+  || (belongsToTenant(tenantId) && resource.data.status == 'published');
+```
+
+`resource.data` num documento que **não existe** é um erro de
+avaliação, não um `false` — e o cliente recebe `permission-denied`. O
+mesmo padrão estava no `get()` à semana-mãe usado pela regra dos slots.
+Corrigido com `resource == null` explícito na semana e uma função
+`freeTrainingWeekPublished()` que faz `exists()` antes do `get()`.
+
+Duas notas honestas sobre esta correção:
+
+- O `exists()` custa **uma leitura extra** quando o documento existe. É
+  o preço de a regra poder dar `false` em vez de rebentar; tentei
+  primeiro comparar o resultado do `get()` com `null` e não funciona —
+  a expressão inteira falha na mesma.
+- Escrevi um segundo teste a assumir que um Aluno devia conseguir
+  listar os slots de uma semana inexistente e receber lista vazia.
+  Estava errado: os slots de uma semana não publicada são fechados de
+  propósito (UC17-A, "nenhum aluno pode ver uma grelha em estado
+  sugerido"), e a app nunca os lista sem confirmar antes, no documento
+  da semana, que está publicada. O teste passou a afirmar o contrário —
+  que a listagem é recusada.
+
+Verificado: **150 testes contra o Emulator Suite**, todos a passar.
+
+### 2. "Marcar" aparecia em sessões já marcadas
+
+O cartão de uma sessão que o próprio membro já tinha marcado continuava
+a oferecer o botão, e a única resposta a premi-lo era o
+`AlreadyBookedException` vindo da Cloud Function — depois do toque.
+Agora o cartão mostra o pill "Marcado" e uma linha a dizer onde se
+cancela ("Marcações"), sem repetir a ação de cancelar em dois ecrãs.
+
+O fake de `BookingRepository` nos testes tinha `watchMyBookings` a
+devolver `Stream.empty()` — bastava enquanto nenhum ecrã testado olhava
+para as marcações do próprio membro. Deixou de bastar: com um stream
+vazio, este teste passaria por a funcionalidade não existir.
+
+### 3. Restos da fase de arranque
+
+O botão de diagnóstico (o ícone de insecto na `AppBar`) existia para
+provar o critério "Done" da Fase 0 — "a app liga ao emulador e
+lê/escreve um documento de teste" — e ficou num sítio visível a
+utilizadores reais durante nove fases. Saiu, e com ele toda a sonda:
+`HelloWorldScreen`, `PingResult`, `PingRepository`,
+`FirebasePingRepository`, `PingFirestoreUseCase`, os providers, os
+testes e o `emulator_smoke_test.dart` (a dependência `integration_test`
+existia só para ele).
+
+O achado sério foi nas Rules:
+
+```
+match /_diagnostics/{docId} {
+  allow read, write: if true;
+}
+```
+
+Uma coleção aberta a **qualquer pessoa**, autenticada ou não, em
+produção. Removida.
+
+Também estava por fazer o óbvio: a app chamava-se `gym_saas` no
+launcher do Android, no iOS ("Gym Saas"), no separador do browser e no
+`manifest.json`, e a descrição web era "A new Flutter project.".
+`gym_saas` continua a ser o nome do *package* Dart — mudá-lo obrigava a
+reescrever todos os imports sem ganho nenhum.
+
+### 4. Ícone e marca
+
+`assets/branding/app_icon.png` (o quadrado 1024×1024) alimenta os
+ícones de Android/iOS/Web via `flutter_launcher_icons`; regerar com
+`dart run flutter_launcher_icons` sempre que o ficheiro mudar. O fundo
+do ícone adaptativo é o preto do tema e não branco: no Android o ícone
+é recortado em círculo, e um fundo branco daria um anel claro à volta
+de um logótipo desenhado para fundo escuro.
+
+`assets/branding/logo_wordmark.png` é o mesmo logótipo recortado à
+mancha do lettering e com o fundo a transparente, para assentar em
+qualquer painel do tema. Aparece no login, via
+`TenantAppConfig.logoAsset` — config de build, pela mesma razão do
+`displayName`: o ecrã de login é anterior à sessão, e sem sessão não há
+leitura autorizada de nada do tenant. Se o asset faltar numa build, o
+ecrã cai no nome em texto em vez de mostrar uma imagem partida.
+
+### Sobre a faixa vermelha "Running in emulator mode"
+
+Não é código nosso e não vai para produção: é o aviso que o SDK web do
+Firebase Auth injeta sozinho quando está ligado ao emulador.
+Desaparece assim que a app apontar para um projeto real.
+
+## Varredura geral antes de produção
+
+Uma passagem por todo o código à procura de **classes** de problema, não
+de casos isolados — cada achado abaixo aparecia em vários sítios ao
+mesmo tempo, que é o sinal de que falta uma peça partilhada.
+
+### Exceções cruas no ecrã (49 sítios)
+
+`Text('Erro: $error')` era o tratamento de erro em praticamente todos os
+ecrãs. Foi assim que o bug do treino livre chegou ao utilizador: como
+`[cloud_firestore/permission-denied] ... Null value error for 'get' @
+L393`. Isso é informação para quem escreve o código.
+
+O novo `ErrorState` diz o que aconteceu em português, oferece "Tentar
+outra vez" onde há como (invalidando o provider), e guarda o `toString()`
+da exceção atrás de "Detalhe técnico" — continua a chegar a um print de
+ecrã de suporte, sem ser a primeira coisa que se lê. Tem uma variante
+`compact` de uma linha para erros dentro de formulários.
+
+O `AuthGate` levou tratamento à parte: é o primeiro ecrã depois do
+arranque e **não tem nada por trás**. Uma falha a ler o perfil deixava a
+app num ecrã sem uma única ação possível a não ser fechá-la; agora tem
+sempre "Sair" além do "Tentar outra vez".
+
+### O mesmo estado com aspetos diferentes
+
+`PaymentStatus` estava traduzido para etiqueta+cor em três ecrãs, e as
+três versões já tinham divergido — "✓ Pago" em dois, "Em dia" no
+terceiro, dois deles ainda em `Colors.green`/`Colors.orange`, fora da
+paleta. O mesmo para `SubscriptionStatus`.
+
+Passou a haver um sítio só (`status_pills.dart`). As etiquetas perderam
+os símbolos `✓`/`⚠`: o pill já carrega a cor, e o símbolo era o que
+sobrava de quando não havia design system.
+
+Com isto ficam **zero** cores Material hardcoded na camada de
+apresentação — todas as que restam são tokens de `AppColors`.
+
+### Restos da fase de arranque (continuação)
+
+O `healthCheck` era a única Cloud Function do projeto **sem guard
+nenhum**: um `onCall` público que devolvia o `GCLOUD_PROJECT` a quem o
+chamasse. Existia para provar que a base de Functions compilava; hoje há
+19 funções reais a prová-lo e nenhum cliente o chamava. Removido.
+
+Confirmado por varredura que **todas** as restantes funções chamáveis
+têm `requireManager` / `requireManagerOrInstructor` /
+`requireAuthenticated`.
+
+### Queries sem limite
+
+27 streams em tempo real sem `limit()`. A maioria é legítima — membros,
+staff, planos, serviços e modalidades são limitados pelo tamanho do
+negócio, e cortá-los esconderia pessoas silenciosamente, o que é pior do
+que uma lista lenta.
+
+Limitei só onde a coleção cresce **sem fim** e a ordenação torna os N
+mais recentes a resposta certa:
+
+| Coleção | Limite | Porquê |
+|---|---|---|
+| `loadHistory` | 200 | cresce a cada treino registado; o gráfico mostra os recentes |
+| `assessments` | 100 | ordenado da mais recente para a mais antiga |
+| `paymentRecords` | 36 | um por mês — três anos de histórico |
+
+Caso à parte, `SeriesDetailScreen`: listava **todas** as ocorrências de
+uma série por ordem crescente. Uma série semanal gera 52 por ano, por
+isso ao fim de um ano o Gestor abria a ficha e via primeiro dezenas de
+aulas passadas — sobre as quais não há nada a fazer — com as próximas no
+fundo. Passou a mostrar de hoje em diante (o índice `(seriesId, startAt)`
+já existia, não custou nada).
+
+### Estado
+
+`dart format` limpo · `flutter analyze --fatal-infos` sem problemas ·
+**202 testes Flutter** · **150 testes contra o Emulator Suite** ·
+`npm run build` e `npm run lint` das Functions a passar · build web de
+produção a compilar.
+
+## Fase 11 — RGPD, App Check e limites
+
+O que faltava para isto poder receber pessoas reais. Está tudo o que não
+depende de existir um projeto Firebase; o resto está em
+[LANCAMENTO.md](LANCAMENTO.md).
+
+### RGPD — porque é que isto foi o item mais sério
+
+A app guarda pressão arterial, percentagem de massa gorda, gordura
+visceral e metabolismo basal. Isso é categoria especial no artigo 9.º do
+RGPD, com regras mais apertadas do que dados normais. Não existia uma
+única linha sobre consentimento em nenhum sítio do código.
+
+**Consentimento (artigos 7.º e 9.º).** Dois registos separados, e a
+separação é o ponto:
+
+- Aceitação do aviso de privacidade — cobre o tratamento necessário à
+  relação com o ginásio, cuja base legal é o contrato, não o
+  consentimento.
+- Autorização **explícita e opcional** para dados de saúde.
+
+O artigo 7.º, n.º 4 diz que o consentimento não é livre se for condição
+de um serviço que dele não depende. Marcar aulas não depende de
+autorizar avaliações físicas — por isso o interruptor começa desligado,
+"Continuar" funciona com ele desligado, e quem recusa usa a app inteira
+menos as avaliações.
+
+A garantia é do **servidor**, não da UI: as Security Rules recusam
+escrever uma avaliação sem consentimento, e o teste que o prova usa um
+Instrutor autenticado a escrever diretamente ao Firestore, com a UI fora
+do caminho. Esconder um botão não é proteção.
+
+O registo passa por Cloud Function e não por escrita direta porque o
+artigo 7.º, n.º 1 exige poder **demonstrar** o consentimento — um campo
+com um timestamp escolhido pelo cliente não demonstra nada. Fica também
+um `consentLog` append-only: a prova que interessa é "consentiu em X,
+retirou em Y", não o valor de hoje.
+
+**Exportação (artigos 15.º/20.º).** `exportMemberData` devolve perfil,
+consentimentos, avaliações, cargas, plano, marcações, presenças,
+mensalidades, subscrições e utilização. O próprio membro exporta-se a si;
+um Gestor exporta qualquer membro do tenant, porque é ele quem responde
+ao pedido. Os `fcmTokens` saem da exportação — são identificadores de
+dispositivo, sem valor para o titular e sensíveis se copiados.
+
+**Apagamento (artigo 17.º), e a parte que não é óbvia.** Os registos de
+pagamento **não** são apagados: o artigo 17.º, n.º 3, alínea b) excetua o
+que é preciso para cumprir uma obrigação legal, e a contabilidade
+portuguesa tem retenção obrigatória de 10 anos (artigo 123.º do CIRC).
+Apagá-los a pedido do titular seria trocar uma infração por outra. São
+**anonimizados** — fica o valor e o período, sai tudo o que liga o
+registo a uma pessoa — e a função devolve essa contagem à parte, para o
+Gestor poder dizer ao titular exatamente o que ficou.
+
+É Manager-only e exige repetir o número de sócio. O artigo 12.º, n.º 6
+permite exigir prova de identidade antes de apagar, e um botão "apagar a
+minha conta" dentro da app não a verifica melhor do que uma sessão
+aberta — que pode ser um telemóvel deixado desbloqueado.
+
+**Um bug encontrado ao escrever isto:** os documentos de presença
+guardavam o `memberId` só no id do documento. O apagamento usa um
+collection group query, que não consegue filtrar por id sem o caminho
+completo — as presenças teriam sobrevivido a um pedido de apagamento.
+Passou a ser também campo, com índice próprio.
+
+### App Check
+
+`firebase_app_check` estava no `pubspec.yaml` desde a Fase 0 e nunca
+tinha sido inicializado. Via-se nos logs do emulador:
+`{"verifications":{"app":"MISSING","auth":"VALID"}}`.
+
+A `apiKey` do Firebase é pública — vai no bundle web, extrai-se de um
+APK. Sem App Check, qualquer pessoa chama `createBooking` ou
+`createMember` por HTTP direto. As Rules e os guards continuam a decidir
+*quem* pode fazer o quê; o que faltava era impedir um script de martelar
+as funções.
+
+Falha **aberta** de propósito: um dispositivo que não consiga atestar
+entra na app à mesma. Trocar um risco de abuso por uma app que não abre
+seria mau negócio — e o enforcement do lado do servidor liga-se depois,
+com dados de monitorização à frente (ver LANCAMENTO.md §3).
+
+### Rate limiting
+
+11 funções sensíveis, com limites escolhidos por operação: 30/min para
+marcar e cancelar, 20 em 5 min para criar membros (cobre inscrever uma
+turma inteira, trava a criação em massa), 5 em 5 min para exportar e
+apagar.
+
+Janela deslizante grosseira, um documento por (uid, operação). Não é
+exato nos limites e não faz mal: a diferença entre 10 e 11 chamadas por
+minuto não interessa a ninguém, a diferença entre 10 e 10 000 interessa.
+Falha **aberta**, como o App Check — recusar operações legítimas por
+causa da infraestrutura do próprio limitador seria pior do que o abuso
+que evita.
+
+### Uma lição repetida nas Security Rules
+
+O bug do treino livre voltou noutra forma: escrevi
+`hasHealthDataConsent` com `get(...)` e um `!= null`, e a regra rebentava
+em vez de recusar quando o membro não tinha campo `consent`. Em Rules,
+`get()` a documento inexistente é um **erro de avaliação**, não um
+`false` — e aceder a um campo ausente também. A forma correta é
+`exists()` primeiro e `'campo' in data` antes de o ler. Apanhado pela
+suite, não à vista.
+
+### Estado
+
+`dart format` limpo · `flutter analyze --fatal-infos` sem problemas ·
+**209 testes Flutter** · **160 contra o Emulator Suite** (10 novos só de
+RGPD) · Functions a compilar e a passar lint.
+
+## Poderes do Gestor — deixar de precisar de um developer
+
+Pedido depois de testar: *"tudo o que ele puder fazer que não tenha que
+vir chatear um dev"*. Fui à procura do que obrigava a mexer no Firebase
+à mão e encontrei três coisas — uma delas era pior do que uma
+inconveniência.
+
+### Repor a password de um utilizador
+
+O pedido mais banal ao balcão de um ginásio, e não tinha resposta
+nenhuma dentro da app. Para **staff** ainda havia o "esqueci-me da
+password" no login (email real). Para **alunos** não havia nada: eles
+autenticam-se com um email sintético construído a partir do nº de
+sócio, que não existe em lado nenhum e ao qual não se pode enviar um
+link de recuperação.
+
+`resetUserPassword` gera uma temporária e marca `passwordTemporaria`,
+tal como a criação da conta faz — a pessoa entra com ela e a app obriga
+a trocá-la (UC22). O Gestor entrega-a em mão, que é a verificação de
+identidade que faz sentido quando a pessoa está à frente dele.
+
+Revoga também os refresh tokens: se a razão da reposição for uma conta
+comprometida, deixar a sessão antiga viva tornaria a reposição inútil.
+
+Não deixa o Gestor repor a **própria** password por esta via — para isso
+existe a troca normal, e um Gestor que se tranque a si mesmo com uma
+password que não anotou fica sem forma de entrar.
+
+### Cancelar, pausar e reativar uma subscrição — o beco sem saída
+
+Este era o problema a sério. Dava para **atribuir** um plano e nunca
+para lhe mexer:
+
+- Um aluno que saísse do ginásio ficava com plano ativo para sempre, a
+  contar como elegível para marcar.
+- Pior: `createSubscription` recusa um plano que colida no mesmo
+  `exclusiveGroup`, e o ecrã de atribuição — escrito por mim na mesma
+  fase — dizia *"para trocar de nível, cancela primeiro o plano
+  atual"*. **Uma instrução impossível de cumprir.** Trocar um aluno de
+  Standard para Plus exigia um developer.
+
+`updateSubscriptionStatus` fecha isto. **Não cascateia para as marcações
+já feitas**, e é deliberado: o membro tinha o direito quando marcou, e
+apagar-lhe uma aula da semana que vem porque mudou de plano seria uma
+surpresa desagradável. Reativar limpa o `endedAt` — sem isso ficava
+"ativa mas terminada em X", um estado contraditório que qualquer
+relatório leria mal.
+
+### Promover e despromover staff
+
+Os papéis eram decididos na criação e nunca mais mudavam. Um instrutor
+que passasse a sócio-gerente exigia mexer nas custom claims à mão.
+
+`updateStaffRoles` escreve nos **dois** sítios, e ambos são precisos: as
+claims (que é o que as Security Rules e os guards leem — a autoridade
+real) e o documento de staff (que é o que a UI lista). Escrever só no
+documento daria um Gestor que a app mostra e o servidor recusa.
+
+A trava que interessa: **um Gestor não se despromove a si próprio**.
+Sem ela, o único Gestor de um ginásio consegue trancar-se fora e fica a
+precisar exatamente do developer que isto existe para dispensar.
+
+### Conta de instrutor no seed
+
+Não existia nenhuma. O shell do Instrutor — calendário, alunos,
+biblioteca, presenças — só se conseguia ver entrando como Gestor, que
+mostra outra coisa. O seed passou a criar a Ana Marques e a atribuir-lhe
+as sessões geradas, senão o calendário dela abria vazio.
+
+O membro de dev passou também a nascer com consentimento RGPD dado —
+sem isso, cada arranque parava no ecrã de consentimento antes de se
+conseguir testar o resto. Para ver esse ecrã, cria um membro novo pela
+app.
+
+### Um bug de infraestrutura de testes, pelo caminho
+
+`gdpr.test.ts` e `manager-powers.test.ts` passavam sozinhos e falhavam
+na suite completa. Parecia contaminação entre ficheiros; era **timeout**
+— o vitest dá 5 segundos por omissão, e uma Cloud Function em arranque
+a frio com 13 ficheiros em paralelo passa disso. Os ficheiros mais
+antigos contornavam-no com um timeout por teste (`}, 30_000)`);
+`firebase/tests/vitest.config.ts` trata agora o problema de uma vez.
+
+### Estado
+
+`dart format` limpo · `flutter analyze --fatal-infos` sem problemas ·
+**209 testes Flutter** · **173 contra o Emulator Suite** (13 novos só de
+poderes do Gestor, todos a testar as recusas e não o caminho feliz) ·
+Functions a compilar e a passar lint.
+
+## Só o que o plano dá
+
+Pedido depois de testar: *"os alunos só deveriam conseguir marcar os
+serviços a que têm direito — os que não têm nem deveriam aparecer no
+ecrã"*.
+
+Estava metade feito e a metade errada. A validação existia (a Cloud
+Function recusa uma marcação sem plano que dê acesso, desde a Fase 3),
+mas a UI mostrava o horário **inteiro** do ginásio. O aluno só descobria
+ao tocar em "Marcar" e receber um erro.
+
+Isso é mau de duas formas: obriga a tentar para saber, e mostra como
+oferta aquilo que é, na verdade, uma venda por fazer.
+
+`myEligibleServiceIdsProvider` filtra "Marcar treino" e "Treino livre"
+pelos serviços a que as subscrições ativas dão acesso. Deriva da
+**mesma** fonte que o servidor consulta (`status == active` +
+`activeServiceIds`), de propósito: se a UI filtrasse por outro critério,
+haveria sempre um caso em que mostra o que a função recusa, ou esconde o
+que ela aceitaria.
+
+Três decisões que valem a pena registar:
+
+- **Enquanto a elegibilidade carrega, não se filtra.** Esconder o
+  horário todo por um instante e vê-lo aparecer a seguir é pior do que
+  mostrá-lo um instante a mais. A proteção real continua a ser do
+  servidor — isto só evita mostrar portas fechadas.
+- **Três estados vazios diferentes**, porque são três problemas
+  diferentes: "não tens plano nenhum com acesso a aulas" (fala com o
+  estúdio), "tens plano mas não há aulas dele nos próximos dias"
+  (espera), e "não há horário publicado" (o ginásio ainda não o pôs).
+  Um único "sem sessões" mandava o aluno adivinhar qual dos três era.
+- **Os separadores por modalidade** passaram a ser construídos sobre a
+  lista já filtrada — senão restava um separador "Pilates" que abria
+  vazio.
+
+### Uma fuga de dados encontrada pelo caminho
+
+Ligar este filtro fez o cliente do Aluno passar a ler subscrições, e aí
+vi a regra que lá estava desde a Fase 3:
+
+```
+match /tenants/{tenantId}/subscriptions/{subscriptionId} {
+  allow read: if belongsToTenant(tenantId);
+}
+```
+
+**Qualquer aluno lia as subscrições de todos os outros** — incluindo o
+`agreedPrice`, o preço que cada pessoa negociou com o ginásio. Passou a
+ser leitura da própria, com Gestor e Instrutor a manterem a visão ampla
+(o Instrutor precisa dela para pré-atribuir membros a uma sessão).
+
+Numa query de lista, a regra é avaliada por documento devolvido: uma
+query filtrada por `memberId == uid` devolve só os próprios e passa; uma
+sem esse filtro falha no primeiro documento alheio. Não foi preciso
+inspecionar a query — quatro testes cobrem os dois lados.
+
+### Um teste que mudou de significado
+
+`bloqueia a marcação com mensagem própria quando o membro não é
+elegível` verificava que tocar em "Marcar" devolvia a mensagem certa. O
+ecrã já não chega lá — a sessão nem aparece, que é uma garantia mais
+forte. O teste passou a afirmar isso, e a mensagem de erro continua
+coberta em `book_session_use_case_test.dart`, que é onde pertence: a
+Cloud Function continua a ser a única validação que conta, e o plano
+pode ser cancelado com o ecrã aberto.
+
+### Estado
+
+`dart format` limpo · `flutter analyze --fatal-infos` sem problemas ·
+**214 testes Flutter** · **177 contra o Emulator Suite**.
+
+## Pesquisa e filtros nas listas de gestão
+
+Pedido depois de testar. Feito como peça partilhada e não ecrã a ecrã:
+seis listas precisavam do mesmo, e copiar a caixa de pesquisa seis vezes
+garantia seis comportamentos diferentes.
+
+### Ignorar acentos não é polimento
+
+`searchNormalize` tira acentos e passa a minúsculas antes de comparar.
+Em português isto decide se a funcionalidade serve: quem procura escreve
+"joao" à pressa, quem se inscreveu escreveu "João". Uma pesquisa que
+falhasse aí seria pior do que não ter pesquisa nenhuma — daria a
+impressão de que a pessoa não está inscrita.
+
+Sem pacote externo: o alfabeto português cabe num mapa, e o `intl` (já
+presente) não remove diacríticos.
+
+### Onde ficou, e porquê cada filtro
+
+| Ecrã | Pesquisa | Filtros |
+|---|---|---|
+| Membros | nome ou nº de sócio | Ativos / Inativos |
+| Staff | nome ou email | Instrutores / Gestores |
+| Mensalidades | nome ou nº de sócio | Em atraso / Sem registo / Pagas / Com atraso |
+| Biblioteca de exercícios | nome, descrição, grupo | grupo muscular (construído do que existe) |
+| Alunos (Instrutor) | nome ou nº | — |
+| Atribuir plano | nome ou nº, em folha própria | — |
+
+Nome **ou** número em toda a parte, de propósito: quem procura não deve
+ter de decidir antes qual dos dois vai escrever.
+
+**Cada chip traz a sua contagem.** "Em atraso (3)" responde à pergunta
+que levou a pessoa ao ecrã antes de ela tocar em nada, e evita o filtro
+que abre vazio. Nas mensalidades, a contagem só inclui membros ativos —
+um inativo não deve mensalidade deste mês, e mantê-lo na lista fazia o
+número mentir.
+
+**Nenhuma lista abre já filtrada.** O primeiro chip é sempre "Todos":
+uma lista que abre filtrada esconde coisas sem ninguém ter pedido.
+
+Os grupos musculares da biblioteca são construídos a partir dos
+exercícios que existem, não de uma lista fixa — `Exercise.muscleGroup` é
+texto livre, e um enum ficaria desatualizado no dia seguinte.
+
+### O dropdown de membros
+
+Em "Atribuir plano", escolher a pessoa era um `DropdownButtonFormField`.
+Funciona com dez nomes; com trezentos é uma lista por onde se rola à
+procura, sem forma de escrever o que se sabe. Passou a ser uma folha com
+pesquisa, que mostra só membros **ativos** — atribuir um plano a quem
+saiu do ginásio é quase sempre engano.
+
+### "Nada encontrado" ≠ "ainda não há nada"
+
+Cada lista filtrada tem estado vazio próprio, distinto do estado vazio
+da lista. Mandar "criar o primeiro membro" a quem escreveu um nome que
+não existe seria enganador — há membros, só nenhum corresponde. O texto
+diz qual foi a pesquisa que falhou.
+
+### Estado
+
+`dart format` limpo · `flutter analyze --fatal-infos` sem problemas ·
+**231 testes Flutter** (17 novos: normalização de pesquisa e o
+comportamento da lista de membros) · **177 contra o Emulator Suite**.
+
+## Varredura de boas práticas
+
+Pedido: varrer a app à procura de pontos de melhoria segundo o que as
+grandes empresas fazem. Fui procurar **classes** de problema com greps
+concretos em vez de aplicar uma checklist genérica. Seis achados, todos
+corrigidos.
+
+### 1. Itens de lista com estado, sem `key` — um bug a sério
+
+Três widgets de lista com estado interno (`_OccurrenceTile`,
+`_BookingTile`, `_SubscriptionTile`) eram construídos sem `key`. O
+Flutter emparelha elementos por **posição**: quando a lista muda — uma
+sessão é marcada e sai da lista, o stream reordena — o estado fica
+agarrado ao índice.
+
+Efeito prático: tocar em "Marcar" na terceira sessão e ver o spinner
+aparecer noutra, porque entretanto a lista mudou por baixo. É a regra
+"itens de lista com estado levam sempre key", e faltava nos três sítios
+onde importava.
+
+### 2. Cache offline do Firestore — estava desligado
+
+Uma linha, e é das poucas coisas de infraestrutura que se ganham assim.
+Num ginásio (cave, betão, wifi partilhado) a ligação cai a toda a hora;
+com cache, o que já foi lido continua a aparecer e as escritas diretas
+ficam em fila.
+
+O que **não** resolve, e é bom não confundir: as Cloud Functions
+(marcar, cancelar, criar contas) precisam mesmo de rede — não há como
+pôr em fila uma transação que valida capacidade contra o estado do
+servidor. Essas continuam a falhar, agora dizendo porquê.
+
+### 3. Erros de rede sem tradução
+
+O `ErrorState` mostrava sempre a mesma frase genérica e escondia o
+código atrás de "Detalhe técnico". Melhor do que despejar a exceção, mas
+a pessoa continuava sem saber se o problema era dela, da rede, ou da
+app — e a resposta muda conforme o caso.
+
+`describeFirebaseError` traduz o que é **acionável**: sem rede
+(espera-se), rate limit (espera-se um minuto), sem permissões (fala com
+o estúdio), sessão expirada (entra outra vez). Sem ligação o ecrã diz
+"Sem ligação" e não "Algo correu mal" — não correu nada mal, e dizer o
+contrário manda a pessoa procurar um problema que não existe.
+
+Erros que não sabemos traduzir continuam a cair na frase genérica, de
+propósito: inventar uma explicação para um erro que não percebemos é
+pior do que admitir que não sabemos.
+
+### 4. Perda de dados ao sair de um formulário
+
+21 ecrãs com campos de texto, **zero** avisos. Preencher a ficha de um
+membro novo — nome, contactos, data de nascimento, NIF, morada, contacto
+de emergência — tocar sem querer no "voltar" (ou fazer o gesto de voltar
+no Android, fácil de acionar por engano) e perder tudo sem uma palavra.
+
+`UnsavedChangesGuard` aplicado aos dois formulários mais longos: criar
+utilizador e avaliação física. Duas subtilezas:
+
+- **Lê `hasChanges` no momento de sair, não no build.** Um
+  `canPop: !hasChanges()` avaliaria durante a construção do widget e
+  ficaria desatualizado no instante do gesto. Há um teste só para isto.
+- **A avaliação também EDITA**, por isso "tem alterações" compara com
+  uma fotografia dos valores iniciais, tirada no `initState`. Comparar
+  com "está preenchido" perguntaria sempre ao editar — e um diálogo que
+  aparece sempre é ruído, que ensina a carregar em "sair" sem ler.
+
+### 5. Acessibilidade do `Avatar`
+
+Um leitor de ecrã lia **"RF"**. As iniciais são uma abreviatura visual;
+para quem ouve, o que interessa é o nome. Agora anuncia "Rita Ferreira"
+e exclui o texto decorativo da árvore semântica.
+
+Ao mesmo tempo: com o texto do sistema a 200%, as iniciais transbordavam
+o círculo (que tem tamanho fixo). `FittedBox` encolhe-as para caber, que
+é o correto para decoração — ao contrário de conteúdo, que deve crescer.
+
+### 6. Um `IconButton` sem tooltip
+
+Dos 19 da app, 18 já tinham. O que faltava era o "adicionar exercício ao
+plano" — sem tooltip, um leitor de ecrã anuncia só "botão".
+
+### O que NÃO fiz, e porquê
+
+- **Localização (l10n).** As strings estão em português no código. Para
+  um estúdio português com clientes portugueses, extrair tudo para
+  ficheiros ARB é trabalho grande sem retorno nenhum hoje. Passa a fazer
+  sentido no dia em que houver um cliente que não fale português.
+- **Router declarativo.** A navegação é `Navigator.push` desde a Fase 0,
+  sem URLs partilháveis na web nem deep links. Está documentado desde
+  então; continua a ser a decisão certa para o tamanho atual, e mudá-lo
+  agora tocaria em todos os ecrãs.
+
+### Estado
+
+`dart format` limpo · `flutter analyze --fatal-infos` sem problemas ·
+**244 testes Flutter** (13 novos) · **177 contra o Emulator Suite**.
+
+## Varredura final
+
+Cinco achados. Dois deles são o tipo de coisa que só se descobre a olhar
+para a infraestrutura, e ambos eram **sensíveis ao tempo** — mais baratos
+de corrigir agora do que depois do primeiro deploy.
+
+### 1. As Cloud Functions ficavam no Iowa
+
+Por omissão, as Cloud Functions v2 nascem em `us-central1`. O Firestore
+vai ficar em `europe-west1` (decisão de RGPD e latência, ver
+LANCAMENTO.md). Sem alinhar as duas coisas:
+
+- uma marcação feita num telemóvel em Lisboa viaja até ao Iowa;
+- a função atravessa o Atlântico **outra vez a cada leitura e escrita**
+  da transação, e uma transação de booking faz várias;
+- paga-se tráfego entre regiões por cima disso.
+
+O que torna isto urgente: **uma função implantada não muda de região**.
+Migrar obriga a apagar e recriar, com indisponibilidade. Antes do
+primeiro deploy custa uma linha.
+
+Ao mesmo tempo, `maxInstances: 10`. No plano Blaze não há teto por
+omissão — um ciclo infinito num cliente escala até onde a conta aguentar.
+Dez instâncias servem folgadamente um estúdio e transformam um bug caro
+num bug lento, que é o lado certo para errar.
+
+O emulador provou o acoplamento na hora: com o cliente ainda a pedir
+`us-central1`, **22 testes falharam** com `not-found`. É exatamente a
+falha que o comentário no código descreve — e a razão de a região viver
+numa constante partilhada (`kFunctionsRegion`) em vez de escrita duas
+vezes.
+
+### 2. A CI corria os testes errados
+
+```yaml
+firebase emulators:exec --project=demo-gym-saas-dev --only firestore
+```
+
+Só o emulador do Firestore. Os cinco ficheiros que chamam Cloud
+Functions a sério — concorrência na última vaga, sessões extra, grupos
+exclusivos, RGPD, poderes do Gestor — precisam de `functions`, `auth` e
+`storage`. E o passo nem sequer compilava as funções antes, pelo que o
+emulador arrancaria sem elas.
+
+Ou seja: **os testes de maior valor da suite não estavam a ser corridos
+em CI nenhuma**. Uma CI verde que não prova o que parece provar é pior
+do que não ter CI, porque dá confiança.
+
+Também faltava `predeploy` no `firebase.json`: sem ele,
+`firebase deploy --only functions` publica o JavaScript que estiver em
+`functions/lib`, que pode ser de uma compilação de há dias. É o clássico
+"mas eu corrigi isso" — corrigido no source, não no que foi publicado.
+
+### 3. Erros que o utilizador vê eram invisíveis em produção
+
+O Crashlytics estava ligado só a erros **não apanhados**. Esta app quase
+não tem crashes: apanha tudo e mostra um `ErrorState`. Se amanhã 30% das
+marcações falharem por um índice em falta ou uma regra mal publicada,
+ninguém fica a saber — os utilizadores veem uma mensagem simpática,
+desistem, e a consola diz que está tudo bem.
+
+`reportHandledError` regista-os como não-fatais. Fica no `initState` do
+`ErrorState` e não espalhado por cada `catch`: **todo** o erro que o
+utilizador chega a ver passa por ali, e o `initState` garante uma
+ocorrência por erro em vez de uma por rebuild.
+
+Nunca deixa a telemetria partir o ecrã que está a reportar o erro —
+seria trocar uma mensagem por um crash.
+
+### 4 e 5. O que verifiquei e estava bem
+
+Vale a pena dizer o que a varredura **não** encontrou, para não parecer
+que ficou por olhar:
+
+- Controllers sem `dispose` — nenhum.
+- Erros engolidos em silêncio (`catch (_) {}`) — nenhum.
+- N+1 de providers dentro de itens de lista — os três casos encontrados
+  são `.family` partilhados ou instâncias únicas, com cache do Riverpod
+  a resolver.
+- `applicationId` e `bundleId` — já são os reais, não `com.example`.
+- Limites de upload no Storage — 100 MB e só `video/*`.
+- Idempotência da função agendada de geração de ocorrências — já lá
+  estava, com verificação de existência antes de escrever.
+
+### Sobre "tão bom como a Netflix"
+
+Boa parte do que faz a Netflix ser a Netflix não se aplica a um estúdio
+com trezentos sócios: CDN global, testes A/B contínuos, personalização
+por ML, dezenas de equipas. O que **se** aplica são as práticas de
+engenharia — e essas estão feitas: isolamento entre tenants testado,
+transações com concorrência testada a sério, regras de segurança
+verificadas contra o servidor e não assumidas, RGPD aplicado no
+servidor, telemetria de erros reais, CI que corre o que interessa, e
+região e custos definidos antes do primeiro deploy.
+
+O que falta não é código: é o que está em [LANCAMENTO.md](LANCAMENTO.md).
+
+### Estado
+
+`dart format` limpo · `flutter analyze --fatal-infos` sem problemas ·
+**246 testes Flutter** · **177 contra o Emulator Suite** · Functions a
+compilar e a passar lint · build web de produção a compilar.
+
+## Dossier legal (RGPD) — e a fuga que ele encontrou
+
+Nove documentos em [`legal/`](legal/README.md), redigidos a partir do
+que o código **de facto** faz, campo a campo, para revisão por advogado:
+política de privacidade, registo de tratamentos (artigo 30.º),
+consentimento para dados de saúde, procedimento de resposta a pedidos de
+titulares, plano de violação de dados, política de conservação,
+avaliação sobre AIPD e EPD, subcontratantes, e declarações para a App
+Store e o Google Play.
+
+Tudo o que é decisão jurídica está marcado **[ADVOGADO]**; tudo o que é
+dado da empresa, **[PREENCHER]**.
+
+### O melhor que saiu disto não foi o texto
+
+A escrever a secção "quem tem acesso" da política, ia escrever a frase
+óbvia:
+
+> Nenhum outro aluno vê os teus dados.
+
+Fui verificar antes de a escrever. **Era falsa.**
+
+```
+match /tenants/{tenantId}/members/{memberId} {
+  allow read: if belongsToTenant(tenantId);
+}
+```
+
+Qualquer aluno autenticado lia o documento de **qualquer outro membro**
+do ginásio: nome, telefone, email, NIF, morada, data de nascimento,
+contacto de emergência. E a mesma regra nas marcações de cada aula
+deixava listar quem estava inscrito em quê.
+
+O treino livre já fazia isto bem desde a Fase 7 — o UC09/UC17 é
+explícito, *"Aluno vê só contagem; Gestor e Instrutor veem nomes"* — e
+as aulas normais tinham ficado para trás. O isolamento entre ginásios
+estava certo e testado; o isolamento **entre alunos do mesmo ginásio**
+não existia.
+
+Corrigido: um aluno lê o seu próprio perfil e as suas próprias
+marcações, mais nada. Nenhum ecrã de Aluno precisava do resto — os treze
+que usam a lista de membros são todos de Gestor ou de Instrutor.
+
+Cinco testes novos fixam-no, e um teste antigo mudou de significado: "um
+membro consegue ler dados do próprio tenant" lia o documento de OUTRO
+membro para provar acesso ao tenant. Passava por causa da regra
+demasiado larga — ou seja, **provava o isolamento entre ginásios e
+escondia a falta de privacidade entre alunos**. Agora lê o seu, que é o
+que sempre quis dizer.
+
+É a segunda vez nesta fase que redigir documentação encontra um bug que
+a revisão de código não encontrou. A primeira foi a das subscrições, com
+o preço acordado de cada pessoa à vista de toda a gente.
+
+### O que fica sinalizado nos documentos
+
+Não são coisas que eu possa resolver:
+
+- **Cópias de segurança por ativar** — enquanto não estiverem, uma
+  eliminação errada não tem volta, e isso é material para o artigo 32.º.
+- **Sem eliminação automática por prazo** — a política de conservação
+  depende hoje de uma revisão manual anual.
+- **Diagnóstico de erros na web** pode exigir consentimento prévio pelo
+  regime ePrivacy.
+- **Menores de idade** não estão tratados: o ecrã de consentimento
+  assume um titular maior.
+- **A Google exige um caminho web para pedir eliminação de conta** — a
+  app faz a verificação presencialmente, e falta a página que o explica.
+
+### Estado
+
+`dart format` limpo · `flutter analyze --fatal-infos` sem problemas ·
+**246 testes Flutter** · **182 contra o Emulator Suite** (5 novos de
+privacidade entre alunos).
+
+## O Instrutor cria as suas aulas
+
+Pedido depois de testar: *"o instrutor não consegue marcar aulas? Cada
+instrutor deveria ter um serviço e modalidade associada e conseguir
+criar aulas para essa modalidade/serviço."*
+
+Estava certo. Séries e ocorrências eram **Manager-only** desde a Fase 5,
+o que obrigava o Gestor a montar o horário de toda a gente — num estúdio
+onde cada instrutor sabe as suas horas melhor do que ninguém.
+
+### Modalidades descreviam; serviços autorizam
+
+O staff já tinha `modalityIds` desde a Fase 6, mas eram **informativas**:
+diziam "a Ana dá Pilates" e mais nada. Faltava a peça que decide.
+
+`StaffSummary.serviceIds` é essa peça. Vazio por omissão, e de
+propósito: um instrutor recém-criado não deve poder pôr aulas no horário
+antes de alguém decidir quais. O Gestor atribui-os na ficha de staff.
+
+### A autorização vive no servidor
+
+```
+function instructorOwnsSession(tenantId, data) {
+  let staffPath = .../staff/$(request.auth.uid);
+  return isInstructor(tenantId)
+    && data.get('instructorId', '') == request.auth.uid
+    && exists(staffPath)
+    && data.get('serviceId', '') in get(staffPath).data.get('serviceIds', []);
+}
+```
+
+Duas condições, e as duas importam:
+
+1. **A aula tem de ser dele.** Sem isto, um instrutor punha aulas no
+   horário em nome de um colega — que depois apareciam no calendário
+   dessa pessoa.
+2. **O serviço tem de estar na lista dele.** Sem isto, quem dá Pilates
+   criava aulas de Hyrox.
+
+Na alteração, a regra avalia **a série que já lá está e a que fica**. Só
+com as duas é que este caso é apanhado: uma instrutora a pegar na série
+de um colega e a reatribuí-la a si própria produz um estado final
+perfeitamente válido *para ela* — o que a trava é ela não ter direito ao
+estado inicial. Há um teste dedicado a isso.
+
+O `delete` fica com o Gestor: apagar uma série com ocorrências geradas e
+alunos inscritos tem consequências em cadeia.
+
+Custa um `get()` por escrita. Criar ou ajustar uma aula é raro, e a
+alternativa — confiar no cliente — não é alternativa nenhuma.
+
+### Na aplicação
+
+O atalho **"Criar aula"** aparece no dashboard do Instrutor, e o ecrã
+abre-se constrangido: o seletor de serviço mostra só os dele, e o campo
+de instrutor deixa de ser escolha — passa a dizer o nome dele.
+
+**O atalho só aparece se ele tiver serviços atribuídos.** Sem eles o
+servidor recusa a criação, e um atalho que leva a uma recusa é pior do
+que atalho nenhum. Se abrir o ecrã por outra via, encontra um estado
+vazio a explicar que tem de pedir os serviços ao Gestor.
+
+### Estado
+
+**246 testes Flutter** · **195 contra o Emulator Suite** (13 novos, quase
+todos a testar recusas: serviço alheio, instrutor alheio, apropriação de
+série, instrutor sem serviços, e a criação com marcações já feitas).
+
+A conta de instrutor do seed (`ana@nxtperformancestudio.pt`) já nasce com
+o serviço "Aula de Grupo" associado, para o atalho aparecer sem
+configuração manual.
+
+## Treino livre, biblioteca e plano de treino
+
+Três coisas apanhadas a usar a app.
+
+### O treino livre pedia o serviço vezes sem conta
+
+Pedia-o ao criar a grelha da semana **e outra vez em cada bloco**. Mas o
+treino livre é sempre o mesmo serviço — o que ele precisa de um serviço
+para quê: é o que liga cada bloco ao plano do aluno e ao limite semanal.
+
+Passou a ser uma definição do estúdio, escolhida **uma vez** em Gestão ›
+Definições. Os dois seletores desapareceram. Sem ela configurada, o ecrã
+diz onde se escolhe em vez de perguntar a cada passo.
+
+**Um bug meu, apanhado por um teste:** ao tirar o seletor, fui buscar o
+serviço com `ref.read` num `FutureProvider` que, depois de existir
+grelha, ninguém neste ecrã observa — devolvia "a carregar", ou seja
+`null`, e o bloco não era criado **em silêncio**. Passou a `.future`, que
+resolve independentemente de quem observa, e a dizer o que falta quando
+falta.
+
+### O vídeo do exercício só se podia carregar depois de o criar
+
+Criar um exercício com vídeo era: preencher, gravar, voltar a abrir,
+carregar. A app dizia *"Guarda o exercício antes de carregar o vídeo"* —
+que é a app a explicar uma limitação sua em vez de a resolver.
+
+Agora escolhe-se o ficheiro a qualquer momento; fica em memória e sobe ao
+gravar, com o exercício já criado.
+
+Sobre o **"nem funciona"**: não consegui reproduzir sem correr a app, e
+digo-o em vez de fingir que corrigi. O que encontrei e mudei, e que
+plausivelmente o explica:
+
+- O seletor filtrava por extensão **`.mp4` apenas**. Um vídeo gravado num
+  telemóvel é `.mov` — não aparecia sequer na janela de escolha, o que se
+  lê exatamente como "não funciona". Passou a aceitar qualquer vídeo.
+- O `contentType` era sempre `video/mp4`, mesmo quando o ficheiro não
+  era. Passou a derivar da extensão.
+- Se o problema for outro, o erro agora aparece num banner destacado com
+  a mensagem do servidor — e o `ErrorState` reporta-o ao Crashlytics.
+
+### O plano de treino não tinha treinos
+
+O pedido: *"podemos ter vários treinos associados a uma só pessoa, como
+costas ou peito, no entanto apenas permite adicionar exercícios."*
+
+Exato. O plano era uma lista corrida de exercícios. Um aluno que treina
+três vezes por semana via os exercícios dos três dias todos misturados,
+e nem ele nem o instrutor sabiam o que fazer em que dia.
+
+Passou a ter a estrutura que qualquer instrutor usa e que as apps da área
+implementam — **plano → treinos → exercícios ordenados**:
+
+- **Treinos** com nome livre ("Treino A — Costas e Bíceps"), ordenados
+  pela sequência da semana, com notas gerais.
+- **Exercícios ordenados dentro de cada treino**, reordenáveis por
+  arrasto. A sequência não é decorativa: agachamento antes de extensão de
+  pernas é uma decisão de treino.
+- **Descanso entre séries** e **nota por exercício** ("cadência 3-1-1",
+  "se doer o ombro, para").
+
+Três decisões que valem a pena:
+
+**A prescrição passou a ser texto.** `reps` era um inteiro, e isso não
+chega para o que um instrutor escreve: "8-12", "45s", "até à falha". O
+próprio comentário do domínio dava a prancha como exemplo — e o modelo
+não a conseguia representar. O histórico de cargas mantém repetições em
+número: aí é o que foi mesmo feito, e isso é sempre contável.
+
+**Registar carga deixou de sobrescrever a prescrição.** O código antigo
+escrevia as repetições do dia por cima das do plano. As da entrada são o
+que o instrutor prescreveu; as do histórico são o que o aluno fez hoje.
+São coisas diferentes e agora vivem separadas.
+
+**Apagar um treino não apaga os exercícios.** Ficam num grupo "sem treino
+atribuído" para o instrutor os mover. Apagá-los em cascata perderia a
+prescrição e deixaria o histórico de cargas sem contexto — e é também
+onde aparecem as entradas criadas antes de existirem treinos.
+
+### Estado
+
+**251 testes Flutter** · **195 contra o Emulator Suite** · analyze e
+format limpos.
+
+Precisas de voltar a semear: o seed passou a criar o serviço "Treino
+Livre" e a configurá-lo, e a dar serviços à instrutora.
+
+## Testar os três papéis ao mesmo tempo
+
+O Firebase Auth na web guarda a sessão em IndexedDB, e o IndexedDB é
+isolado por **origem** (esquema + host + porta). `localhost:5100` e
+`localhost:5200` são origens diferentes para o browser — logo, sessões
+diferentes. Três separadores da mesma janela, cada um com o seu
+utilizador, sem andar a saltar entre perfis do Chrome.
+
+```powershell
+.\scripts\testar-3-contas.ps1
+```
+
+Compila, serve nas portas 5100/5200/5300 e abre os três separadores.
+`-SkipBuild` salta a compilação quando o `build/web` já está atualizado.
+
+| Porta | Papel | Credenciais |
+|---|---|---|
+| 5100 | Gestor | `leo@nxtperformancestudio.pt` / `DevPass123!` |
+| 5200 | Instrutor | `ana@nxtperformancestudio.pt` / `InstructorPass123!` |
+| 5300 | Aluna | `000001` / `MemberPass123!` |
+
+Staff entra com email, alunos com o nº de sócio — no mesmo campo.
+
+Serve o build estático, por isso **não tem hot reload**: para ver
+alterações ao código é preciso voltar a compilar. Para desenvolver
+continua a usar-se `flutter run`.
+
+Precisa dos emuladores a correr e semeados.
+
 ## Próximo passo
 
-Fase 8 está fechada, as duas auditorias funcionais e a revisão geral de
-código acima também.
-`Technical/guia-desenvolvimento.md` já lista a Fase 9 — "Pagamentos
-(registo, não processamento)" — como próxima; a definir contigo quando
-quiseres avançar. Sugestões abertas de fases anteriores continuam por
-decidir: revisitar se o Instrutor deve poder criar/gerir as suas
-próprias séries (Fase 5); configurar a VAPID key/certificado APNs para
-as notificações push entregarem de facto (Fase 6); decidir um
-fornecedor de SMS/email para a recuperação de password self-service de
-membros (Fase 6); e, novo deste lote, decidir se a entidade `Room`/
-`Sala` deve existir (para o conflito de horário ser por sala, como o
-mockup descreve) e se o âmbito por modalidade do Instrutor (UC28) deve
-passar a ser uma restrição real em vez de informativa.
+Fechar o que resta do re-skin (avaliações do Aluno, formulários do
+Instrutor/Gestor) — é tudo apresentação a partir daqui, o picker de
+serviços agrupado era a única peça de negócio e está feita. Depois, a
+Fase 11 (lançamento): Security
+Rules revistas operação a operação (documento "06 — Security & Business
+Rules", ainda por escrever), paginação nas coleções que crescem, rate
+limiting em Cloud Functions sensíveis, testes de isolamento entre
+tenants corridos de novo antes de um cliente real, e monitorização de
+custos por tenant.
+
+**Por fazer antes de qualquer deploy** (arrasta-se desde a Fase 9 e não
+é opcional): `firebase deploy --only firestore:indexes` (índices novos
+de `bookings(memberId,status)` e `paymentRecords(year,month)`) e
+`firebase deploy --only firestore:rules` (regras apertadas de
+`staff`/`tenants`/`paymentRecords`). Em emulador funciona sem isto; em
+produção, as queries falham e as regras antigas continuam em vigor.
+
+Sugestões abertas de fases anteriores continuam por decidir: revisitar
+se o Instrutor deve poder criar/gerir as suas próprias séries (Fase
+5); configurar a VAPID key/certificado APNs para as notificações push
+entregarem de facto (Fase 6); decidir um fornecedor de SMS/email para
+a recuperação de password self-service de membros (Fase 6); decidir se
+a entidade `Room`/`Sala` deve existir (Fase 8); e se o âmbito por
+modalidade do Instrutor (UC28) deve passar a ser uma restrição real em
+vez de informativa.

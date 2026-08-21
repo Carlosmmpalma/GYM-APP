@@ -5,7 +5,9 @@ import '../../application/providers/admin_providers.dart';
 import '../../application/providers/modality_providers.dart';
 import '../../domain/entities/new_account_credentials.dart';
 import '../../domain/entities/role.dart';
+import '../widgets/design_system.dart';
 import '../widgets/personal_data_fields.dart';
+import '../widgets/unsaved_changes_guard.dart';
 
 enum _UserType { aluno, staff }
 
@@ -165,168 +167,190 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
     );
   }
 
+  /// Qualquer campo preenchido conta. Deliberadamente simples: o que
+  /// importa é distinguir "não escreveu nada" de "escreveu alguma
+  /// coisa", não detetar exatamente o que mudou.
+  bool _hasUnsavedInput() {
+    return [
+      _nameController,
+      _emailController,
+      _phoneController,
+      _addressController,
+      _nifController,
+      _emergencyContactController,
+    ].any((c) => c.text.trim().isNotEmpty);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Criar utilizador')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              SegmentedButton<_UserType>(
-                segments: const [
-                  ButtonSegment(value: _UserType.aluno, label: Text('Aluno')),
-                  ButtonSegment(value: _UserType.staff, label: Text('Staff')),
+    return UnsavedChangesGuard(
+      hasChanges: _hasUnsavedInput,
+      message: 'Escreveste dados que ainda não criaram nenhum utilizador. '
+          'Se saíres agora, perdes o que preencheste.',
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Criar utilizador')),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              children: [
+                SegmentedButton<_UserType>(
+                  segments: const [
+                    ButtonSegment(value: _UserType.aluno, label: Text('Aluno')),
+                    ButtonSegment(value: _UserType.staff, label: Text('Staff')),
+                  ],
+                  selected: {_type},
+                  onSelectionChanged: (selection) =>
+                      setState(() => _type = selection.first),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(labelText: 'Nome completo'),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
+                ),
+                const SizedBox(height: 16),
+                PersonalDataFields(
+                  phoneController: _phoneController,
+                  addressController: _addressController,
+                  nifController: _nifController,
+                  emergencyContactController: _emergencyContactController,
+                  birthDate: _birthDate,
+                  onBirthDateChanged: (date) =>
+                      setState(() => _birthDate = date),
+                ),
+                if (_type == _UserType.aluno) ...[
+                  const SizedBox(height: 16),
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                        'O nº de sócio é gerado automaticamente — não é preciso '
+                        'escrever nada aqui (UC22).',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _emailController,
+                    decoration:
+                        const InputDecoration(labelText: 'Email de contacto'),
+                    keyboardType: TextInputType.emailAddress,
+                  ),
                 ],
-                selected: {_type},
-                onSelectionChanged: (selection) =>
-                    setState(() => _type = selection.first),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Nome completo'),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
-              ),
-              const SizedBox(height: 16),
-              PersonalDataFields(
-                phoneController: _phoneController,
-                addressController: _addressController,
-                nifController: _nifController,
-                emergencyContactController: _emergencyContactController,
-                birthDate: _birthDate,
-                onBirthDateChanged: (date) => setState(() => _birthDate = date),
-              ),
-              if (_type == _UserType.aluno) ...[
+                if (_type == _UserType.staff) ...[
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(
+                        labelText: 'Email (usado para login)'),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Obrigatório';
+                      return v.contains('@') ? null : 'Email inválido';
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Papel'),
+                  CheckboxListTile(
+                    title: const Text('Instrutor'),
+                    value: _staffRoles.contains(Role.instructor),
+                    onChanged: (checked) => setState(() {
+                      if (checked ?? false) {
+                        _staffRoles.add(Role.instructor);
+                      } else {
+                        _staffRoles.remove(Role.instructor);
+                      }
+                    }),
+                  ),
+                  CheckboxListTile(
+                    title: const Text('Gestor'),
+                    value: _staffRoles.contains(Role.manager),
+                    onChanged: (checked) => setState(() {
+                      if (checked ?? false) {
+                        _staffRoles.add(Role.manager);
+                      } else {
+                        _staffRoles.remove(Role.manager);
+                      }
+                    }),
+                  ),
+                  if (_staffRoles.contains(Role.instructor)) ...[
+                    const SizedBox(height: 16),
+                    const Text('Modalidades'),
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final modalitiesAsync = ref.watch(modalitiesProvider);
+                        return modalitiesAsync.when(
+                          loading: () => const LinearProgressIndicator(),
+                          error: (error, stack) =>
+                              ErrorState(error: error, compact: true),
+                          data: (modalities) {
+                            final active =
+                                modalities.where((m) => m.active).toList();
+                            if (active.isEmpty) {
+                              return const Text(
+                                'Ainda não existe nenhuma modalidade ativa.',
+                                style: TextStyle(fontStyle: FontStyle.italic),
+                              );
+                            }
+                            return Column(
+                              children: active
+                                  .map(
+                                    (m) => CheckboxListTile(
+                                      title: Text(m.name),
+                                      value: _modalityIds.contains(m.id),
+                                      onChanged: (checked) => setState(() {
+                                        if (checked ?? false) {
+                                          _modalityIds.add(m.id);
+                                        } else {
+                                          _modalityIds.remove(m.id);
+                                        }
+                                      }),
+                                    ),
+                                  )
+                                  .toList(),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ],
                 const SizedBox(height: 16),
                 const Card(
                   child: Padding(
                     padding: EdgeInsets.all(12),
                     child: Text(
-                      'O nº de sócio é gerado automaticamente — não é preciso '
-                      'escrever nada aqui (UC22).',
+                      '🔑 Password inicial é temporária — o utilizador é '
+                      'obrigado a defini-la de novo no primeiro login.',
                       style: TextStyle(fontSize: 12),
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _emailController,
-                  decoration:
-                      const InputDecoration(labelText: 'Email de contacto'),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-              ],
-              if (_type == _UserType.staff) ...[
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(
-                      labelText: 'Email (usado para login)'),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Obrigatório';
-                    return v.contains('@') ? null : 'Email inválido';
-                  },
-                ),
-                const SizedBox(height: 16),
-                const Text('Papel'),
-                CheckboxListTile(
-                  title: const Text('Instrutor'),
-                  value: _staffRoles.contains(Role.instructor),
-                  onChanged: (checked) => setState(() {
-                    if (checked ?? false) {
-                      _staffRoles.add(Role.instructor);
-                    } else {
-                      _staffRoles.remove(Role.instructor);
-                    }
-                  }),
-                ),
-                CheckboxListTile(
-                  title: const Text('Gestor'),
-                  value: _staffRoles.contains(Role.manager),
-                  onChanged: (checked) => setState(() {
-                    if (checked ?? false) {
-                      _staffRoles.add(Role.manager);
-                    } else {
-                      _staffRoles.remove(Role.manager);
-                    }
-                  }),
-                ),
-                if (_staffRoles.contains(Role.instructor)) ...[
-                  const SizedBox(height: 16),
-                  const Text('Modalidades'),
-                  Consumer(
-                    builder: (context, ref, _) {
-                      final modalitiesAsync = ref.watch(modalitiesProvider);
-                      return modalitiesAsync.when(
-                        loading: () => const LinearProgressIndicator(),
-                        error: (error, stack) => Text('Erro: $error'),
-                        data: (modalities) {
-                          final active =
-                              modalities.where((m) => m.active).toList();
-                          if (active.isEmpty) {
-                            return const Text(
-                              'Ainda não existe nenhuma modalidade ativa.',
-                              style: TextStyle(fontStyle: FontStyle.italic),
-                            );
-                          }
-                          return Column(
-                            children: active
-                                .map(
-                                  (m) => CheckboxListTile(
-                                    title: Text(m.name),
-                                    value: _modalityIds.contains(m.id),
-                                    onChanged: (checked) => setState(() {
-                                      if (checked ?? false) {
-                                        _modalityIds.add(m.id);
-                                      } else {
-                                        _modalityIds.remove(m.id);
-                                      }
-                                    }),
-                                  ),
-                                )
-                                .toList(),
-                          );
-                        },
-                      );
-                    },
+                const SizedBox(height: 24),
+                if (_errorMessage != null) ...[
+                  Text(
+                    _errorMessage!,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
+                  const SizedBox(height: 12),
                 ],
-              ],
-              const SizedBox(height: 16),
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text(
-                    '🔑 Password inicial é temporária — o utilizador é '
-                    'obrigado a defini-la de novo no primeiro login.',
-                    style: TextStyle(fontSize: 12),
-                  ),
+                FilledButton(
+                  onPressed: _submitting ? null : _submit,
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Criar e gerar credenciais'),
                 ),
-              ),
-              const SizedBox(height: 24),
-              if (_errorMessage != null) ...[
-                Text(
-                  _errorMessage!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-                const SizedBox(height: 12),
               ],
-              FilledButton(
-                onPressed: _submitting ? null : _submit,
-                child: _submitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Criar e gerar credenciais'),
-              ),
-            ],
+            ),
           ),
         ),
       ),

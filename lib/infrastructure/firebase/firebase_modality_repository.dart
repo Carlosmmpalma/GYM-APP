@@ -9,8 +9,9 @@ Modality _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     id: doc.id,
     name: data['name'] as String? ?? '',
     active: data['active'] as bool? ?? false,
-    serviceIds:
-        ((data['serviceIds'] as List?) ?? const []).map((e) => e as String).toSet(),
+    serviceIds: ((data['serviceIds'] as List?) ?? const [])
+        .map((e) => e as String)
+        .toSet(),
   );
 }
 

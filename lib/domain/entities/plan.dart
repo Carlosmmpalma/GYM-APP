@@ -36,5 +36,6 @@ class Plan extends Equatable {
       );
 
   @override
-  List<Object?> get props => [id, name, description, currentPrice, currency, active];
+  List<Object?> get props =>
+      [id, name, description, currentPrice, currency, active];
 }

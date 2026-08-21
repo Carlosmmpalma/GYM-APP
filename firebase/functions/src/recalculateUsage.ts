@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
+import { enforceRateLimit } from './lib/rateLimit';
 import { isoWeekKeyToMonday, isoWeekRange } from './lib/isoWeek';
 
 const inputSchema = z.object({
@@ -31,6 +32,13 @@ const inputSchema = z.object({
  */
 export const recalculateUsage = onCall(async (request) => {
   const caller = requireManager(request);
+  // varre todas as marcações de um membro
+  await enforceRateLimit({
+    uid: caller.uid,
+    operation: 'recalculateUsage',
+    maxCalls: 10,
+    windowSeconds: 300,
+  });
 
   const parsed = inputSchema.safeParse(request.data);
   if (!parsed.success) {

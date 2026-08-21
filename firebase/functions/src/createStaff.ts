@@ -4,6 +4,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
+import { enforceRateLimit } from './lib/rateLimit';
 import { parseOptionalDate } from './lib/parseDate';
 import { generateTemporaryPassword } from './lib/tempPassword';
 
@@ -14,6 +15,10 @@ const inputSchema = z.object({
   // Fase 6 (UC12/22 fechado) — só faz sentido para quem tem role
   // instructor; opcional porque um Gestor puro nunca preenche isto.
   modalityIds: z.array(z.string().min(1)).optional(),
+  // Fase 11 — os serviços que o instrutor pode lecionar. Ao contrário
+  // das modalidades, que descrevem, isto AUTORIZA: as Security Rules
+  // só o deixam criar aulas destes serviços.
+  serviceIds: z.array(z.string().min(1)).optional(),
   // Pedido pelo Carlo depois de testar "Criar utilizador": staff
   // ganha os mesmos dados pessoais opcionais do Aluno (menos `email`,
   // que aqui já é obrigatório — é o login).
@@ -40,12 +45,19 @@ const inputSchema = z.object({
  */
 export const createStaff = onCall(async (request) => {
   const caller = requireManager(request);
+  // staff é criado às unidades, nunca em lote
+  await enforceRateLimit({
+    uid: caller.uid,
+    operation: 'createStaff',
+    maxCalls: 10,
+    windowSeconds: 300,
+  });
 
   const parsed = inputSchema.safeParse(request.data);
   if (!parsed.success) {
     throw new HttpsError('invalid-argument', parsed.error.message);
   }
-  const { name, email, roles, modalityIds, phone, birthDate, address, nif, emergencyContact } =
+  const { name, email, roles, modalityIds, serviceIds, phone, birthDate, address, nif, emergencyContact } =
     parsed.data;
 
   const firestore = getFirestore();
@@ -83,6 +95,7 @@ export const createStaff = onCall(async (request) => {
         email,
         roles,
         modalityIds: modalityIds ?? [],
+        serviceIds: serviceIds ?? [],
         status: 'active',
         passwordTemporaria: true,
         phone: phone ?? '',

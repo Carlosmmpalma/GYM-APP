@@ -14,6 +14,8 @@ import '../../domain/entities/service.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/staff_summary.dart';
 import '../../repositories/session_occurrence_repository.dart';
+import '../../core/theme/app_colors.dart';
+import '../widgets/design_system.dart';
 import '../widgets/occurrence_dialogs.dart';
 import 'manage_series_screen.dart';
 import 'send_notification_screen.dart';
@@ -45,7 +47,7 @@ class OccurrenceDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Sessão')),
       body: occurrenceAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Erro: $error')),
+        error: (error, stack) => ErrorState(error: error),
         data: (occurrence) {
           if (occurrence == null) {
             return const Center(child: Text('Esta sessão já não existe.'));
@@ -180,7 +182,8 @@ class OccurrenceDetailScreen extends ConsumerWidget {
               const SizedBox(height: 8),
               bookingsAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, stack) => Text('Erro: $error'),
+                error: (error, stack) =>
+                    ErrorState(error: error, compact: true),
                 data: (bookings) {
                   final active = bookings
                       .where((b) => b.status == BookingStatus.booked)
@@ -535,7 +538,7 @@ class _MemberTile extends ConsumerWidget {
               icon: Icon(
                 Icons.check_circle,
                 color: attendance?.status == AttendanceStatus.attended
-                    ? Colors.green
+                    ? AppColors.ok
                     : Theme.of(context).disabledColor,
               ),
               onPressed: () => _record(context, ref, AttendanceStatus.attended),

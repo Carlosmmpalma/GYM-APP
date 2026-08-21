@@ -9,6 +9,8 @@ import '../../domain/entities/attendance.dart';
 import '../../domain/entities/booking.dart';
 import '../../domain/entities/free_training_slot.dart';
 import '../../domain/entities/member_summary.dart';
+import '../../core/theme/app_colors.dart';
+import '../widgets/design_system.dart';
 
 final _dateFormat = DateFormat('EEE, d MMM · HH:mm', 'pt_PT');
 
@@ -67,7 +69,7 @@ class FreeTrainingSlotDetailScreen extends ConsumerWidget {
           const SizedBox(height: 8),
           bookingsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stack) => Text('Erro: $error'),
+            error: (error, stack) => ErrorState(error: error, compact: true),
             data: (bookings) {
               final active = bookings
                   .where((b) => b.status == BookingStatus.booked)
@@ -240,7 +242,7 @@ class _MemberTile extends ConsumerWidget {
                     icon: Icon(
                       Icons.check_circle,
                       color: attendance?.status == AttendanceStatus.attended
-                          ? Colors.green
+                          ? AppColors.ok
                           : Theme.of(context).disabledColor,
                     ),
                     onPressed: () =>

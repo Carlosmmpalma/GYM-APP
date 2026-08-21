@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireAuthenticated } from './lib/callerContext';
+import { enforceRateLimit } from './lib/rateLimit';
 import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
 
 const inputSchema = z.object({
@@ -26,6 +27,13 @@ const inputSchema = z.object({
  */
 export const bookFreeTrainingSlot = onCall(async (request) => {
   const caller = requireAuthenticated(request);
+  // mesmo raciocínio de createBooking
+  await enforceRateLimit({
+    uid: caller.uid,
+    operation: 'bookFreeTrainingSlot',
+    maxCalls: 30,
+    windowSeconds: 60,
+  });
 
   const parsed = inputSchema.safeParse(request.data);
   if (!parsed.success) {

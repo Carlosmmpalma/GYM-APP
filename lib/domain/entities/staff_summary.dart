@@ -14,6 +14,7 @@ class StaffSummary extends Equatable {
     required this.roles,
     required this.active,
     this.modalityIds = const {},
+    this.serviceIds = const {},
     this.phone = '',
     this.birthDate,
     this.address = '',
@@ -38,6 +39,18 @@ class StaffSummary extends Equatable {
   /// preenche isto.
   final Set<String> modalityIds;
 
+  /// Fase 11 — os serviços que este instrutor pode lecionar.
+  ///
+  /// As modalidades já existiam desde a Fase 6, mas eram informativas:
+  /// diziam "a Ana dá Pilates" e mais nada. Os serviços são o que
+  /// **autoriza**: um instrutor só cria aulas dos serviços que tem
+  /// associados, e as Security Rules verificam-no no servidor.
+  ///
+  /// Vazio = não pode criar aulas nenhumas. É o valor por omissão de
+  /// propósito: um instrutor recém-criado não deve poder pôr aulas no
+  /// horário do estúdio antes de alguém decidir quais.
+  final Set<String> serviceIds;
+
   /// Pedido pelo Carlo depois de testar "Criar utilizador": mesmos
   /// dados pessoais do Aluno (`MemberSummary`), para o staff deixar de
   /// ser um cidadão de segunda classe em termos de ficha pessoal.
@@ -55,6 +68,7 @@ class StaffSummary extends Equatable {
         roles,
         active,
         modalityIds,
+        serviceIds,
         phone,
         birthDate,
         address,

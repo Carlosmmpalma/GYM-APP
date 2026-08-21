@@ -354,3 +354,76 @@ describe('Security Rules — staff e documento do tenant (Fase 8, revisão geral
     );
   });
 });
+
+// Fase 9 (UC27 fechado) — mensalidades. Ao contrário de
+// assessments/loadHistory/planEntries (Instrutor lê), aqui é
+// Manager-only mesmo para leitura: o mockup coloca "pagamentos"
+// explicitamente na secção exclusiva do Gestor. O próprio membro
+// também lê (histórico das suas mensalidades) e `write` inclui
+// `update` — corrigir um mês já registado é esperado (Domain Model v1
+// §46: "append/update controlado"), ao contrário de `loadHistory`.
+describe('Security Rules — paymentRecords (Fase 9, UC27 fechado)', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context
+        .firestore()
+        .doc(`tenants/${TENANT_A}/members/member_a1/paymentRecords/2026-08`)
+        .set({
+          memberId: 'member_a1',
+          year: 2026,
+          month: 8,
+          status: 'overdue',
+          changedBy: 'manager_a',
+        });
+    });
+  });
+
+  it('o PRÓPRIO membro consegue LER o seu histórico', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/members/member_a1/paymentRecords/2026-08`).get(),
+    );
+  });
+
+  it('um membro NÃO consegue ler o histórico de OUTRO membro', async () => {
+    const db = contextFor('member_a2', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/members/member_a1/paymentRecords/2026-08`).get(),
+    );
+  });
+
+  it('um Instrutor NÃO consegue ler mensalidades — Manager-only, ao contrário de assessments', async () => {
+    const db = contextFor('instructor_a', TENANT_A, ['instructor']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/members/member_a1/paymentRecords/2026-08`).get(),
+    );
+  });
+
+  it('um Manager CONSEGUE ler e escrever mensalidades', async () => {
+    const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/members/member_a1/paymentRecords/2026-08`).get(),
+    );
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/members/member_a1/paymentRecords/2026-08`).update({
+        status: 'paidLate',
+      }),
+    );
+  });
+
+  it('um membro NÃO consegue marcar a própria mensalidade como paga', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/members/member_a1/paymentRecords/2026-08`).update({
+        status: 'paid',
+      }),
+    );
+  });
+
+  it('um Manager de OUTRO tenant NÃO consegue ler mensalidades do tenant A', async () => {
+    const db = contextFor('manager_b', TENANT_B, ['manager']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/members/member_a1/paymentRecords/2026-08`).get(),
+    );
+  });
+});

@@ -8,7 +8,12 @@ import '../../domain/entities/member_summary.dart';
 import '../../domain/entities/plan.dart';
 import '../../domain/entities/subscription.dart';
 import '../../repositories/usage_repository.dart';
+import '../../application/providers/privacy_providers.dart';
+import '../../core/theme/app_colors.dart';
+import '../widgets/design_system.dart';
+import '../widgets/status_pills.dart';
 import '../widgets/personal_data_fields.dart';
+import '../widgets/manager_account_actions.dart';
 import 'assign_subscription_screen.dart';
 
 /// Um serviço ao qual uma subscription dá acesso, já resolvido (id +
@@ -113,13 +118,14 @@ class MemberDetailScreen extends ConsumerWidget {
           const SizedBox(height: 8),
           plansAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stack) => Text('Erro: $error'),
+            error: (error, stack) => ErrorState(error: error, compact: true),
             data: (plans) => servicesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Text('Erro: $error'),
+              error: (error, stack) => ErrorState(error: error, compact: true),
               data: (services) => subscriptionsAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, stack) => Text('Erro: $error'),
+                error: (error, stack) =>
+                    ErrorState(error: error, compact: true),
                 data: (subscriptions) {
                   if (subscriptions.isEmpty) {
                     return const Text(
@@ -136,6 +142,8 @@ class MemberDetailScreen extends ConsumerWidget {
                     children: sorted
                         .map(
                           (subscription) => _SubscriptionTile(
+                            // Ver nota em `book_training_screen.dart`.
+                            key: ValueKey(subscription.id),
                             subscription: subscription,
                             plan: plansById[subscription.planId],
                             services: subscription.activeServiceIds
@@ -160,6 +168,13 @@ class MemberDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          ResetPasswordTile(
+            userId: member.uid,
+            displayName: member.name,
+          ),
+          const SizedBox(height: 24),
+          _DangerZone(member: member),
           // Espaço para o FAB não tapar o último cartão.
           const SizedBox(height: 80),
         ],
@@ -291,6 +306,7 @@ class _EditMemberProfileCardState
 
 class _SubscriptionTile extends ConsumerStatefulWidget {
   const _SubscriptionTile({
+    super.key,
     required this.subscription,
     required this.plan,
     required this.services,
@@ -399,31 +415,6 @@ class _SubscriptionTileState extends ConsumerState<_SubscriptionTile> {
     );
   }
 
-  Color _statusColor(BuildContext context) {
-    switch (widget.subscription.status) {
-      case SubscriptionStatus.active:
-        return Colors.green;
-      case SubscriptionStatus.paused:
-        return Colors.orange;
-      case SubscriptionStatus.cancelled:
-      case SubscriptionStatus.expired:
-        return Theme.of(context).colorScheme.outline;
-    }
-  }
-
-  String _statusLabel() {
-    switch (widget.subscription.status) {
-      case SubscriptionStatus.active:
-        return 'Ativo';
-      case SubscriptionStatus.paused:
-        return 'Em pausa';
-      case SubscriptionStatus.cancelled:
-        return 'Cancelado';
-      case SubscriptionStatus.expired:
-        return 'Expirado';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final subscription = widget.subscription;
@@ -445,13 +436,7 @@ class _SubscriptionTileState extends ConsumerState<_SubscriptionTile> {
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
-                Chip(
-                  label: Text(_statusLabel()),
-                  backgroundColor:
-                      _statusColor(context).withValues(alpha: 0.15),
-                  labelStyle: TextStyle(color: _statusColor(context)),
-                  visualDensity: VisualDensity.compact,
-                ),
+                SubscriptionStatusPill(subscription.status),
               ],
             ),
             const SizedBox(height: 4),
@@ -481,9 +466,268 @@ class _SubscriptionTileState extends ConsumerState<_SubscriptionTile> {
                 ),
               ),
             ],
+            const Divider(height: 20),
+            _SubscriptionStatusActions(subscription: subscription),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Fase 11 — mudar o estado de uma subscrição.
+///
+/// Lacuna encontrada a rever os poderes do Gestor: dava para atribuir
+/// um plano e nunca para lhe mexer. Além de um aluno que saía ficar com
+/// plano ativo para sempre, havia um beco sem saída: o ecrã de
+/// atribuição diz "para trocar de nível, cancela primeiro o plano
+/// atual" — e não existia forma nenhuma de o cancelar. Trocar alguém de
+/// Standard para Plus exigia um developer.
+class _SubscriptionStatusActions extends ConsumerStatefulWidget {
+  const _SubscriptionStatusActions({required this.subscription});
+
+  final Subscription subscription;
+
+  @override
+  ConsumerState<_SubscriptionStatusActions> createState() =>
+      _SubscriptionStatusActionsState();
+}
+
+class _SubscriptionStatusActionsState
+    extends ConsumerState<_SubscriptionStatusActions> {
+  bool _busy = false;
+
+  Future<void> _setStatus(SubscriptionStatus status) async {
+    if (status == SubscriptionStatus.cancelled) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Cancelar este plano'),
+          content: const Text(
+            'O membro deixa de poder marcar sessões dos serviços deste '
+            'plano.\n\n'
+            'As marcações que já tem NÃO são canceladas — tinha o direito '
+            'quando as fez. Para o tirar de uma sessão concreta, usa a '
+            'ficha dessa sessão.',
+            style: TextStyle(fontSize: 13, height: 1.45),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Voltar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Cancelar plano'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      await ref.read(subscriptionRepositoryProvider).updateSubscriptionStatus(
+            subscriptionId: widget.subscription.id,
+            status: status,
+          );
+      ref.invalidate(memberSubscriptionsProvider(widget.subscription.memberId));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível mudar o plano: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_busy) {
+      return const Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: EdgeInsets.all(8),
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    final status = widget.subscription.status;
+    return Wrap(
+      alignment: WrapAlignment.end,
+      spacing: 4,
+      children: [
+        if (status == SubscriptionStatus.active) ...[
+          TextButton.icon(
+            onPressed: () => _setStatus(SubscriptionStatus.paused),
+            icon: const Icon(Icons.pause_circle_outline, size: 16),
+            label: const Text('Pausar'),
+          ),
+          TextButton.icon(
+            onPressed: () => _setStatus(SubscriptionStatus.cancelled),
+            icon: const Icon(Icons.cancel_outlined, size: 16),
+            label: const Text('Cancelar'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.red),
+          ),
+        ] else if (status == SubscriptionStatus.paused) ...[
+          TextButton.icon(
+            onPressed: () => _setStatus(SubscriptionStatus.active),
+            icon: const Icon(Icons.play_circle_outline, size: 16),
+            label: const Text('Retomar'),
+          ),
+          TextButton.icon(
+            onPressed: () => _setStatus(SubscriptionStatus.cancelled),
+            icon: const Icon(Icons.cancel_outlined, size: 16),
+            label: const Text('Cancelar'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.red),
+          ),
+        ] else
+          // Cancelado/expirado: reativar em vez de obrigar a criar outro
+          // do zero, que perderia o preço acordado e a data de início.
+          TextButton.icon(
+            onPressed: () => _setStatus(SubscriptionStatus.active),
+            icon: const Icon(Icons.restart_alt, size: 16),
+            label: const Text('Reativar'),
+          ),
+      ],
+    );
+  }
+}
+
+/// Fase 11 (RGPD, artigo 17.º) — apagar os dados de um membro.
+///
+/// Fica no fim da ficha, atrás de um diálogo que exige escrever o
+/// número de sócio: é irreversível e não tem "desfazer". Ver
+/// `deleteMemberData.ts` sobre porque é o Gestor a fazê-lo (verificação
+/// de identidade, artigo 12.º, n.º 6) e porque os registos de pagamento
+/// são anonimizados em vez de apagados (retenção fiscal).
+class _DangerZone extends ConsumerStatefulWidget {
+  const _DangerZone({required this.member});
+
+  final MemberSummary member;
+
+  @override
+  ConsumerState<_DangerZone> createState() => _DangerZoneState();
+}
+
+class _DangerZoneState extends ConsumerState<_DangerZone> {
+  bool _deleting = false;
+
+  Future<void> _confirmAndDelete() async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Apagar dados deste membro'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Vais apagar definitivamente o perfil, avaliações, plano de '
+              'treino, marcações e a conta de acesso de '
+              '${widget.member.name}. Não há forma de recuperar.\n\n'
+              'Os registos de pagamento ficam guardados sem o nome '
+              'associado — a lei obriga o estúdio a manter a '
+              'contabilidade.\n\n'
+              'Escreve o número de sócio (${widget.member.memberNumber}) '
+              'para confirmar:',
+              style: const TextStyle(fontSize: 13, height: 1.45),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(labelText: 'Nº de sócio'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Apagar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deleting = true);
+    try {
+      final report = await ref.read(privacyRepositoryProvider).deleteMemberData(
+            memberId: widget.member.uid,
+            // A validação a sério é do lado do servidor — este texto é
+            // só o que o Gestor escreveu.
+            confirmMemberNumber: controller.text.trim(),
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${report.totalDeleted} registo(s) apagado(s). '
+            '${report.anonymizedPaymentRecords} registo(s) de pagamento '
+            'anonimizado(s) por retenção legal.',
+          ),
+        ),
+      );
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _deleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível apagar: $e')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionLabel('RGPD'),
+        const SizedBox(height: 8),
+        PanelCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Se este membro pedir o apagamento dos seus dados (RGPD, '
+                'artigo 17.º), confirma primeiro a identidade dele em '
+                'pessoa. Depois de apagar não há como recuperar.',
+                style: TextStyle(
+                  color: AppColors.mute,
+                  fontSize: 12,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _deleting ? null : _confirmAndDelete,
+                icon: const Icon(Icons.delete_forever_outlined, size: 18),
+                label: Text(
+                  _deleting ? 'A apagar...' : 'Apagar dados deste membro',
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.red,
+                  side: const BorderSide(color: AppColors.red),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

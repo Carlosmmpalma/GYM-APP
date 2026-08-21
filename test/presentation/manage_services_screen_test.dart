@@ -29,7 +29,7 @@ void main() {
     await tester.pumpWidget(buildApp(firestore));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
     await tester.enterText(

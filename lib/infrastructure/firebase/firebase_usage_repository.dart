@@ -41,7 +41,8 @@ class FirebaseUsageRepository implements UsageRepository {
     required String memberId,
     required String serviceId,
   }) async {
-    final result = await _functions.httpsCallable('recalculateUsage').call<Object?>({
+    final result =
+        await _functions.httpsCallable('recalculateUsage').call<Object?>({
       'memberId': memberId,
       'serviceId': serviceId,
     });

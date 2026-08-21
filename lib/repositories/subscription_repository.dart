@@ -15,6 +15,17 @@ abstract class SubscriptionRepository {
   /// Lança [SubscriptionServiceConflictException] se o membro já tiver
   /// outra subscription ativa que dá acesso a algum dos serviços deste
   /// Plan (Domain Model v1 §15).
+  /// Fase 11 — cancelar, pausar ou reativar. Sem isto, uma subscrição
+  /// ficava ativa para sempre e trocar um aluno de nível de plano era
+  /// impossível dentro da app (o `exclusiveGroup` recusa o segundo, e
+  /// não havia como terminar o primeiro).
+  ///
+  /// Não mexe nas marcações já feitas — ver `updateSubscriptionStatus.ts`.
+  Future<void> updateSubscriptionStatus({
+    required String subscriptionId,
+    required SubscriptionStatus status,
+  });
+
   Future<void> createSubscription({
     required String memberId,
     required String planId,

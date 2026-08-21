@@ -1,226 +1,262 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_colors.dart';
+import '../widgets/design_system.dart';
 import 'assign_subscription_screen.dart';
-import 'gestor_dashboard_screen.dart';
 import 'exercise_library_screen.dart';
 import 'instructor_calendar_screen.dart';
 import 'instructor_students_screen.dart';
 import 'manage_free_training_screen.dart';
-import 'manage_members_screen.dart';
 import 'manage_modalities_screen.dart';
+import 'manage_payments_screen.dart';
 import 'manage_plans_screen.dart';
 import 'manage_series_screen.dart';
 import 'manage_services_screen.dart';
-import 'manage_staff_screen.dart';
+import 'manage_users_screen.dart';
 import 'send_notification_screen.dart';
 import 'tenant_settings_screen.dart';
 
-/// Hub do Gestor (Fase 3 + extensão pedida a seguir) — ponto de
-/// entrada para os ecrãs de gestão: Serviços, Planos, Membros (ver
-/// planos/histórico de cada um) e Atribuir plano. Só é alcançável a
-/// partir de [HomeScreen] quando
-/// `AppUser.isManager` (ver `home_screen.dart`); este ecrã em si não
-/// repete essa verificação porque não tem forma de ser navegado sem
-/// passar por lá primeiro — a fonte de verdade real continua a ser as
-/// Security Rules do lado do servidor.
+/// Hub do Gestor. Até à Fase 10 era uma lista de 14 cards sem nenhuma
+/// ordem — "Serviços" antes de "Planos" (quando um Plano é feito DE
+/// serviços), "Membros" separado de "Alunos" e de "Staff" (as três são
+/// pessoas), "Atribuir plano" no fundo, longe de "Membros". Era a queixa
+/// concreta: difícil perceber o que fazer e por que ordem.
+///
+/// Agora está agrupado por PERGUNTA que o Gestor tem na cabeça, e dentro
+/// de cada grupo por ordem de dependência — o que é preciso existir
+/// primeiro aparece primeiro. "Oferta" segue Planos → Serviços →
+/// Modalidades porque é essa a ordem em que se pensa o negócio (que
+/// planos vendo? que serviços incluem? que modalidades os concretizam),
+/// mesmo que tecnicamente o Serviço tenha de existir antes de ser
+/// associado a um Plano — a UI não é um diagrama de dependências.
 class ManagerScreen extends StatelessWidget {
   const ManagerScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Gestão')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.dashboard_outlined),
-              title: const Text('Visão global'),
-              subtitle: const Text('Membros, séries e ocupação da semana'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const GestorDashboardScreen()),
-              ),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: const [
+        _Group(
+          label: 'Pessoas',
+          hint: 'Quem frequenta e quem trabalha no estúdio.',
+          items: [
+            // Uma entrada só, como no mockup: alunos e staff na mesma
+            // lista, com separadores. "Criar utilizador" deixou de estar
+            // atrás de dois FABs em ecrãs diferentes.
+            _Item(
+              icon: Icons.people_outline,
+              title: 'Utilizadores',
+              subtitle: 'Alunos, instrutores e gestores — criar e gerir contas',
+              screen: ManageUsersScreen(),
             ),
+            _Item(
+              icon: Icons.groups_outlined,
+              title: 'Alunos — treino',
+              subtitle: 'Avaliações físicas e plano de treino de cada aluno',
+              screen: InstructorStudentsScreen(),
+            ),
+          ],
+        ),
+        _Group(
+          label: 'Oferta',
+          hint: 'O que o estúdio vende e como está organizado.',
+          items: [
+            _Item(
+              icon: Icons.card_membership_outlined,
+              title: 'Planos',
+              subtitle: 'O que um membro contrata, e que serviços inclui',
+              screen: ManagePlansScreen(),
+            ),
+            _Item(
+              icon: Icons.fitness_center_outlined,
+              title: 'Serviços',
+              subtitle: 'Aula de grupo, PT, treino livre — a base dos planos',
+              screen: ManageServicesScreen(),
+            ),
+            _Item(
+              icon: Icons.category_outlined,
+              title: 'Modalidades',
+              subtitle: 'Hyrox, Pilates… e a que serviços se aplicam',
+              screen: ManageModalitiesScreen(),
+            ),
+          ],
+          trailing: _InlineAction(
+            icon: Icons.assignment_ind_outlined,
+            label: 'Atribuir um plano a um membro',
+            screen: AssignSubscriptionScreen(),
           ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.fitness_center_outlined),
-              title: const Text('Serviços'),
-              subtitle:
-                  const Text('Criar e ativar/desativar os serviços do ginásio'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ManageServicesScreen()),
-              ),
+        ),
+        _Group(
+          label: 'Agenda',
+          hint: 'Aulas, horários e ocupação da semana.',
+          items: [
+            _Item(
+              icon: Icons.event_repeat_outlined,
+              title: 'Aulas / Horários',
+              subtitle: 'Séries semanais e sessões "só esta data"',
+              screen: ManageSeriesScreen(),
             ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.category_outlined),
-              title: const Text('Modalidades'),
-              subtitle:
-                  const Text('Pilates, Hyrox... e a que serviços se aplicam'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const ManageModalitiesScreen()),
-              ),
+            _Item(
+              icon: Icons.self_improvement_outlined,
+              title: 'Treino livre',
+              subtitle: 'Configurar, aprovar e publicar a grelha semanal',
+              screen: ManageFreeTrainingScreen(),
             ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.card_membership_outlined),
-              title: const Text('Planos'),
-              subtitle: const Text(
-                  'Criar/editar planos, associar serviços já criados'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ManagePlansScreen()),
-              ),
+            _Item(
+              icon: Icons.calendar_month_outlined,
+              title: 'Calendário',
+              subtitle: 'Semana a semana, por dia, com quem está inscrito',
+              screen: InstructorCalendarScreen(),
             ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.people_outline),
-              title: const Text('Membros'),
-              subtitle:
-                  const Text('Ver os planos e o histórico de cada membro'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ManageMembersScreen()),
-              ),
+          ],
+        ),
+        _Group(
+          label: 'Dinheiro',
+          hint: 'Mensalidades — registo manual, sem gateway.',
+          items: [
+            _Item(
+              icon: Icons.payments_outlined,
+              title: 'Mensalidades',
+              subtitle: 'Marcar pago/em atraso e ver o histórico por membro',
+              screen: ManagePaymentsScreen(),
             ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.groups_outlined),
-              title: const Text('Alunos'),
-              subtitle: const Text('Avaliações e plano de treino (Fase 8)'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const InstructorStudentsScreen()),
-              ),
+          ],
+        ),
+        _Group(
+          label: 'Conteúdos e definições',
+          hint: null,
+          items: [
+            _Item(
+              icon: Icons.video_library_outlined,
+              title: 'Biblioteca de exercícios',
+              subtitle: 'Partilhada por todos os instrutores',
+              screen: ExerciseLibraryScreen(),
             ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.video_library_outlined),
-              title: const Text('Biblioteca de exercícios'),
-              subtitle:
-                  const Text('Partilhada por todos os instrutores (UC15)'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const ExerciseLibraryScreen()),
-              ),
+            _Item(
+              icon: Icons.notifications_outlined,
+              title: 'Notificar um membro',
+              subtitle: 'Enviar uma mensagem push a um aluno',
+              screen: SendNotificationScreen(),
             ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.badge_outlined),
-              title: const Text('Staff'),
-              subtitle:
-                  const Text('Instrutores e Gestores — criar, ver, desativar'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ManageStaffScreen()),
-              ),
+            _Item(
+              icon: Icons.settings_outlined,
+              title: 'Definições',
+              subtitle: 'Antecedência mínima para marcar e para cancelar',
+              screen: TenantSettingsScreen(),
             ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.event_repeat_outlined),
-              title: const Text('Aulas / Horários'),
-              subtitle:
-                  const Text('Séries recorrentes e sessões "só esta data"'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ManageSeriesScreen()),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.self_improvement_outlined),
-              title: const Text('Treino livre'),
-              subtitle:
-                  const Text('Configurar, aprovar e publicar a grelha semanal'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const ManageFreeTrainingScreen()),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.calendar_month_outlined),
-              title: const Text('Calendário'),
-              subtitle: const Text(
-                  'Semana a semana, por dia, todas as sessões (UC20)'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const InstructorCalendarScreen()),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.person_add_alt_outlined),
-              title: const Text('Atribuir plano a membro'),
-              subtitle: const Text('Criar uma subscription para um membro'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const AssignSubscriptionScreen()),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.notifications_outlined),
-              title: const Text('Notificar um membro'),
-              subtitle: const Text(
-                  'Enviar uma notificação push a um membro específico'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => const SendNotificationScreen()),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('Definições'),
-              subtitle:
-                  const Text('Antecedência mínima para cancelar (Fase 4)'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const TenantSettingsScreen()),
-              ),
-            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _Item {
+  const _Item({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.screen,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget screen;
+}
+
+/// Ação que pertence ao grupo mas não é um "sítio" — fica no fim, com
+/// aspeto diferente das entradas de navegação, para não parecer mais um
+/// ecrã da lista. "Atribuir um plano" é isto: é um VERBO, no meio de
+/// substantivos.
+class _InlineAction {
+  const _InlineAction({
+    required this.icon,
+    required this.label,
+    required this.screen,
+  });
+
+  final IconData icon;
+  final String label;
+  final Widget screen;
+}
+
+class _Group extends StatelessWidget {
+  const _Group({
+    required this.label,
+    required this.hint,
+    required this.items,
+    this.trailing,
+  });
+
+  final String label;
+  final String? hint;
+  final List<_Item> items;
+  final _InlineAction? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        SectionLabel(label),
+        if (hint != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            hint!,
+            style: const TextStyle(color: AppColors.dim, fontSize: 12),
           ),
         ],
-      ),
+        const SizedBox(height: 10),
+        for (final item in items) ...[
+          PanelCard(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => item.screen),
+            ),
+            child: Row(
+              children: [
+                IconBox(item.icon),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        style: const TextStyle(
+                          color: AppColors.bone,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.subtitle,
+                        style: const TextStyle(
+                          color: AppColors.mute,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: AppColors.dim),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (trailing != null)
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => trailing!.screen),
+            ),
+            icon: Icon(trailing!.icon, size: 18),
+            label: Text(trailing!.label),
+          ),
+      ],
     );
   }
 }

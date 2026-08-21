@@ -17,6 +17,7 @@ import 'tenant_context_providers.dart';
 final planRepositoryProvider = Provider<PlanRepository>((ref) {
   return FirebasePlanRepository(
     ref.watch(firestoreProvider),
+    ref.watch(functionsProvider),
     ref.watch(tenantAppConfigProvider).tenantId,
   );
 });
@@ -77,6 +78,43 @@ final memberSubscriptionsProvider = StreamProvider.autoDispose
       .watchMemberSubscriptions(memberId);
 });
 
+/// Fase 11 — os serviços a que o utilizador autenticado tem MESMO
+/// direito hoje.
+///
+/// Um aluno via o horário inteiro do ginásio e só descobria que não
+/// podia marcar Pilates ao tocar em "Marcar" e receber um erro. Isto é
+/// mau de duas formas: obriga a tentar para saber, e mostra como oferta
+/// aquilo que na verdade é uma venda por fazer.
+///
+/// Deriva das MESMAS subscrições que o servidor consulta
+/// (`isEligibleForService` faz `status == active` +
+/// `activeServiceIds arrayContains`) — de propósito. Se a UI filtrasse
+/// por outro critério, haveria sempre um caso em que mostra o que a
+/// Cloud Function recusa, ou esconde o que ela aceitaria.
+///
+/// Nota sobre o que isto NÃO é: não substitui a validação do servidor,
+/// que continua a ser a única que conta (`createBooking`/
+/// `bookFreeTrainingSlot` verificam elegibilidade, capacidade e limite
+/// semanal dentro de uma transação). Isto só evita mostrar portas
+/// fechadas.
+///
+/// Conjunto VAZIO e `null` querem dizer coisas diferentes: vazio é "não
+/// tem direito a nada" (mostra-se o estado próprio); `null`, enquanto
+/// carrega, evita esconder o horário todo por um instante.
+final myEligibleServiceIdsProvider =
+    StreamProvider.autoDispose<Set<String>>((ref) {
+  final appUser = ref.watch(currentAppUserProvider).valueOrNull;
+  if (appUser == null) return Stream.value(const <String>{});
+
+  return ref
+      .watch(subscriptionRepositoryProvider)
+      .watchMemberSubscriptions(appUser.uid)
+      .map((subscriptions) => {
+            for (final subscription in subscriptions)
+              if (subscription.isActive) ...subscription.activeServiceIds,
+          });
+});
+
 /// Fase 4 story 7 — a [UsageRule] aplicável a um membro+serviço, para
 /// `book_training_screen.dart` decidir se mostra a barra "X/Y sessões
 /// esta semana" (só quando `!rule.isUnlimited`). Só para DISPLAY — não
@@ -103,6 +141,47 @@ final applicableUsageRuleProvider = FutureProvider.autoDispose
     }
   }
   return null;
+});
+
+/// Fase 10 (UC26 atualizado) — a que grupo exclusivo pertence cada
+/// Plan ativo, para o picker agrupado de `AssignSubscriptionScreen`.
+///
+/// O mockup mostra a atribuição orientada a SERVIÇOS, com os níveis do
+/// mesmo produto em seleção única ("Nível de treino de sala: Sem
+/// acompanhamento / Standard / Plus / Premium") e os extras em seleção
+/// múltipla ("Aulas de grupo"). No nosso modelo o que se atribui é um
+/// Plan, e a exclusividade vive no Service (`Service.exclusiveGroup`,
+/// acrescentado na auditoria da Fase 8) — por isso o grupo de um Plan
+/// deriva dos serviços a que ele dá acesso.
+///
+/// Um Plan cujos serviços caiam em DOIS grupos exclusivos diferentes
+/// não pode ser uma opção única de nenhum deles (estaria em dois sítios
+/// ao mesmo tempo); esse caso conta como plano independente, e é
+/// deliberado — a alternativa seria escolher um dos grupos à sorte.
+/// Devolve `{planId: grupo ou null}`; `null` = plano independente.
+final planExclusiveGroupsProvider =
+    FutureProvider.autoDispose<Map<String, String?>>((ref) async {
+  final plans = await ref.watch(plansProvider.future);
+  final services = await ref.watch(servicesProvider.future);
+  // Lido ANTES do primeiro await do ciclo: `ref.watch` depois de um
+  // await async assinaria o provider fora do build e o Riverpod avisa.
+  final planRepository = ref.watch(planRepositoryProvider);
+
+  final groupOfService = {
+    for (final service in services) service.id: service.exclusiveGroup,
+  };
+
+  final result = <String, String?>{};
+  for (final plan in plans.where((p) => p.active)) {
+    final planServices = await planRepository.getPlanServices(plan.id);
+    final groups = planServices
+        .where((ps) => ps.enabled)
+        .map((ps) => groupOfService[ps.serviceId])
+        .whereType<String>()
+        .toSet();
+    result[plan.id] = groups.length == 1 ? groups.single : null;
+  }
+  return result;
 });
 
 /// Fase 5 (UC08-A fechado) — membros elegíveis para um serviço (têm uma

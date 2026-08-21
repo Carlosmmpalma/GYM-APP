@@ -6,6 +6,7 @@ import '../../domain/entities/plan.dart';
 import '../../domain/entities/plan_service.dart';
 import '../../domain/entities/service.dart';
 import '../../domain/entities/usage_rule.dart';
+import '../widgets/design_system.dart';
 
 /// UC26 — detalhe de um Plan: dados gerais + gestão dos Services
 /// incluídos (com a respetiva [UsageRule]). Cada Service do tenant
@@ -88,21 +89,24 @@ class PlanDetailScreen extends ConsumerWidget {
                 } catch (e) {
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Não foi possível atualizar o plano: $e')),
+                    SnackBar(
+                        content:
+                            Text('Não foi possível atualizar o plano: $e')),
                   );
                 }
               },
             ),
           ),
           const SizedBox(height: 24),
-          Text('Serviços incluídos', style: Theme.of(context).textTheme.titleMedium),
+          Text('Serviços incluídos',
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           activeServicesAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stack) => Text('Erro: $error'),
+            error: (error, stack) => ErrorState(error: error, compact: true),
             data: (services) => planServicesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Text('Erro: $error'),
+              error: (error, stack) => ErrorState(error: error, compact: true),
               data: (planServices) {
                 if (services.isEmpty) {
                   return const Text(
@@ -201,6 +205,8 @@ class _ServiceTile extends ConsumerWidget {
             );
       }
       ref.invalidate(planServicesProvider(planId));
+      if (!context.mounted) return;
+      await _syncSubscriptions(context, ref);
     } catch (e) {
       // Ver nota equivalente em manage_plans_screen.dart#_createPlan —
       // sem isto, uma falha na escrita (ex.: Rules) ficava invisível: o
@@ -208,6 +214,47 @@ class _ServiceTile extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Não foi possível atualizar o serviço: $e')),
+      );
+    }
+  }
+
+  /// Fase 11 (bug reportado) — propaga a alteração a quem JÁ tem este
+  /// plano.
+  ///
+  /// `activeServiceIds` de uma subscrição é uma cópia dos serviços do
+  /// plano, tirada quando ela foi criada, e nada a atualizava. Resultado:
+  /// acrescentar "Treino Livre" ao plano não fazia nada a quem já o
+  /// tinha — a app continuava a dizer-lhe "o teu plano não inclui treino
+  /// livre", e o servidor recusava a marcação pela mesma razão.
+  ///
+  /// Corre a seguir a cada alteração, sem o Gestor ter de saber que
+  /// existe: ele mudou o plano, e a expectativa dele é que isso valha
+  /// para os alunos que o têm.
+  Future<void> _syncSubscriptions(BuildContext context, WidgetRef ref) async {
+    try {
+      final updated =
+          await ref.read(planRepositoryProvider).syncSubscriptions(planId);
+      if (!context.mounted || updated == 0) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            updated == 1
+                ? '1 aluno com este plano foi atualizado.'
+                : '$updated alunos com este plano foram atualizados.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      // A alteração ao plano em si passou; o que falhou foi propagá-la.
+      // Dizer exatamente isso, porque a diferença importa.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Plano atualizado, mas não foi possível propagar aos alunos '
+            'que já o têm: $e',
+          ),
+        ),
       );
     }
   }
@@ -226,6 +273,8 @@ class _ServiceTile extends ConsumerWidget {
             usage: usage,
           );
       ref.invalidate(planServicesProvider(planId));
+      if (!context.mounted) return;
+      await _syncSubscriptions(context, ref);
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

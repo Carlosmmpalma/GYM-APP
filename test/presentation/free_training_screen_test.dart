@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gym_saas/application/providers/plan_providers.dart';
 import 'package:gym_saas/application/providers/free_training_providers.dart';
 import 'package:gym_saas/application/providers/tenant_context_providers.dart';
 import 'package:gym_saas/domain/entities/app_user.dart';
@@ -144,10 +145,19 @@ void main() {
     await initializeDateFormatting('pt_PT');
   });
 
-  Widget buildApp(_FakeFreeTrainingRepository repository) {
+  /// [eligible] — os serviços a que o plano deste aluno dá acesso.
+  /// `null` deixa o provider real responder (nestes testes fica em
+  /// loading, que é o caminho de "não filtrar enquanto não se sabe").
+  Widget buildApp(
+    _FakeFreeTrainingRepository repository, {
+    Set<String>? eligible,
+  }) {
     return ProviderScope(
       overrides: [
         freeTrainingRepositoryProvider.overrideWithValue(repository),
+        if (eligible != null)
+          myEligibleServiceIdsProvider
+              .overrideWith((ref) => Stream.value(eligible)),
         currentAppUserProvider.overrideWith(
           (ref) => Stream.value(
             const AppUser(
@@ -167,7 +177,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Ainda não há grelha publicada para esta semana.'),
+      find.text('Semana ainda não publicada'),
       findsOneWidget,
     );
   });
@@ -209,5 +219,62 @@ void main() {
 
     expect(repository.cancelCalled, isTrue);
     expect(find.text('Reservar'), findsOneWidget);
+  });
+
+  group('só o que o plano dá (Fase 11)', () {
+    FreeTrainingSlot slotOf(String serviceId) {
+      final now = DateTime.now();
+      return FreeTrainingSlot(
+        id: 'slot_$serviceId',
+        weekId: 'week_1',
+        serviceId: serviceId,
+        startAt: now.add(const Duration(hours: 1)),
+        endAt: now.add(const Duration(hours: 3)),
+        capacity: 10,
+        activeBookingCount: 0,
+      );
+    }
+
+    _FakeFreeTrainingRepository publishedWith(List<FreeTrainingSlot> slots) {
+      return _FakeFreeTrainingRepository(
+        schedule: FreeTrainingSchedule(
+          weekId: 'week_1',
+          weekStart: DateTime.now(),
+          status: FreeTrainingScheduleStatus.published,
+        ),
+        slots: slots,
+      );
+    }
+
+    testWidgets('blocos de um serviço sem direito não aparecem',
+        (tester) async {
+      final repository =
+          publishedWith([slotOf('service_1'), slotOf('service_pt')]);
+
+      await tester.pumpWidget(
+        buildApp(repository, eligible: const {'service_1'}),
+      );
+      await tester.pumpAndSettle();
+
+      // Um bloco visível (o do serviço a que tem direito), não dois.
+      expect(find.text('Reservar'), findsOneWidget);
+    });
+
+    testWidgets('sem direito a treino livre, explica porquê', (tester) async {
+      final repository = publishedWith([slotOf('service_pt')]);
+
+      await tester.pumpWidget(
+        buildApp(repository, eligible: const {'service_1'}),
+      );
+      await tester.pumpAndSettle();
+
+      // Distinto de "semana não publicada": a grelha existe, o plano é
+      // que não inclui isto.
+      expect(
+        find.text('O teu plano não inclui treino livre'),
+        findsOneWidget,
+      );
+      expect(find.text('Reservar'), findsNothing);
+    });
   });
 }

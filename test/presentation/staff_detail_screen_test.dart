@@ -80,6 +80,12 @@ class _FakeStaffRepository implements StaffRepository {
       emergencyContact: emergencyContact,
     );
   }
+
+  @override
+  Future<void> setStaffServices({
+    required String staffId,
+    required Set<String> serviceIds,
+  }) async {}
 }
 
 void main() {

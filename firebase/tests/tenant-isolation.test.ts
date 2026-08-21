@@ -69,6 +69,12 @@ beforeEach(async () => {
     await db.doc(`tenants/${TENANT_A}/members/member_a1`).set({
       name: 'Membro do Tenant A',
     });
+    // Fase 11 — um SEGUNDO membro do mesmo ginásio, para testar que um
+    // aluno não alcança os dados do outro.
+    await db.doc(`tenants/${TENANT_A}/members/member_a2`).set({
+      name: 'Outro membro do Tenant A',
+      nif: '123456789',
+    });
     await db.doc(`tenants/${TENANT_B}`).set({ name: 'Tenant B (fantasma)' });
     await db.doc(`tenants/${TENANT_B}/members/member_b1`).set({
       name: 'Membro do Tenant B',
@@ -82,7 +88,12 @@ function contextFor(uid: string, tenantId: string, roles: string[] = ['member'])
 
 describe('Isolamento entre tenants (Fase 1, 🔴 crítico)', () => {
   it('um membro consegue ler dados do PRÓPRIO tenant', async () => {
-    const db = contextFor('user_a', TENANT_A).firestore();
+    // Fase 11 — lia o documento de OUTRO membro (`user_a` a ler
+    // `member_a1`). Passava por a regra ser `belongsToTenant`, que era
+    // precisamente o problema: provava acesso ao tenant e escondia a
+    // falta de privacidade entre alunos. Agora lê o SEU, que é o que
+    // este teste sempre quis dizer.
+    const db = contextFor('member_a1', TENANT_A).firestore();
     await assertSucceeds(db.doc(`tenants/${TENANT_A}/members/member_a1`).get());
   });
 
@@ -121,5 +132,41 @@ describe('Isolamento entre tenants (Fase 1, 🔴 crítico)', () => {
   it('um claim tenantId inventado (sem corresponder a nenhum tenant real) continua sem acesso a tenants existentes', async () => {
     const db = contextFor('user_x', 'tenant_que_nao_existe').firestore();
     await assertFails(db.doc(`tenants/${TENANT_A}/members/member_a1`).get());
+  });
+});
+
+// Fase 11 — encontrado a redigir a política de privacidade: a regra de
+// `members` era `belongsToTenant(tenantId)`, ou seja qualquer aluno lia
+// o documento de qualquer outro membro do MESMO ginásio — com NIF,
+// morada, data de nascimento e contacto de emergência. O isolamento
+// entre ginásios estava certo; o isolamento ENTRE ALUNOS não existia.
+describe('Security Rules — privacidade entre alunos do mesmo ginásio', () => {
+  it('um membro lê o SEU próprio documento', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/members/member_a1`).get(),
+    );
+  });
+
+  it('um membro NÃO lê o documento de outro membro', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(db.doc(`tenants/${TENANT_A}/members/member_a2`).get());
+  });
+
+  it('um membro NÃO lista os membros do ginásio', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(db.collection(`tenants/${TENANT_A}/members`).get());
+  });
+
+  it('um Instrutor lista os membros — precisa deles para dar aulas',
+    async () => {
+      const db = contextFor('instructor_a', TENANT_A, ['instructor'])
+        .firestore();
+      await assertSucceeds(db.collection(`tenants/${TENANT_A}/members`).get());
+    });
+
+  it('um Gestor lista os membros', async () => {
+    const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertSucceeds(db.collection(`tenants/${TENANT_A}/members`).get());
   });
 });

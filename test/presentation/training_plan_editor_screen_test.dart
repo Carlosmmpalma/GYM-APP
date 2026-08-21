@@ -8,6 +8,7 @@ import 'package:gym_saas/domain/entities/exercise.dart';
 import 'package:gym_saas/domain/entities/member_summary.dart';
 import 'package:gym_saas/domain/entities/role.dart';
 import 'package:gym_saas/domain/entities/training_plan_entry.dart';
+import 'package:gym_saas/domain/entities/training_workout.dart';
 import 'package:gym_saas/presentation/screens/training_plan_editor_screen.dart';
 import 'package:gym_saas/repositories/training_plan_repository.dart';
 
@@ -39,9 +40,13 @@ class _FakeTrainingPlanRepository implements TrainingPlanRepository {
     required String memberId,
     required String exerciseId,
     required int sets,
-    required int reps,
+    required String reps,
     double? initialLoad,
     required String recordedBy,
+    String? workoutId,
+    int position = 0,
+    int? restSeconds,
+    String notes = '',
   }) =>
       throw UnimplementedError();
 
@@ -50,7 +55,9 @@ class _FakeTrainingPlanRepository implements TrainingPlanRepository {
     required String memberId,
     required String entryId,
     required int sets,
-    required int reps,
+    required String reps,
+    int? restSeconds,
+    String? notes,
   }) =>
       throw UnimplementedError();
 
@@ -71,6 +78,54 @@ class _FakeTrainingPlanRepository implements TrainingPlanRepository {
   Future<void> removeEntry(
           {required String memberId, required String entryId}) =>
       throw UnimplementedError();
+  @override
+  Stream<List<TrainingWorkout>> watchWorkouts(String memberId) =>
+      Stream.value(workouts);
+
+  List<TrainingWorkout> workouts = const [];
+
+  @override
+  Future<String> addWorkout({
+    required String memberId,
+    required String name,
+    String notes = '',
+    required int position,
+  }) async =>
+      'workout_1';
+
+  @override
+  Future<void> updateWorkout({
+    required String memberId,
+    required String workoutId,
+    String? name,
+    String? notes,
+    int? position,
+    bool? active,
+  }) async {}
+
+  @override
+  Future<void> removeWorkout({
+    required String memberId,
+    required String workoutId,
+  }) async {}
+
+  @override
+  Future<void> moveEntry({
+    required String memberId,
+    required String entryId,
+    required String? workoutId,
+    required int position,
+  }) async {}
+
+  @override
+  Future<void> reorderEntries({
+    required String memberId,
+    required List<String> orderedEntryIds,
+  }) async {
+    reorderedTo = orderedEntryIds;
+  }
+
+  List<String>? reorderedTo;
 }
 
 void main() {
@@ -91,7 +146,7 @@ void main() {
     memberId: _memberId,
     exerciseId: 'exercise_1',
     sets: 4,
-    reps: 8,
+    reps: '8',
     currentLoad: 60,
   );
 
@@ -125,7 +180,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Agachamento com barra'), findsOneWidget);
-    expect(find.text('4 séries × 8 reps — 60.0 kg'), findsOneWidget);
+    // Fase 11 — a linha ficou mais compacta para dar espaço ao descanso
+    // e à nota, que agora também cabem aqui.
+    expect(find.text('4 × 8 · 60.0 kg'), findsOneWidget);
   });
 
   testWidgets(
@@ -148,5 +205,105 @@ void main() {
     expect(repository.lastUpdateLoadCall?.entryId, 'entry_1');
     expect(repository.lastUpdateLoadCall?.load, 62.5);
     expect(repository.lastUpdateLoadCall?.recordedBy, _staffId);
+  });
+
+  group('treinos (Fase 11)', () {
+    testWidgets('plano vazio explica a estrutura, não pede um exercício',
+        (tester) async {
+      // Antes dizia "adiciona o primeiro exercício". Um plano começa por
+      // um treino — é assim que um instrutor prescreve.
+      final repository = _FakeTrainingPlanRepository(const []);
+      await tester.pumpWidget(buildApp(repository));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sem plano de treino'), findsOneWidget);
+      expect(find.text('Criar o primeiro treino'), findsOneWidget);
+    });
+
+    testWidgets('agrupa os exercícios pelo treino a que pertencem',
+        (tester) async {
+      const costas = TrainingPlanEntry(
+        id: 'e1',
+        memberId: _memberId,
+        exerciseId: 'exercise_1',
+        sets: 4,
+        reps: '8',
+        workoutId: 'w1',
+      );
+      const pernas = TrainingPlanEntry(
+        id: 'e2',
+        memberId: _memberId,
+        exerciseId: 'exercise_2',
+        sets: 3,
+        reps: '12',
+        workoutId: 'w2',
+      );
+
+      final repository = _FakeTrainingPlanRepository([costas, pernas])
+        ..workouts = const [
+          TrainingWorkout(
+            id: 'w1',
+            memberId: _memberId,
+            name: 'Treino A — Costas',
+            position: 0,
+          ),
+          TrainingWorkout(
+            id: 'w2',
+            memberId: _memberId,
+            name: 'Treino B — Pernas',
+            position: 1,
+          ),
+        ];
+
+      await tester.pumpWidget(buildApp(repository));
+      await tester.pumpAndSettle();
+
+      expect(find.text('TREINO A — COSTAS'), findsOneWidget);
+      expect(find.text('TREINO B — PERNAS'), findsOneWidget);
+      // Cada treino conta só os seus.
+      expect(find.text('1 exercício(s)'), findsNWidgets(2));
+    });
+
+    testWidgets('exercícios sem treino aparecem num grupo próprio',
+        (tester) async {
+      // O caso das entradas criadas antes de existirem treinos, e o das
+      // que ficam soltas ao apagar um. Não podem desaparecer.
+      const solto = TrainingPlanEntry(
+        id: 'e1',
+        memberId: _memberId,
+        exerciseId: 'exercise_1',
+        sets: 4,
+        reps: '8',
+      );
+      final repository = _FakeTrainingPlanRepository([solto]);
+
+      await tester.pumpWidget(buildApp(repository));
+      await tester.pumpAndSettle();
+
+      expect(find.text('SEM TREINO ATRIBUÍDO'), findsOneWidget);
+    });
+
+    testWidgets('a prescrição aceita texto, não só números', (tester) async {
+      // "45s" era impossível de representar: `reps` era um inteiro, e o
+      // próprio comentário do domínio dava a prancha como exemplo do
+      // que não cabia lá.
+      const prancha = TrainingPlanEntry(
+        id: 'e1',
+        memberId: _memberId,
+        exerciseId: 'exercise_1',
+        sets: 3,
+        reps: '45s',
+        workoutId: 'w1',
+      );
+      final repository = _FakeTrainingPlanRepository([prancha])
+        ..workouts = const [
+          TrainingWorkout(id: 'w1', memberId: _memberId, name: 'Treino A'),
+        ];
+
+      await tester.pumpWidget(buildApp(repository));
+      await tester.pumpAndSettle();
+
+      expect(find.text('3 × 45s'), findsOneWidget);
+    });
   });
 }

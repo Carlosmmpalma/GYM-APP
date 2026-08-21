@@ -21,16 +21,60 @@ class TrainingPlanEntry extends Equatable {
     required this.sets,
     required this.reps,
     this.currentLoad,
+    this.workoutId,
+    this.position = 0,
+    this.restSeconds,
+    this.notes = '',
   });
 
   final String id;
   final String memberId;
   final String exerciseId;
   final int sets;
-  final int reps;
+
+  /// A prescrição, em texto: "10", "8-12", "45s", "até à falha".
+  ///
+  /// Era um `int`, e isso não chegava para o que um instrutor
+  /// realmente escreve. O próprio comentário desta classe dava o
+  /// exemplo que o modelo não conseguia representar — "Prancha — 45s" —
+  /// e a app tinha de o guardar como um número de repetições que não
+  /// significava nada.
+  ///
+  /// O histórico de cargas continua com repetições em número
+  /// ([LoadHistoryEntry.reps]): aí é o que foi MESMO feito, e isso é
+  /// sempre contável.
+  final String reps;
+
   final double? currentLoad;
 
+  /// A que treino pertence ("Treino A — Costas"). `null` = exercício
+  /// solto, de antes de existirem treinos; a UI agrupa-os em "Sem
+  /// treino atribuído" para o instrutor os poder arrumar.
+  final String? workoutId;
+
+  /// Ordem dentro do treino. A sequência dos exercícios não é
+  /// decorativa: agachamento antes de extensão de pernas é uma decisão
+  /// de treino.
+  final int position;
+
+  /// Descanso entre séries. `null` = o instrutor não especificou.
+  final int? restSeconds;
+
+  /// Nota para este exercício em concreto: "cadência 3-1-1", "só até
+  /// meio arco", "se doer o ombro, para".
+  final String notes;
+
   @override
-  List<Object?> get props =>
-      [id, memberId, exerciseId, sets, reps, currentLoad];
+  List<Object?> get props => [
+        id,
+        memberId,
+        exerciseId,
+        sets,
+        reps,
+        currentLoad,
+        workoutId,
+        position,
+        restSeconds,
+        notes,
+      ];
 }

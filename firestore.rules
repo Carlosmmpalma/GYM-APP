@@ -41,10 +41,76 @@ service cloud.firestore {
       return belongsToTenant(tenantId) && 'instructor' in request.auth.token.roles;
     }
 
-    // Sonda de diagnóstico da Fase 0. Não faz parte do modelo de negócio.
-    match /_diagnostics/{docId} {
-      allow read, write: if true;
+    // Fase 11 — um instrutor pode criar/alterar ESTA aula?
+    //
+    // Duas condições, e as duas importam:
+    //
+    //  1. A aula tem de ser **dele** (`instructorId == uid`). Sem isto,
+    //     um instrutor punha aulas no horário em nome de um colega.
+    //  2. O serviço tem de estar na lista de serviços que o Gestor lhe
+    //     associou (`staff/{uid}.serviceIds`). Sem isto, quem dá
+    //     Pilates criava aulas de Hyrox.
+    //
+    // A lista vive no documento de staff, que só o Gestor escreve — é
+    // ele quem decide o que cada instrutor pode lecionar. Um instrutor
+    // sem serviços associados não cria aulas nenhumas, que é o valor
+    // por omissão de propósito.
+    //
+    // Custa um `get()` por escrita. Criar ou ajustar uma aula é raro
+    // (não é caminho quente), e a alternativa — confiar no cliente —
+    // não é alternativa nenhuma.
+    function instructorOwnsSession(tenantId, data) {
+      let staffPath = /databases/$(database)/documents/tenants/$(tenantId)/staff/$(request.auth.uid);
+      return isInstructor(tenantId)
+        && data.get('instructorId', '') == request.auth.uid
+        && exists(staffPath)
+        && data.get('serviceId', '') in get(staffPath).data.get('serviceIds', []);
     }
+
+    // Fase 11 (RGPD, artigo 9.º) — este membro autorizou explicitamente
+    // o tratamento de dados de saúde?
+    //
+    // Avaliações físicas e histórico de carga são dados de saúde:
+    // pressão arterial, percentagem de massa gorda, gordura visceral. O
+    // artigo 9.º proíbe tratá-los sem consentimento explícito, e o
+    // artigo 7.º, n.º 4 diz que o consentimento não é livre se for
+    // condição de um serviço que dele não depende — daí ser opcional e
+    // separado da aceitação da política de privacidade.
+    //
+    // A verificação vive AQUI e não só na UI de propósito: esconder o
+    // botão de "nova avaliação" não impede uma escrita direta, e é
+    // exatamente contra isso que uma autoridade de proteção de dados
+    // quereria garantias. Custa um `get()` por escrita — avaliações são
+    // raras (uma cada poucas semanas por aluno), não é caminho quente.
+    //
+    // `exists()` antes do `get()` pela mesma razão de
+    // `freeTrainingWeekPublished` — um `get()` a documento inexistente
+    // é um erro de avaliação, não um `false`. E `'consent' in` antes de
+    // aceder ao campo: sem isso, um membro criado antes de existir
+    // consentimento fazia a regra rebentar em vez de recusar
+    // (apanhado pela suite de testes, não à vista).
+    function hasHealthDataConsent(tenantId, memberId) {
+      let path = /databases/$(database)/documents/tenants/$(tenantId)/members/$(memberId);
+      return exists(path)
+        && 'consent' in get(path).data
+        && get(path).data.consent.get('healthDataGranted', false) == true;
+    }
+
+    // Fase 10 (bug reportado) — a semana de treino livre está publicada?
+    //
+    // `get()` a um documento que NÃO existe não devolve algo que se
+    // possa comparar com null: a expressão inteira falha com um ERRO de
+    // avaliação, e o cliente recebe `permission-denied` ("Null value
+    // error for 'get'") em vez de "não existe". Efeito prático: um Aluno
+    // que abrisse "Treino livre" numa semana ainda sem grelha via um
+    // erro de permissões no ecrã em vez do estado vazio. Daí o
+    // `exists()` primeiro — custa uma leitura extra quando o documento
+    // existe, e é a única forma de a regra dar `false` em vez de rebentar.
+    function freeTrainingWeekPublished(tenantId, weekId) {
+      return exists(/databases/$(database)/documents/tenants/$(tenantId)/freeTrainingSchedules/$(weekId))
+        && get(/databases/$(database)/documents/tenants/$(tenantId)/freeTrainingSchedules/$(weekId)).data.status == 'published';
+    }
+
 
     // --- Dados de configuração/identidade do tenant (Fase 1) ---
     // Leitura/escrita ampla para qualquer utilizador do próprio tenant.
@@ -72,8 +138,24 @@ service cloud.firestore {
     // Fase 6 (UC21): `fcmTokens` juntou-se à mesma lista — é o próprio
     // membro que regista o token do seu dispositivo (arrayUnion), nunca
     // o Gestor.
+    // Fase 11 — a leitura era `belongsToTenant(tenantId)`: QUALQUER
+    // aluno lia o documento de qualquer outro membro do ginásio, com
+    // nome, telefone, email, NIF, morada, data de nascimento e contacto
+    // de emergência. Encontrado a redigir a política de privacidade —
+    // a frase "nenhum outro aluno vê os teus dados" era falsa, e a
+    // forma de a tornar verdadeira era mudar o código, não o texto.
+    //
+    // Nenhum ecrã de Aluno precisa da lista de membros: os treze que a
+    // usam são todos de Gestor ou de Instrutor. O Aluno só lê o seu
+    // próprio documento (`memberProfileProvider`).
+    //
+    // Como nas subscrições: numa query de lista a regra é avaliada por
+    // documento devolvido, por isso ler o próprio passa e listar todos
+    // falha no primeiro alheio.
     match /tenants/{tenantId}/members/{memberId} {
-      allow read: if belongsToTenant(tenantId);
+      allow read: if isManager(tenantId)
+        || isInstructor(tenantId)
+        || (belongsToTenant(tenantId) && request.auth.uid == memberId);
       allow write: if isManager(tenantId);
       allow update: if belongsToTenant(tenantId)
         && request.auth.uid == memberId
@@ -86,10 +168,17 @@ service cloud.firestore {
       // criar). Escrita direta do cliente: sem invariante
       // cross-documento, mesmo padrão de `attendance`. O PRÓPRIO
       // membro só lê (nunca escreve — só o Instrutor/Gestor avalia).
+      // Fase 11 (RGPD) — `write` passou a exigir também o consentimento
+      // do próprio membro. Ler continua livre para Instrutor/Gestor: se
+      // o consentimento for retirado, o histórico já recolhido não
+      // desaparece por magia — apaga-se com "Eliminar dados" (artigo
+      // 17.º), que é uma ação explícita e auditável, não um efeito
+      // lateral de mexer num interruptor.
       match /assessments/{assessmentId} {
         allow read: if belongsToTenant(tenantId)
           && (request.auth.uid == memberId || isManager(tenantId) || isInstructor(tenantId));
-        allow write: if isManager(tenantId) || isInstructor(tenantId);
+        allow write: if (isManager(tenantId) || isInstructor(tenantId))
+          && hasHealthDataConsent(tenantId, memberId);
       }
 
       // --- Histórico de carga (Fase 8, UC16 fechado) ---
@@ -100,7 +189,8 @@ service cloud.firestore {
       match /loadHistory/{recordId} {
         allow read: if belongsToTenant(tenantId)
           && (request.auth.uid == memberId || isManager(tenantId) || isInstructor(tenantId));
-        allow create: if isManager(tenantId) || isInstructor(tenantId);
+        allow create: if (isManager(tenantId) || isInstructor(tenantId))
+          && hasHealthDataConsent(tenantId, memberId);
         allow update, delete: if false;
       }
 
@@ -111,10 +201,42 @@ service cloud.firestore {
       // `WriteBatch` — a Rule não valida essa coerência entre
       // coleções (exigiria `get()` ao histórico a cada escrita, sem
       // benefício real: só Instrutor/Gestor escrevem aqui na mesma).
+      // Fase 11 — os TREINOS do plano ("Treino A — Costas"). Mesmas
+      // permissões dos exercícios que contêm: o próprio membro lê o seu
+      // plano, Instrutor e Gestor prescrevem.
+      match /workouts/{workoutId} {
+        allow read: if belongsToTenant(tenantId)
+          && (request.auth.uid == memberId || isManager(tenantId) || isInstructor(tenantId));
+        allow write: if isManager(tenantId) || isInstructor(tenantId);
+      }
+
       match /planEntries/{entryId} {
         allow read: if belongsToTenant(tenantId)
           && (request.auth.uid == memberId || isManager(tenantId) || isInstructor(tenantId));
         allow write: if isManager(tenantId) || isInstructor(tenantId);
+      }
+
+      // --- Mensalidades (Fase 9, UC27 fechado) ---
+      // Manager-only, mesmo para leitura (ao contrário de
+      // assessments/loadHistory/planEntries, que o Instrutor também lê)
+      // — o mockup coloca "pagamentos" explicitamente na secção
+      // exclusiva do Gestor ("superset do Instrutor... mais gestão de
+      // utilizadores, serviços e pagamentos"), nunca na do Instrutor. O
+      // PRÓPRIO membro também lê (histórico das suas mensalidades).
+      // `write` inclui `update`: corrigir um mês já registado é
+      // esperado (Domain Model v1 §46: "append/update controlado"),
+      // diferente de `loadHistory`, que é imutável de propósito.
+      //
+      // A cópia denormalizada em `members/{memberId}.currentPaymentStatus/
+      // currentPaymentPeriod` (regra do match pai, `allow write: if
+      // isManager`) fica coerente com este registo através de um
+      // `WriteBatch` do lado do cliente (`FirebasePaymentRepository`),
+      // mesmo raciocínio de `planEntries`/`loadHistory` acima — a Rule
+      // não valida essa coerência entre documentos.
+      match /paymentRecords/{recordId} {
+        allow read: if belongsToTenant(tenantId)
+          && (request.auth.uid == memberId || isManager(tenantId));
+        allow write: if isManager(tenantId);
       }
     }
 
@@ -218,7 +340,8 @@ service cloud.firestore {
     // incremento do contador"), agora também para um Manager.
     match /tenants/{tenantId}/sessionOccurrences/{occurrenceId} {
       allow read: if belongsToTenant(tenantId);
-      allow create: if isManager(tenantId)
+      allow create: if (isManager(tenantId)
+          || instructorOwnsSession(tenantId, request.resource.data))
         && request.resource.data.activeBookingCount == 0;
       // Fase 6: `update` passou a exigir também que `status` não mude
       // — cancelar (UC18/UC10) precisa de cascatar para os bookings
@@ -226,7 +349,9 @@ service cloud.firestore {
       // Function `cancelOccurrenceForStudio` (Admin SDK) faz; sem esta
       // condição, um Manager podia "cancelar" com um update direto e
       // saltar a cascata por completo.
-      allow update: if isManager(tenantId)
+      allow update: if (isManager(tenantId)
+          || (instructorOwnsSession(tenantId, resource.data)
+              && instructorOwnsSession(tenantId, request.resource.data)))
         && request.resource.data.activeBookingCount == resource.data.activeBookingCount
         && request.resource.data.status == resource.data.status;
       allow delete: if false;
@@ -235,8 +360,23 @@ service cloud.firestore {
       // Manager — criar/atribuir passa sempre por createBooking/
       // assignMembersToOccurrence/generateRecurringOccurrences
       // (Admin SDK, ignora estas regras), nunca por escrita direta.
+      // Fase 11 — a leitura era `belongsToTenant(tenantId)`, ou seja
+      // qualquer aluno listava quem estava inscrito em cada aula. O
+      // treino livre já fazia isto bem desde a Fase 7 ("Aluno vê só
+      // contagem; Gestor e Instrutor veem nomes", UC09/UC17) e as aulas
+      // ficaram para trás — a contagem pública vive em
+      // `activeBookingCount`, no próprio documento da ocorrência, e é
+      // tudo o que um Aluno precisa de ver.
+      //
+      // O Aluno continua a alcançar as SUAS marcações: por este match
+      // quando as lê diretamente, e pelo match de collectionGroup mais
+      // abaixo quando o ecrã "Minhas marcações" as procura em todas as
+      // sessões de uma vez.
       match /bookings/{bookingId} {
-        allow read: if belongsToTenant(tenantId);
+        allow read: if isManager(tenantId)
+          || isInstructor(tenantId)
+          || (belongsToTenant(tenantId)
+              && resource.data.memberId == request.auth.uid);
         allow write: if false;
       }
 
@@ -261,9 +401,23 @@ service cloud.firestore {
     // `generateRecurringOccurrences`/`assignMembersToOccurrence`
     // (Admin SDK) — guardar a lista aqui não escreve bookings nenhuns
     // por si só.
+    // Fase 11 — o Instrutor passou a poder criar e gerir as SUAS
+    // séries. Antes era Manager-only, o que obrigava o Gestor a montar
+    // o horário de toda a gente — e num estúdio onde cada instrutor
+    // sabe as suas horas melhor do que ninguém, isso é um estrangulamento
+    // sem razão de ser.
+    //
+    // `update`/`delete` avaliam a série QUE JÁ LÁ ESTÁ (`resource`) e a
+    // que fica (`request.resource`): sem as duas, um instrutor pegava
+    // numa série de um colega e reatribuía-a a si próprio.
     match /tenants/{tenantId}/sessionSeries/{seriesId} {
       allow read: if belongsToTenant(tenantId);
-      allow write: if isManager(tenantId);
+      allow create: if isManager(tenantId)
+        || instructorOwnsSession(tenantId, request.resource.data);
+      allow update: if isManager(tenantId)
+        || (instructorOwnsSession(tenantId, resource.data)
+            && instructorOwnsSession(tenantId, request.resource.data));
+      allow delete: if isManager(tenantId);
     }
 
     // --- Usage tracking (Fase 4) ---
@@ -309,8 +463,26 @@ service cloud.firestore {
     // `firebase_subscription_repository.dart` sobre porque a validação
     // "um serviço não pode estar em duas subscriptions ativas do mesmo
     // membro" não dá para exprimir aqui).
+    // Fase 11 — a leitura era `belongsToTenant(tenantId)`, ou seja
+    // QUALQUER aluno do ginásio lia as subscrições de todos os outros,
+    // incluindo o `agreedPrice` — o preço que cada pessoa negociou.
+    // Encontrado ao ligar o filtro de elegibilidade em "Marcar treino",
+    // que passou a ler subscrições a partir do cliente do Aluno.
+    //
+    // Numa query de LISTA, a regra é avaliada por documento devolvido:
+    // uma query filtrada por `memberId == uid` devolve só os próprios e
+    // passa; uma sem esse filtro falha no primeiro documento alheio. É
+    // exatamente o efeito pretendido, sem precisar de inspecionar a
+    // query.
+    //
+    // Instrutor mantém leitura ampla: `watchEligibleMemberIds` (a
+    // pré-atribuição de membros a uma sessão, Fase 5) consulta
+    // subscrições por serviço, sem saber de quem são à partida.
     match /tenants/{tenantId}/subscriptions/{subscriptionId} {
-      allow read: if belongsToTenant(tenantId);
+      allow read: if isManager(tenantId)
+        || isInstructor(tenantId)
+        || (belongsToTenant(tenantId)
+            && resource.data.memberId == request.auth.uid);
       allow write: if false;
     }
 
@@ -368,7 +540,8 @@ service cloud.firestore {
     // `publishFreeTrainingSchedule` (Admin SDK, ignoram estas regras).
     match /tenants/{tenantId}/freeTrainingSchedules/{weekId} {
       allow read: if isManager(tenantId)
-        || (belongsToTenant(tenantId) && resource.data.status == 'published');
+        || (belongsToTenant(tenantId)
+            && (resource == null || resource.data.status == 'published'));
       allow write: if false;
 
       // Um bloco horário reservável. Mesma visibilidade da semana-mãe
@@ -392,13 +565,13 @@ service cloud.firestore {
       match /slots/{slotId} {
         allow read: if isManager(tenantId)
           || (belongsToTenant(tenantId)
-              && get(/databases/$(database)/documents/tenants/$(tenantId)/freeTrainingSchedules/$(weekId)).data.status == 'published');
+              && freeTrainingWeekPublished(tenantId, weekId));
         allow create: if isManager(tenantId) && request.resource.data.activeBookingCount == 0;
         allow update: if isManager(tenantId)
           && request.resource.data.activeBookingCount == resource.data.activeBookingCount;
         allow delete: if isManager(tenantId)
           && resource.data.activeBookingCount == 0
-          && get(/databases/$(database)/documents/tenants/$(tenantId)/freeTrainingSchedules/$(weekId)).data.status != 'published';
+          && !freeTrainingWeekPublished(tenantId, weekId);
 
         // UC09/UC17 fechado — "Aluno vê só contagem; Gestor e
         // Instrutor veem nomes". A contagem já vive em

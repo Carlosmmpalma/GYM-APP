@@ -34,7 +34,7 @@ import {
   initializeTestEnvironment,
   RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RULES_PATH = path.resolve(__dirname, '../../firestore.rules');
@@ -164,6 +164,40 @@ describe('Security Rules — freeTrainingSchedules (Fase 7, UC17-A)', () => {
       db.doc(`tenants/${TENANT_A}/freeTrainingSchedules/week_suggested`).get(),
     );
   });
+
+  // Fase 10 — bug reportado a testar a app como Aluno: o ecrã "Treino
+  // livre" mostrava `[cloud_firestore/permission-denied] Null value
+  // error for 'get'` em vez do estado vazio, sempre que a semana ainda
+  // não tinha grelha nenhuma. A causa era `resource.data.status` num
+  // documento inexistente — em Rules isso é um ERRO de avaliação, não um
+  // `false`, e o cliente recebe permission-denied. Um Aluno tem de poder
+  // ler um weekId que não existe (e receber "não existe"), senão não há
+  // forma de distinguir "sem grelha publicada" de "sem acesso".
+  it('um membro CONSEGUE ler uma semana que não existe (e recebe "não existe")',
+    async () => {
+      const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+      const snapshot = await assertSucceeds(
+        db.doc(`tenants/${TENANT_A}/freeTrainingSchedules/week_inexistente`).get(),
+      );
+      expect(snapshot.exists).toBe(false);
+    });
+
+  // Os SLOTS de uma semana não publicada continuam fechados — inclusive
+  // os de uma semana que não existe. É a regra do UC17-A ("nenhum aluno
+  // pode ver uma grelha em estado 'sugerido'") e a app respeita-a: só
+  // lista slots depois de confirmar, no documento da semana, que está
+  // publicada.
+  it('um membro NÃO consegue listar os slots de uma semana que não existe',
+    async () => {
+      const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+      await assertFails(
+        db
+          .collection(
+            `tenants/${TENANT_A}/freeTrainingSchedules/week_inexistente/slots`,
+          )
+          .get(),
+      );
+    });
 
   it('um membro CONSEGUE ler uma semana publicada', async () => {
     const db = contextFor('member_a1', TENANT_A, ['member']).firestore();

@@ -1,39 +1,89 @@
 import '../domain/entities/training_plan_entry.dart';
+import '../domain/entities/training_workout.dart';
 
-/// Fase 8 (UC13/UC15/UC16) — o plano de treino de UM membro (lista de
-/// prescrições, cada uma referenciando um [Exercise] da biblioteca
-/// partilhada). Escrita direta do cliente (Instrutor/Gestor).
+/// UC13/UC15/UC16 — o plano de treino de um membro.
+///
+/// Fase 11 — ganhou uma camada. O plano deixou de ser uma lista corrida
+/// de exercícios e passou a ter **treinos** ("Treino A — Costas",
+/// "Treino B — Pernas"), cada um com os seus exercícios ordenados. É
+/// como qualquer instrutor prescreve, e como as apps da área o fazem;
+/// sem isso, um aluno que treina três vezes por semana via os exercícios
+/// dos três dias misturados numa lista só.
 abstract class TrainingPlanRepository {
+  /// Todas as entradas do plano, ordenadas por [TrainingPlanEntry.position].
+  /// A separação por treino faz-se em memória a partir do `workoutId` —
+  /// são poucas dezenas de documentos e evita uma query por treino.
   Stream<List<TrainingPlanEntry>> watchPlan(String memberId);
 
-  /// UC13 — "Adicionar exercício ao plano": [initialLoad] fica também
-  /// como o primeiro registo de `LoadHistoryRepository` (mesma
-  /// invariante de [updateLoad] — nunca um valor sem histórico por
-  /// trás), `null` quando o exercício não tem carga (isométrico, ex.:
-  /// Prancha).
+  Stream<List<TrainingWorkout>> watchWorkouts(String memberId);
+
+  Future<String> addWorkout({
+    required String memberId,
+    required String name,
+    String notes,
+    required int position,
+  });
+
+  Future<void> updateWorkout({
+    required String memberId,
+    required String workoutId,
+    String? name,
+    String? notes,
+    int? position,
+    bool? active,
+  });
+
+  /// Apaga o treino e deixa os exercícios dele **sem treino atribuído**,
+  /// em vez de os apagar em cascata: a prescrição continua a ter valor,
+  /// e o histórico de cargas ficaria sem contexto.
+  Future<void> removeWorkout({
+    required String memberId,
+    required String workoutId,
+  });
+
   Future<String> addEntry({
     required String memberId,
     required String exerciseId,
     required int sets,
-    required int reps,
+    required String reps,
     double? initialLoad,
     required String recordedBy,
+    String? workoutId,
+    int position,
+    int? restSeconds,
+    String notes,
   });
 
   Future<void> updateSetsReps({
     required String memberId,
     required String entryId,
     required int sets,
-    required int reps,
+    required String reps,
+    int? restSeconds,
+    String? notes,
   });
 
-  /// UC16 (fechado) — "cada atualização de carga cria um novo
-  /// registo". Atualiza SEMPRE as duas coisas juntas, na mesma escrita
-  /// atómica (`WriteBatch`, sem invariante cross-documento a validar,
-  /// por isso não precisa de Cloud Function): `currentLoad` desta
-  /// entrada (o que o plano mostra) E um `LoadHistoryEntry` novo (o
-  /// histórico, nunca sobrescrito) — nunca uma sem a outra, para o
-  /// histórico e o plano nunca divergirem.
+  /// Mudar um exercício de treino, ou tirá-lo de um (`workoutId: null`).
+  Future<void> moveEntry({
+    required String memberId,
+    required String entryId,
+    required String? workoutId,
+    required int position,
+  });
+
+  /// Reordenar os exercícios dentro de um treino. A sequência não é
+  /// decorativa: agachamento antes de extensão de pernas é uma decisão
+  /// de treino.
+  Future<void> reorderEntries({
+    required String memberId,
+    required List<String> orderedEntryIds,
+  });
+
+  /// UC16 — regista uma carga nova. Escreve o `currentLoad` da entrada e
+  /// acrescenta um registo ao histórico, sempre juntos.
+  ///
+  /// [reps] é o que o aluno FEZ hoje, não a prescrição — e por isso não
+  /// toca no `reps` da entrada.
   Future<void> updateLoad({
     required String memberId,
     required String entryId,

@@ -5,8 +5,10 @@ import 'package:intl/intl.dart';
 import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
+import '../../core/theme/app_colors.dart';
 import '../../domain/entities/booking.dart';
 import '../../domain/entities/session_occurrence.dart';
+import '../widgets/design_system.dart';
 
 /// UC10 — "Minhas marcações". Mostra as marcações ativas do próprio
 /// membro e permite cancelar.
@@ -27,7 +29,7 @@ class MyBookingsScreen extends ConsumerWidget {
 
     return bookingsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => Center(child: Text('Erro: $error')),
+      error: (error, stack) => ErrorState(error: error),
       data: (bookings) {
         final active = bookings
             .where((b) => b.status == BookingStatus.booked)
@@ -35,14 +37,12 @@ class MyBookingsScreen extends ConsumerWidget {
           ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
         if (active.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'Ainda não tens nenhuma marcação.',
-                textAlign: TextAlign.center,
-              ),
-            ),
+          return const EmptyState(
+            icon: Icons.event_available_outlined,
+            title: 'Sem marcações',
+            message: 'Aqui ficam as sessões que já reservaste, com a opção '
+                'de cancelar. Usa o separador "Marcar" para reservares uma '
+                'aula, ou "Livre" para o treino livre.',
           );
         }
 
@@ -50,7 +50,12 @@ class MyBookingsScreen extends ConsumerWidget {
           padding: const EdgeInsets.all(16),
           itemCount: active.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) => _BookingTile(booking: active[index]),
+          itemBuilder: (context, index) => _BookingTile(
+            // Ver nota em `book_training_screen.dart`: itens de lista
+            // com estado precisam de key.
+            key: ValueKey(active[index].id),
+            booking: active[index],
+          ),
         );
       },
     );
@@ -58,7 +63,7 @@ class MyBookingsScreen extends ConsumerWidget {
 }
 
 class _BookingTile extends ConsumerStatefulWidget {
-  const _BookingTile({required this.booking});
+  const _BookingTile({super.key, required this.booking});
 
   final Booking booking;
 
@@ -218,20 +223,48 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
             ? 'Sessão já não disponível'
             : dateFormat.format(occurrence.startAt);
 
-    return Card(
-      child: ListTile(
-        title: Text(serviceName ?? 'Marcação'),
-        subtitle: Text(
-          '$subtitleText${_error != null ? '\n$_error' : ''}',
-        ),
-        isThreeLine: _error != null,
-        trailing: _isCancelling
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : TextButton(onPressed: _cancel, child: const Text('Cancelar')),
+    return PanelCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      serviceName ?? 'Marcação',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitleText,
+                      style:
+                          const TextStyle(color: AppColors.mute, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (_isCancelling)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                TextButton(onPressed: _cancel, child: const Text('Cancelar')),
+            ],
+          ),
+          // O erro do cancelamento era a segunda linha do subtítulo, no
+          // mesmo cinzento do resto — lia-se como informação normal.
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            AppBanner(text: _error!, tone: PillTone.danger),
+          ],
+        ],
       ),
     );
   }

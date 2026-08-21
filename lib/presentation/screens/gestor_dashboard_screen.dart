@@ -22,70 +22,69 @@ class GestorDashboardScreen extends ConsumerWidget {
     final seriesAsync = ref.watch(seriesProvider);
     final occurrencesAsync = ref.watch(upcomingWeekOccurrencesProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Visão global')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _StatCard(
-                  label: 'Membros ativos',
-                  value: membersAsync.when(
-                    loading: () => null,
-                    error: (_, __) => null,
-                    data: (members) =>
-                        members.where((m) => m.active).length.toString(),
-                  ),
+    // Fase 10 — sem `Scaffold`/`AppBar` próprios: passou a ser o corpo
+    // do primeiro separador do Gestor (`HomeScreen`), que já os fornece.
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                label: 'Membros ativos',
+                value: membersAsync.when(
+                  loading: () => null,
+                  error: (_, __) => null,
+                  data: (members) =>
+                      members.where((m) => m.active).length.toString(),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _StatCard(
-                  label: 'Séries ativas',
-                  value: seriesAsync.when(
-                    loading: () => null,
-                    error: (_, __) => null,
-                    data: (series) =>
-                        series.where((s) => s.isActive).length.toString(),
-                  ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _StatCard(
+                label: 'Séries ativas',
+                value: seriesAsync.when(
+                  loading: () => null,
+                  error: (_, __) => null,
+                  data: (series) =>
+                      series.where((s) => s.isActive).length.toString(),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _StatCard(
-                  label: 'Sessões (próx. 7 dias)',
-                  value: occurrencesAsync.when(
-                    loading: () => null,
-                    error: (_, __) => null,
-                    data: (occurrences) => occurrences
-                        .where((o) =>
-                            o.status == SessionOccurrenceStatus.scheduled)
-                        .length
-                        .toString(),
-                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                label: 'Sessões (próx. 7 dias)',
+                value: occurrencesAsync.when(
+                  loading: () => null,
+                  error: (_, __) => null,
+                  data: (occurrences) => occurrences
+                      .where(
+                          (o) => o.status == SessionOccurrenceStatus.scheduled)
+                      .length
+                      .toString(),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _StatCard(
-                  label: 'Ocupação média',
-                  value: occurrencesAsync.when(
-                    loading: () => null,
-                    error: (_, __) => null,
-                    data: _averageOccupancyLabel,
-                  ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _StatCard(
+                label: 'Ocupação média',
+                value: occurrencesAsync.when(
+                  loading: () => null,
+                  error: (_, __) => null,
+                  data: _averageOccupancyLabel,
                 ),
               ),
-            ],
-          ),
-        ],
-      ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

@@ -68,6 +68,12 @@ class _FakeSubscriptionRepository implements SubscriptionRepository {
   @override
   Stream<Set<String>> watchEligibleMemberIds(String serviceId) =>
       const Stream.empty();
+
+  @override
+  Future<void> updateSubscriptionStatus({
+    required String subscriptionId,
+    required SubscriptionStatus status,
+  }) async {}
 }
 
 void main() {

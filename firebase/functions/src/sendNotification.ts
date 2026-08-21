@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManagerOrInstructor } from './lib/callerContext';
+import { enforceRateLimit } from './lib/rateLimit';
 import { notifyMembers } from './lib/notifications';
 
 const inputSchema = z.object({
@@ -29,6 +30,14 @@ const inputSchema = z.object({
  */
 export const sendNotification = onCall(async (request) => {
   const caller = requireManagerOrInstructor(request);
+  // é a função com potencial de spam mais direto — chega ao
+  // telemóvel de toda a gente
+  await enforceRateLimit({
+    uid: caller.uid,
+    operation: 'sendNotification',
+    maxCalls: 20,
+    windowSeconds: 300,
+  });
 
   const parsed = inputSchema.safeParse(request.data);
   if (!parsed.success) {

@@ -138,7 +138,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Ainda não tens nenhuma marcação.'), findsOneWidget);
+    expect(find.text('Sem marcações'), findsOneWidget);
   });
 
   testWidgets('mostra uma marcação ativa e permite cancelar', (tester) async {
@@ -217,6 +217,6 @@ void main() {
     await tester.tap(find.text('Cancelar marcação'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Ainda não tens nenhuma marcação.'), findsOneWidget);
+    expect(find.text('Sem marcações'), findsOneWidget);
   });
 }

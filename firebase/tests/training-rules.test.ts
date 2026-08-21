@@ -55,7 +55,13 @@ beforeEach(async () => {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
     await db.doc(`tenants/${TENANT_A}`).set({ name: 'Tenant A (real)' });
+    // Fase 11 (RGPD) — escrever avaliações e cargas passou a exigir
+    // consentimento explícito do membro (artigo 9.º). Estes testes são
+    // sobre PERMISSÕES POR ROLE, por isso o membro semeado é um que
+    // autorizou; o caso de quem não autorizou está em `gdpr.test.ts`,
+    // que verifica que nem um Instrutor consegue escrever.
     await db.doc(`tenants/${TENANT_A}/members/member_a1`).set({
+      consent: { privacyPolicyVersion: 1, healthDataGranted: true },
       memberNumber: '000001',
       name: 'Rita Ferreira',
       status: 'active',

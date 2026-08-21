@@ -21,12 +21,13 @@ class FirebaseAttendanceRepository implements AttendanceRepository {
   final FirebaseFirestore _firestore;
   final String _tenantId;
 
-  CollectionReference<Map<String, dynamic>> _attendance(String occurrenceId) => _firestore
-      .collection('tenants')
-      .doc(_tenantId)
-      .collection('sessionOccurrences')
-      .doc(occurrenceId)
-      .collection('attendance');
+  CollectionReference<Map<String, dynamic>> _attendance(String occurrenceId) =>
+      _firestore
+          .collection('tenants')
+          .doc(_tenantId)
+          .collection('sessionOccurrences')
+          .doc(occurrenceId)
+          .collection('attendance');
 
   @override
   Stream<List<Attendance>> watchAttendanceForOccurrence(String occurrenceId) {
@@ -43,6 +44,12 @@ class FirebaseAttendanceRepository implements AttendanceRepository {
     required String recordedBy,
   }) async {
     await _attendance(occurrenceId).doc(memberId).set({
+      // Fase 11 (RGPD) — o `memberId` já é o id do documento, mas o
+      // apagamento de dados (`deleteMemberData`) tem de encontrar estes
+      // registos com um collection group query, e essas não conseguem
+      // filtrar por id de documento sem o caminho completo. Sem o campo,
+      // as presenças sobreviviam a um pedido de apagamento.
+      'memberId': memberId,
       'status': status == AttendanceStatus.attended ? 'attended' : 'no_show',
       'recordedBy': recordedBy,
       'recordedAt': FieldValue.serverTimestamp(),

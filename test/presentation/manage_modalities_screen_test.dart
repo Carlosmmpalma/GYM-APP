@@ -51,8 +51,7 @@ void main() {
     await tester.pumpWidget(buildApp(firestore));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Ainda não existe nenhuma modalidade'),
-        findsOneWidget);
+    expect(find.textContaining('Ainda não há modalidades'), findsOneWidget);
   });
 
   testWidgets('mostra a modalidade seedada com a contagem de serviços',
@@ -71,7 +70,7 @@ void main() {
     await tester.pumpWidget(buildApp(firestore));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField), 'Hyrox');

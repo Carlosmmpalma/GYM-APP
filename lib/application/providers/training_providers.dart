@@ -4,6 +4,7 @@ import '../../domain/entities/assessment.dart';
 import '../../domain/entities/exercise.dart';
 import '../../domain/entities/load_history_entry.dart';
 import '../../domain/entities/training_plan_entry.dart';
+import '../../domain/entities/training_workout.dart';
 import '../../infrastructure/firebase/firebase_assessment_repository.dart';
 import '../../infrastructure/firebase/firebase_exercise_repository.dart';
 import '../../infrastructure/firebase/firebase_load_history_repository.dart';
@@ -63,6 +64,12 @@ final trainingPlanRepositoryProvider = Provider<TrainingPlanRepository>((ref) {
     ref.watch(firestoreProvider),
     ref.watch(tenantAppConfigProvider).tenantId,
   );
+});
+
+/// Fase 11 — os treinos do plano de um membro ("Treino A — Costas").
+final memberWorkoutsProvider = StreamProvider.autoDispose
+    .family<List<TrainingWorkout>, String>((ref, memberId) {
+  return ref.watch(trainingPlanRepositoryProvider).watchWorkouts(memberId);
 });
 
 final trainingPlanProvider = StreamProvider.autoDispose

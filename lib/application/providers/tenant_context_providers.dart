@@ -72,15 +72,31 @@ final completeTemporaryPasswordChangeUseCaseProvider =
 /// Fase 4 — "antecedência mínima para cancelar", único valor por
 /// tenant. `autoDispose` porque só interessa enquanto
 /// `TenantSettingsScreen` estiver aberto.
-final minCancellationNoticeHoursProvider = FutureProvider.autoDispose<int>((ref) {
+final minCancellationNoticeHoursProvider =
+    FutureProvider.autoDispose<int>((ref) {
   final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
-  return ref.watch(tenantRepositoryProvider).getMinCancellationNoticeHours(tenantId);
+  return ref
+      .watch(tenantRepositoryProvider)
+      .getMinCancellationNoticeHours(tenantId);
 });
 
 /// Fase 8 (auditoria funcional) — "antecedência mínima para marcar",
 /// irmã de [minCancellationNoticeHoursProvider] mas para o lado
 /// oposto do booking (marcar, não cancelar).
+/// Fase 11 — o serviço que representa o treino livre neste estúdio.
+///
+/// `null` = ainda não foi escolhido nas Definições. Os ecrãs de treino
+/// livre tratam esse caso dizendo o que falta, em vez de pedirem um
+/// serviço a cada passo — que era o que faziam antes.
+final freeTrainingServiceIdProvider =
+    FutureProvider.autoDispose<String?>((ref) {
+  final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
+  return ref.watch(tenantRepositoryProvider).getFreeTrainingServiceId(tenantId);
+});
+
 final minBookingNoticeMinutesProvider = FutureProvider.autoDispose<int>((ref) {
   final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
-  return ref.watch(tenantRepositoryProvider).getMinBookingNoticeMinutes(tenantId);
+  return ref
+      .watch(tenantRepositoryProvider)
+      .getMinBookingNoticeMinutes(tenantId);
 });

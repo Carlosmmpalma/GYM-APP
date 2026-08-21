@@ -24,6 +24,16 @@ abstract class StaffRepository {
     required Set<String> modalityIds,
   });
 
+  /// Fase 11 — os serviços que este instrutor pode lecionar.
+  ///
+  /// Ao contrário das modalidades, que são descritivas, isto **autoriza**:
+  /// as Security Rules só deixam um instrutor criar aulas dos serviços
+  /// que constam aqui.
+  Future<void> setStaffServices({
+    required String staffId,
+    required Set<String> serviceIds,
+  });
+
   /// UC24 — desativa um instrutor E cancela em cadeia as suas séries/
   /// ocorrências futuras (Cloud Function `deactivateInstructor`,
   /// Admin SDK — precisa de percorrer séries + ocorrências + bookings

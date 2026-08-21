@@ -6,6 +6,19 @@ import '../domain/entities/role.dart';
 /// nenhum ecrã da app — só o seed script as chamava. Esta interface é
 /// a fronteira para o `CreateUserScreen` novo.
 abstract class UserProvisioningRepository {
+  /// Fase 11 — repõe a password de um membro ou staff e devolve a
+  /// temporária, para o Gestor a entregar em mão. A conta fica marcada
+  /// com `passwordTemporaria`, por isso a app força a troca no primeiro
+  /// login (UC22), e as sessões abertas noutros dispositivos caem.
+  Future<String> resetUserPassword(String userId);
+
+  /// Fase 11 — promover/despromover staff. Escreve nas custom claims
+  /// (a autoridade real) e no documento de staff.
+  Future<void> updateStaffRoles({
+    required String staffId,
+    required Set<Role> roles,
+  });
+
   /// UC22 — cria um Aluno. Nº de sócio gerado automaticamente do lado
   /// da Cloud Function (nunca escrito pelo Gestor). Os dados pessoais
   /// são todos opcionais — pedido pelo Carlo depois de testar este

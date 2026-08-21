@@ -24,6 +24,7 @@ final staffProvider = StreamProvider<List<StaffSummary>>((ref) {
   return ref.watch(staffRepositoryProvider).watchStaff();
 });
 
-final userProvisioningRepositoryProvider = Provider<UserProvisioningRepository>((ref) {
+final userProvisioningRepositoryProvider =
+    Provider<UserProvisioningRepository>((ref) {
   return FirebaseUserProvisioningRepository(ref.watch(functionsProvider));
 });

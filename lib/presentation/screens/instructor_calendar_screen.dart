@@ -16,6 +16,7 @@ import '../../domain/entities/modality.dart';
 import '../../domain/entities/service.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/staff_summary.dart';
+import '../widgets/design_system.dart';
 import 'free_training_slot_detail_screen.dart';
 import 'occurrence_detail_screen.dart';
 
@@ -119,30 +120,23 @@ class _InstructorCalendarScreenState
               ),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              children: [
-                for (final entry in _weekdayLabels.entries)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: ChoiceChip(
-                        label: Text(entry.value),
-                        selected: _selectedWeekday == entry.key,
-                        onSelected: (_) =>
-                            setState(() => _selectedWeekday = entry.key),
-                      ),
-                    ),
-                  ),
-              ],
+          // Fase 10 — `PillTabs` em vez de sete `ChoiceChip` esticados
+          // por `Expanded`: com "Seg".."Dom" a caber num ecrã de telefone
+          // à justa, os chips ficavam com o texto cortado. Os pills têm
+          // largura natural e a fila faz scroll horizontal.
+          PillTabs(
+            labels: _weekdayLabels.values.toList(),
+            selectedIndex:
+                _weekdayLabels.keys.toList().indexOf(_selectedWeekday),
+            onSelected: (i) => setState(
+              () => _selectedWeekday = _weekdayLabels.keys.elementAt(i),
             ),
           ),
           const SizedBox(height: 8),
           Expanded(
             child: occurrencesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(child: Text('Erro: $error')),
+              error: (error, stack) => ErrorState(error: error),
               data: (occurrences) {
                 final servicesById = <String, Service>{
                   for (final s
@@ -178,14 +172,11 @@ class _InstructorCalendarScreenState
                     : const <FreeTrainingSlot>[];
 
                 if (dayOccurrences.isEmpty && daySlots.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'Sem sessões neste dia.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
+                  return const EmptyState(
+                    icon: Icons.event_busy_outlined,
+                    title: 'Dia livre',
+                    message: 'Não há aulas nem blocos de treino livre neste '
+                        'dia. Usa as setas em cima para mudar de semana.',
                   );
                 }
 

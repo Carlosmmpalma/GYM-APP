@@ -6,6 +6,7 @@ import '../../application/providers/admin_providers.dart';
 import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/session_series.dart';
+import '../widgets/design_system.dart';
 import 'create_series_screen.dart';
 import 'occurrence_detail_screen.dart';
 import 'series_detail_screen.dart';
@@ -50,7 +51,7 @@ class ManageSeriesScreen extends ConsumerWidget {
       ),
       body: seriesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Erro: $error')),
+        error: (error, stack) => ErrorState(error: error),
         data: (seriesList) {
           final servicesById = {
             for (final s in servicesAsync.valueOrNull ?? const []) s.id: s,
@@ -68,14 +69,20 @@ class ManageSeriesScreen extends ConsumerWidget {
               .toList();
 
           if (seriesList.isEmpty && adHocOccurrences.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Ainda não existe nenhuma série nem sessão. Usa o botão '
-                  '"+" para criar a primeira aula/PT.',
-                  textAlign: TextAlign.center,
-                ),
+            return EmptyState(
+              icon: Icons.event_note_outlined,
+              title: 'Horário vazio',
+              message: 'Aqui defines as aulas: uma série repete-se todas '
+                  'as semanas no mesmo dia e hora, uma sessão avulsa '
+                  'acontece só numa data. É isto que os alunos veem em '
+                  '"Marcar treino".',
+              prerequisite: servicesById.isEmpty
+                  ? 'Cria primeiro os serviços (Gestão › Serviços): cada '
+                      'aula tem de ser de um serviço.'
+                  : null,
+              actionLabel: 'Criar a primeira aula',
+              onAction: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CreateSeriesScreen()),
               ),
             );
           }
@@ -89,8 +96,8 @@ class ManageSeriesScreen extends ConsumerWidget {
                 for (final series in seriesList) ...[
                   _SeriesTile(
                     series: series,
-                    serviceName:
-                        servicesById[series.serviceId]?.name ?? series.serviceId,
+                    serviceName: servicesById[series.serviceId]?.name ??
+                        series.serviceId,
                     instructorName: series.instructorId == null
                         ? null
                         : staffByUid[series.instructorId]?.name,
@@ -100,13 +107,15 @@ class ManageSeriesScreen extends ConsumerWidget {
               ],
               if (adHocOccurrences.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                Text('Sessões avulsas', style: Theme.of(context).textTheme.titleMedium),
+                Text('Sessões avulsas',
+                    style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 for (final occurrence in adHocOccurrences) ...[
                   Card(
                     child: ListTile(
                       title: Text(
-                        servicesById[occurrence.serviceId]?.name ?? occurrence.serviceId,
+                        servicesById[occurrence.serviceId]?.name ??
+                            occurrence.serviceId,
                       ),
                       subtitle: Text(
                         '${seriesDateFormat.format(occurrence.startAt)} · '
@@ -115,8 +124,8 @@ class ManageSeriesScreen extends ConsumerWidget {
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) =>
-                              OccurrenceDetailScreen(occurrenceId: occurrence.id),
+                          builder: (_) => OccurrenceDetailScreen(
+                              occurrenceId: occurrence.id),
                         ),
                       ),
                     ),

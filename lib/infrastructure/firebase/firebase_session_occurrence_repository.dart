@@ -149,9 +149,23 @@ class FirebaseSessionOccurrenceRepository
 
   @override
   Stream<List<SessionOccurrence>> watchOccurrencesForSeries(String seriesId) {
+    // Fase 10 — só de hoje para a frente. Uma série semanal gera 52
+    // ocorrências por ano e este ecrã lista-as por ordem crescente: ao
+    // fim de um ano, o Gestor abria a ficha da série e via primeiro
+    // dezenas de aulas passadas, sobre as quais não há nada a fazer,
+    // com as próximas (as únicas acionáveis) no fundo da lista. O
+    // histórico de uma aula concreta continua no seu próprio detalhe.
+    //
+    // Início do dia, não `now`: uma aula que já começou hoje ainda é
+    // relevante (marcar presenças).
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
     return _occurrences
         .where('seriesId', isEqualTo: seriesId)
+        .where('startAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfToday))
         .orderBy('startAt')
+        .limit(_upcomingLimit)
         .snapshots()
         .map((snapshot) => snapshot.docs.map(_fromDoc).toList());
   }

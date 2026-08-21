@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/plan_providers.dart';
+import '../widgets/design_system.dart';
 import 'plan_detail_screen.dart';
 
 /// UC26 — Ecrã Gestor: criar/editar Plans e Services (Fase 3).
@@ -18,6 +19,8 @@ class ManagePlansScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final plansAsync = ref.watch(plansProvider);
+    final hasServices =
+        (ref.watch(servicesProvider).valueOrNull ?? const []).isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Planos')),
@@ -28,18 +31,24 @@ class ManagePlansScreen extends ConsumerWidget {
       ),
       body: plansAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Erro: $error')),
+        error: (error, stack) => ErrorState(error: error),
         data: (plans) {
           if (plans.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Ainda não existe nenhum plano. Usa o botão "+" para criar '
-                  'o primeiro.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+            return EmptyState(
+              icon: Icons.card_membership_outlined,
+              title: 'Ainda não há planos',
+              message: 'Um plano é o que o aluno subscreve. Define o preço '
+                  'e a que serviços dá acesso, com quantas sessões por '
+                  'semana em cada um.',
+              // Criar um plano antes de existirem serviços dá um plano
+              // que não dá acesso a nada — dizemo-lo aqui em vez de
+              // deixar descobrir mais tarde no ecrã de detalhe.
+              prerequisite: hasServices
+                  ? null
+                  : 'Cria primeiro os serviços (Gestão › Serviços): um '
+                      'plano sem serviços não dá acesso a nada.',
+              actionLabel: 'Criar o primeiro plano',
+              onAction: () => _createPlan(context, ref),
             );
           }
           return ListView.separated(
@@ -170,7 +179,8 @@ class _CreatePlanDialogState extends State<_CreatePlanDialog> {
             TextFormField(
               controller: _priceController,
               decoration: const InputDecoration(labelText: 'Preço atual'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               validator: (v) {
                 if (v == null || v.trim().isEmpty) return 'Obrigatório';
                 return double.tryParse(v.replaceAll(',', '.')) == null

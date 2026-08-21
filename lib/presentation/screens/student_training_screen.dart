@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/training_providers.dart';
 import '../../domain/entities/member_summary.dart';
-import 'assessment_form_screen.dart';
 import 'assessment_list_screen.dart';
 import 'training_plan_editor_screen.dart';
 
@@ -52,16 +51,6 @@ class StudentTrainingScreen extends ConsumerWidget {
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => AssessmentFormScreen(member: member),
-              ),
-            ),
-            icon: const Icon(Icons.add),
-            label: const Text('Nova avaliação'),
           ),
         ],
       ),

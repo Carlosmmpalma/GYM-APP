@@ -127,4 +127,17 @@ class FirebaseSubscriptionRepository implements SubscriptionRepository {
               .toSet(),
         );
   }
+
+  @override
+  Future<void> updateSubscriptionStatus({
+    required String subscriptionId,
+    required SubscriptionStatus status,
+  }) async {
+    // Cloud Function e não escrita direta: `firestore.rules` bloqueia
+    // toda a escrita em `subscriptions` desde a Fase 3.
+    await _functions.httpsCallable('updateSubscriptionStatus').call<void>({
+      'subscriptionId': subscriptionId,
+      'status': status.name,
+    });
+  }
 }

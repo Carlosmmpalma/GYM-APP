@@ -29,6 +29,23 @@ abstract class TenantRepository {
   /// existir.
   Future<int> getMinBookingNoticeMinutes(String tenantId);
 
+  /// Fase 11 — qual dos serviços do estúdio É o treino livre.
+  ///
+  /// O treino livre precisa de um serviço como qualquer outra marcação:
+  /// é o que liga o bloco ao plano do aluno e ao limite semanal. Mas é
+  /// SEMPRE o mesmo serviço — e a app perguntava-o duas vezes, ao criar
+  /// a grelha da semana e outra vez em cada bloco.
+  ///
+  /// Passou a ser uma escolha única, nas Definições. `null` = ainda não
+  /// foi escolhido, e nesse caso o ecrã de treino livre diz o que
+  /// falta em vez de pedir um serviço a cada passo.
+  Future<String?> getFreeTrainingServiceId(String tenantId);
+
+  Future<void> setFreeTrainingServiceId({
+    required String tenantId,
+    required String? serviceId,
+  });
+
   Future<void> setMinBookingNoticeMinutes({
     required String tenantId,
     required int minutes,

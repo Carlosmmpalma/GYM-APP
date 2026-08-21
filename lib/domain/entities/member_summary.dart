@@ -1,5 +1,8 @@
 import 'package:equatable/equatable.dart';
 
+import 'consent.dart';
+import 'payment_record.dart';
+
 /// Perfil mínimo de um membro, para listas/pickers de gestão (Fase 3 —
 /// ecrã "atribuir plano a um membro"). Não é o [AppUser] (que
 /// representa a identidade autenticada + custom claims) — este é o
@@ -20,12 +23,32 @@ class MemberSummary extends Equatable {
     this.address = '',
     this.nif = '',
     this.emergencyContact = '',
+    this.currentPaymentStatus,
+    this.currentPaymentPeriod,
+    this.consent = const MemberConsent(),
   });
 
   final String uid;
   final String memberNumber;
   final String name;
   final bool active;
+
+  /// Fase 9 (UC27 fechado) — cópia denormalizada do `PaymentRecord` do
+  /// MÊS que `currentPaymentPeriod` identifica (`PaymentRepository`
+  /// escreve os dois no mesmo `WriteBatch`, mesmo padrão já usado para
+  /// `TrainingPlanEntry.currentLoad`/`loadHistory` na Fase 8). Existe
+  /// para duas leituras que precisam de ser baratas e não podem esperar
+  /// por uma query à subcoleção `paymentRecords`: a lista "Mensalidades
+  /// — mês atual" (um pill por membro, sem N+1 queries) e o bloqueio de
+  /// login (UC01) — esse último em particular corre em TODA sessão
+  /// aberta por um Aluno, não pode custar uma query extra.
+  ///
+  /// `currentPaymentPeriod` é indispensável a par do estado: sem saber
+  /// A QUE MÊS o estado se refere, um registo de Julho ainda `overdue`
+  /// continuaria a bloquear o login em Setembro só porque ninguém
+  /// tocou no registo desde então. [isOverdueFor] faz essa comparação.
+  final PaymentStatus? currentPaymentStatus;
+  final String? currentPaymentPeriod;
 
   /// UC02 — contacto real do membro, editável por ele próprio
   /// (`MyProfileScreen`) ou pelo Gestor (`MemberDetailScreen`).
@@ -48,6 +71,30 @@ class MemberSummary extends Equatable {
   /// como nome+telefone separados para um único campo de apoio.
   final String emergencyContact;
 
+  /// RGPD (Fase 11). Vazio nas contas criadas antes de isto existir —
+  /// essas são levadas ao ecrã de consentimento no primeiro arranque
+  /// seguinte, não tratadas como tendo recusado.
+  final MemberConsent consent;
+
+  /// UC01 (fechado) — "só uma marcação EXPLÍCITA de atraso bloqueia".
+  /// Ausência de registo para o mês [now] (Gestor ainda não marcou
+  /// nada, ou o registo é de um mês anterior — `currentPaymentPeriod`
+  /// não bate com o mês de [now]) nunca bloqueia; só
+  /// `PaymentStatus.overdue` no período CERTO bloqueia. `paidLate`
+  /// nunca bloqueia — a mensalidade acabou por ser paga.
+  /// `null` quando não há registo para o mês de [now] — nunca marcado,
+  /// ou o último registo é de um mês anterior. Centraliza a comparação
+  /// de período usada por `ManagePaymentsScreen`, `MyProfileScreen` e
+  /// [isOverdueFor], para as três nunca poderem divergir sobre o que
+  /// conta como "mês atual".
+  PaymentStatus? currentMonthStatus(DateTime now) =>
+      currentPaymentPeriod == paymentPeriodKey(now)
+          ? currentPaymentStatus
+          : null;
+
+  bool isOverdueFor(DateTime now) =>
+      currentMonthStatus(now) == PaymentStatus.overdue;
+
   @override
   List<Object?> get props => [
         uid,
@@ -60,5 +107,7 @@ class MemberSummary extends Equatable {
         address,
         nif,
         emergencyContact,
+        currentPaymentStatus,
+        currentPaymentPeriod,
       ];
 }

@@ -1,3 +1,12 @@
+/// Região onde as Cloud Functions estão implantadas.
+///
+/// Tem de ser a MESMA que `setGlobalOptions` declara em
+/// `firebase/functions/src/index.ts`. Se divergirem, o cliente chama
+/// `us-central1`, onde não existe nada, e todas as funções falham com
+/// `not-found` — um erro que não deixa perceber que o problema é
+/// geográfico. Daí a constante estar num sítio só.
+const String kFunctionsRegion = 'europe-west1';
+
 /// Ambientes suportados pela plataforma.
 ///
 /// Corresponde à Fase 0 do guia de desenvolvimento: development / staging /
@@ -35,6 +44,7 @@ class EnvironmentConfig {
     required this.functionsEmulatorPort,
     required this.storageEmulatorHost,
     required this.storageEmulatorPort,
+    this.recaptchaSiteKey,
   });
 
   final Environment environment;
@@ -51,6 +61,13 @@ class EnvironmentConfig {
   final int functionsEmulatorPort;
   final String storageEmulatorHost;
   final int storageEmulatorPort;
+
+  /// Site key do reCAPTCHA v3, para o App Check na web (Fase 11).
+  ///
+  /// `null` = ainda não existe (é gerada na Firebase Console, por
+  /// projeto) e o arranque usa o debug provider. Não é segredo — vai no
+  /// bundle web de qualquer forma, tal como a `apiKey`.
+  final String? recaptchaSiteKey;
 
   static const EnvironmentConfig development = EnvironmentConfig(
     environment: Environment.development,

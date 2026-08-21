@@ -1,4 +1,6 @@
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:mocktail/mocktail.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +25,8 @@ const _plan = Plan(
 /// via `servicesProvider`/`planServicesProvider`) — mesmo raciocínio de
 /// `manage_plans_screen_test.dart`, sem precisar de mockar Cloud
 /// Functions.
+class _MockFirebaseFunctions extends Mock implements FirebaseFunctions {}
+
 void main() {
   Future<FakeFirebaseFirestore> seedFirestore() async {
     final firestore = FakeFirebaseFirestore();
@@ -42,6 +46,14 @@ void main() {
           const TenantAppConfig(tenantId: _tenantId),
         ),
         firestoreProvider.overrideWithValue(firestore),
+        // Fase 11 — `FirebasePlanRepository` passou a precisar de
+        // Functions (`syncPlanSubscriptions`, para propagar alterações
+        // ao plano a quem já o tem). Sem este override, o construtor
+        // tenta `FirebaseFunctions.instanceFor` e rebenta com "No
+        // Firebase App" — o ecrã ficava em erro e os finders não
+        // encontravam nada. Um mock nunca invocado chega: nenhum destes
+        // testes exercita a sincronização.
+        functionsProvider.overrideWithValue(_MockFirebaseFunctions()),
       ],
       child: const MaterialApp(home: PlanDetailScreen(plan: _plan)),
     );

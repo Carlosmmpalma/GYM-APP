@@ -80,8 +80,7 @@ class NotEligibleForServiceException implements Exception {
   const NotEligibleForServiceException();
 
   @override
-  String toString() =>
-      'Não tens um plano ativo que dê acesso a este serviço.';
+  String toString() => 'Não tens um plano ativo que dê acesso a este serviço.';
 }
 
 /// Domain Model v1 §15 — "por defeito, um membro não pode possuir

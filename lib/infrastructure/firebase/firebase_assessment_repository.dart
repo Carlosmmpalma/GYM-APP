@@ -33,6 +33,8 @@ Assessment _fromDoc(
   );
 }
 
+const _assessmentsLimit = 100;
+
 class FirebaseAssessmentRepository implements AssessmentRepository {
   FirebaseAssessmentRepository(this._firestore, this._tenantId);
 
@@ -51,6 +53,9 @@ class FirebaseAssessmentRepository implements AssessmentRepository {
   Stream<List<Assessment>> watchAssessments(String memberId) {
     return _assessments(memberId)
         .orderBy('createdAt', descending: true)
+        // Ordenado da mais recente para a mais antiga: o corte tira as
+        // mais antigas, que é o que a lista quer mostrar por último.
+        .limit(_assessmentsLimit)
         .snapshots()
         .map(
           (snapshot) =>

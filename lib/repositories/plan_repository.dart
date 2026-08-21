@@ -21,6 +21,16 @@ abstract class PlanRepository {
 
   /// Cria ou atualiza a relação Plan↔Service (documento com id ==
   /// [serviceId] — ver nota em `plan_service.dart`).
+  /// Fase 11 — repõe os serviços das subscrições ATIVAS deste plano.
+  ///
+  /// `activeServiceIds` de uma subscrição é uma cópia dos serviços do
+  /// plano tirada no momento em que foi criada. Sem isto, acrescentar um
+  /// serviço a um plano não fazia nada a quem já o tinha — e é essa
+  /// cópia que decide o que o aluno vê e o que o servidor deixa marcar.
+  ///
+  /// Devolve quantas subscrições foram atualizadas.
+  Future<int> syncSubscriptions(String planId);
+
   Future<void> setPlanService({
     required String planId,
     required String serviceId,

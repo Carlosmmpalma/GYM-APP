@@ -17,6 +17,8 @@ LoadHistoryEntry _fromDoc(
   );
 }
 
+const _loadHistoryLimit = 200;
+
 class FirebaseLoadHistoryRepository implements LoadHistoryRepository {
   FirebaseLoadHistoryRepository(this._firestore, this._tenantId);
 
@@ -39,6 +41,12 @@ class FirebaseLoadHistoryRepository implements LoadHistoryRepository {
     return _history(memberId)
         .where('exerciseId', isEqualTo: exerciseId)
         .orderBy('recordedAt', descending: true)
+        // Fase 10 — cresce a CADA treino registado, sem fim. Como vem
+        // ordenado do mais recente para o mais antigo, cortar aqui dá
+        // exatamente o que o gráfico de evolução mostra; sem isto, um
+        // aluno com dois anos de treino puxava centenas de documentos
+        // sempre que abria o ecrã.
+        .limit(_loadHistoryLimit)
         .snapshots()
         .map((snapshot) =>
             snapshot.docs.map((doc) => _fromDoc(memberId, doc)).toList());

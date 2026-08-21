@@ -5,6 +5,7 @@ import '../../application/providers/tenant_context_providers.dart';
 import '../../application/providers/training_providers.dart';
 import '../../domain/entities/assessment.dart';
 import '../../domain/entities/member_summary.dart';
+import '../widgets/unsaved_changes_guard.dart';
 
 const _forcaOptions = ['Fraca', 'Média', 'Boa', 'Muito boa'];
 
@@ -54,6 +55,46 @@ class _AssessmentFormScreenState extends ConsumerState<AssessmentFormScreen> {
       text: widget.assessment?.perimetroCintura.toString() ?? '');
   late final _perimetroAbdominalController = TextEditingController(
       text: widget.assessment?.perimetroAbdominal.toString() ?? '');
+
+  /// Todos os campos de texto, para o aviso de saída sem gravar.
+  late final List<TextEditingController> _allControllers = [
+    _idadeController,
+    _pesoController,
+    _alturaController,
+    _percentMassaGordaController,
+    _massaMuscularController,
+    _gorduraVisceralController,
+    _metabolismoBasalController,
+    _percentAguaController,
+    _idadeMetabolicaController,
+    _pressaoArterialController,
+    _perimetroCinturaController,
+    _perimetroAbdominalController,
+  ];
+
+  /// Fotografia dos valores no momento em que o ecrã abriu.
+  ///
+  /// Comparar com isto, e não com "está vazio", é o que faz o aviso
+  /// funcionar também a EDITAR: uma avaliação existente abre com todos
+  /// os campos preenchidos, e "preenchido" não quer dizer "alterado".
+  /// Tem de ser capturado no `initState` — se fosse `late` avaliado à
+  /// primeira leitura, apanhava o que a pessoa já tinha escrito.
+  late final List<String> _initialValues;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialValues = _allControllers.map((c) => c.text).toList();
+  }
+
+  bool _hasUnsavedInput() {
+    for (var i = 0; i < _allControllers.length; i++) {
+      if (_allControllers[i].text != _initialValues[i]) return true;
+    }
+    return _forcaMS != (widget.assessment?.forcaMS ?? _forcaOptions.first) ||
+        _forcaMI != (widget.assessment?.forcaMI ?? _forcaOptions.first) ||
+        _forcaCore != (widget.assessment?.forcaCore ?? _forcaOptions.first);
+  }
 
   late String _forcaMS = widget.assessment?.forcaMS ?? _forcaOptions.first;
   late String _forcaMI = widget.assessment?.forcaMI ?? _forcaOptions.first;
@@ -199,84 +240,89 @@ class _AssessmentFormScreenState extends ConsumerState<AssessmentFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEditing ? 'Editar avaliação' : 'Nova avaliação'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              Text(widget.member.name,
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 16),
-              _numberField(_idadeController, 'Idade', isInt: true),
-              Text('Composição corporal',
-                  style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
-              _numberField(_pesoController, 'Peso (kg)'),
-              _numberField(_alturaController, 'Altura (m)'),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: InputDecorator(
-                  decoration: const InputDecoration(labelText: 'IMC (Auto)'),
-                  child: Text(_previewImc.toStringAsFixed(1)),
-                ),
-              ),
-              _numberField(_percentMassaGordaController, '% Massa Gorda'),
-              _numberField(_massaMuscularController, 'Massa Muscular (kg)'),
-              _numberField(_gorduraVisceralController, 'Gordura Visceral'),
-              _numberField(
-                  _metabolismoBasalController, 'Metabolismo Basal (kcal)'),
-              _numberField(_percentAguaController, '% Água'),
-              _numberField(_idadeMetabolicaController, 'Idade Metabólica',
-                  isInt: true),
-              const SizedBox(height: 8),
-              Text('Saúde', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: TextFormField(
-                  controller: _pressaoArterialController,
-                  decoration: const InputDecoration(
-                    labelText: 'Pressão Arterial',
-                    hintText: 'ex.: 112/72',
+    return UnsavedChangesGuard(
+      hasChanges: _hasUnsavedInput,
+      message: 'Tens medidas preenchidas que ainda não foram gravadas. '
+          'Se saíres agora, perdes tudo o que escreveste.',
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_isEditing ? 'Editar avaliação' : 'Nova avaliação'),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              children: [
+                Text(widget.member.name,
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 16),
+                _numberField(_idadeController, 'Idade', isInt: true),
+                Text('Composição corporal',
+                    style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                _numberField(_pesoController, 'Peso (kg)'),
+                _numberField(_alturaController, 'Altura (m)'),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: InputDecorator(
+                    decoration: const InputDecoration(labelText: 'IMC (Auto)'),
+                    child: Text(_previewImc.toStringAsFixed(1)),
                   ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
                 ),
-              ),
-              _numberField(
-                  _perimetroCinturaController, 'Perímetro Cintura (cm)'),
-              _numberField(
-                  _perimetroAbdominalController, 'Perímetro Abdominal (cm)'),
-              const SizedBox(height: 8),
-              Text('Físicos', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
-              _dropdownField(
-                  'Força MS', _forcaMS, (v) => setState(() => _forcaMS = v!)),
-              _dropdownField(
-                  'Força MI', _forcaMI, (v) => setState(() => _forcaMI = v!)),
-              _dropdownField('Força Core', _forcaCore,
-                  (v) => setState(() => _forcaCore = v!)),
-              _dropdownField('Flexibilidade', _flexibilidade,
-                  (v) => setState(() => _flexibilidade = v!)),
-              _dropdownField('Resistência', _resistencia,
-                  (v) => setState(() => _resistencia = v!)),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _saving ? null : _save,
-                child: _saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Guardar avaliação'),
-              ),
-            ],
+                _numberField(_percentMassaGordaController, '% Massa Gorda'),
+                _numberField(_massaMuscularController, 'Massa Muscular (kg)'),
+                _numberField(_gorduraVisceralController, 'Gordura Visceral'),
+                _numberField(
+                    _metabolismoBasalController, 'Metabolismo Basal (kcal)'),
+                _numberField(_percentAguaController, '% Água'),
+                _numberField(_idadeMetabolicaController, 'Idade Metabólica',
+                    isInt: true),
+                const SizedBox(height: 8),
+                Text('Saúde', style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: TextFormField(
+                    controller: _pressaoArterialController,
+                    decoration: const InputDecoration(
+                      labelText: 'Pressão Arterial',
+                      hintText: 'ex.: 112/72',
+                    ),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
+                  ),
+                ),
+                _numberField(
+                    _perimetroCinturaController, 'Perímetro Cintura (cm)'),
+                _numberField(
+                    _perimetroAbdominalController, 'Perímetro Abdominal (cm)'),
+                const SizedBox(height: 8),
+                Text('Físicos', style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                _dropdownField(
+                    'Força MS', _forcaMS, (v) => setState(() => _forcaMS = v!)),
+                _dropdownField(
+                    'Força MI', _forcaMI, (v) => setState(() => _forcaMI = v!)),
+                _dropdownField('Força Core', _forcaCore,
+                    (v) => setState(() => _forcaCore = v!)),
+                _dropdownField('Flexibilidade', _flexibilidade,
+                    (v) => setState(() => _flexibilidade = v!)),
+                _dropdownField('Resistência', _resistencia,
+                    (v) => setState(() => _resistencia = v!)),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Guardar avaliação'),
+                ),
+              ],
+            ),
           ),
         ),
       ),

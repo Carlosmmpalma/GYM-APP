@@ -98,6 +98,56 @@ async function seedManager() {
   console.log(`✓ gestor "${email}" / password "${password}" (uid=${user.uid})`);
 }
 
+/**
+ * Fase 11 — não existia NENHUMA conta de instrutor no seed. O shell do
+ * Instrutor (calendário, alunos, biblioteca, presenças) só se conseguia
+ * testar entrando como Gestor, que vê outra coisa.
+ *
+ * Staff autentica-se com email real, ao contrário dos membros (email
+ * sintético a partir do nº de sócio) — ver `createStaff.ts`.
+ */
+async function seedInstructor() {
+  const email = 'ana@nxtperformancestudio.pt';
+  const password = 'InstructorPass123!';
+
+  const user = await createAuthUserIfMissing({
+    email,
+    password,
+    displayName: 'Ana Marques',
+  });
+
+  await auth.setCustomUserClaims(user.uid, {
+    tenantId: REAL_TENANT_ID,
+    roles: ['instructor'],
+  });
+
+  await firestore
+    .collection('tenants')
+    .doc(REAL_TENANT_ID)
+    .collection('staff')
+    .doc(user.uid)
+    .set(
+      {
+        userId: user.uid,
+        name: 'Ana Marques',
+        email,
+        roles: ['instructor'],
+        status: 'active',
+        passwordTemporaria: false, // conta de dev — já "trocada"
+        // Fase 11 — os serviços que a Ana pode lecionar. Sem isto, o
+        // atalho "Criar aula" nem aparece no dashboard dela: as
+        // Security Rules recusam a criação, e um atalho que leva a uma
+        // recusa é pior do que atalho nenhum.
+        serviceIds: ['group_classes_test'],
+        createdAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+  console.log(`✓ instrutor "${email}" / password "${password}" (uid=${user.uid})`);
+  return user;
+}
+
 async function seedMember({ tenantId, memberNumber, name, password }) {
   const email = buildSyntheticEmail(tenantId, memberNumber);
 
@@ -120,6 +170,17 @@ async function seedMember({ tenantId, memberNumber, name, password }) {
         name,
         status: 'active',
         passwordTemporaria: false,
+        // Fase 11 (RGPD) — conta de dev já com consentimento dado, senão
+        // cada arranque parava no ecrã de consentimento antes de se
+        // conseguir testar o resto. Para VER esse ecrã, cria um membro
+        // novo pela app (nasce sem consentimento) ou apaga este campo
+        // na UI do emulador.
+        consent: {
+          privacyPolicyVersion: 1,
+          acceptedAt: FieldValue.serverTimestamp(),
+          healthDataGranted: true,
+          healthDataUpdatedAt: FieldValue.serverTimestamp(),
+        },
         createdAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
@@ -131,7 +192,7 @@ async function seedMember({ tenantId, memberNumber, name, password }) {
   return user;
 }
 
-async function seedServiceAndOccurrence(tenantId) {
+async function seedServiceAndOccurrence(tenantId, instructorId) {
   const serviceId = 'group_classes_test';
   const serviceRef = firestore
     .collection('tenants')
@@ -145,17 +206,24 @@ async function seedServiceAndOccurrence(tenantId) {
   );
   console.log(`✓ service "${serviceId}" (Aula de Grupo)`);
 
-  await seedOccurrence(tenantId, serviceId, 'occurrence_test_1', 1, 18);
+  await seedOccurrence(tenantId, serviceId, 'occurrence_test_1', 1, 18, instructorId);
   // Fase 4 — uma segunda ocorrência na MESMA semana ISO (2 dias depois,
   // quase sempre a mesma semana segunda-domingo, exceto se
   // "occurrence_test_1" calhar num domingo — aceitável para dados de
   // seed): sem isto não dava para testar o bloqueio de limite semanal
   // (o plano de teste agora dá só 1x/semana — ver seedPlanAndSubscription)
   // com só UMA sessão disponível para marcar.
-  await seedOccurrence(tenantId, serviceId, 'occurrence_test_2', 2, 19);
+  await seedOccurrence(tenantId, serviceId, 'occurrence_test_2', 2, 19, instructorId);
 }
 
-async function seedOccurrence(tenantId, serviceId, occurrenceId, daysFromNow, hour) {
+async function seedOccurrence(
+  tenantId,
+  serviceId,
+  occurrenceId,
+  daysFromNow,
+  hour,
+  instructorId = null,
+) {
   const occurrenceRef = firestore
     .collection('tenants')
     .doc(tenantId)
@@ -178,6 +246,10 @@ async function seedOccurrence(tenantId, serviceId, occurrenceId, daysFromNow, ho
 
   await occurrenceRef.set({
     serviceId,
+    // Fase 11 — atribuído à instrutora semeada, senão o calendário do
+    // Instrutor abre vazio e não há nada para testar (presenças,
+    // remarcar, reduzir vagas).
+    instructorId,
     startAt,
     endAt,
     capacity: 2,
@@ -265,7 +337,7 @@ async function seedPlanAndSubscription(tenantId, memberId, serviceId) {
 // mão na app primeiro. Só um membro pré-atribuído (o único semeado até
 // agora) — a série gera as próprias ocorrências quando chamares
 // "Gerar agora" (não faz nada sozinha até lá).
-async function seedRecurringSeries(tenantId, serviceId, memberId) {
+async function seedRecurringSeries(tenantId, serviceId, memberId, instructorId = null) {
   const seriesId = 'series_test_hyrox_mon';
   const seriesRef = firestore
     .collection('tenants')
@@ -281,7 +353,7 @@ async function seedRecurringSeries(tenantId, serviceId, memberId) {
 
   await seriesRef.set({
     serviceId,
-    instructorId: null,
+    instructorId,
     dayOfWeek: 1, // segunda-feira (DateTime.monday, mesma convenção do Dart)
     startTime: '18:00',
     durationMinutes: 60,
@@ -297,20 +369,72 @@ async function seedRecurringSeries(tenantId, serviceId, memberId) {
   );
 }
 
+/**
+ * Fase 11 — o treino livre precisa de um serviço, como qualquer
+ * marcação: é o que o liga ao plano do aluno e ao limite semanal. Mas é
+ * SEMPRE o mesmo, por isso é uma definição do estúdio e não uma escolha
+ * repetida a cada grelha e a cada bloco.
+ */
+async function seedFreeTraining(tenantId) {
+  const serviceId = 'free_training';
+  await firestore
+    .collection('tenants')
+    .doc(tenantId)
+    .collection('services')
+    .doc(serviceId)
+    .set(
+      { name: 'Treino Livre', active: true, createdAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+
+  await firestore
+    .collection('tenants')
+    .doc(tenantId)
+    .collection('config')
+    .doc('bookingPolicy')
+    .set({ freeTrainingServiceId: serviceId }, { merge: true });
+
+  console.log(`✓ serviço "${serviceId}" (Treino Livre) + definição do estúdio`);
+}
+
 async function main() {
   console.log(`A semear contra o emulador (projectId=${PROJECT_ID})...\n`);
 
   await upsertTenant(REAL_TENANT_ID, 'NXT Performance Studio');
   await seedManager();
+  const ana = await seedInstructor();
   const rita = await seedMember({
     tenantId: REAL_TENANT_ID,
     memberNumber: '000001',
     name: 'Rita Ferreira',
     password: 'MemberPass123!',
   });
-  await seedServiceAndOccurrence(REAL_TENANT_ID);
+  await seedServiceAndOccurrence(REAL_TENANT_ID, ana.uid);
+  await seedFreeTraining(REAL_TENANT_ID);
   await seedPlanAndSubscription(REAL_TENANT_ID, rita.uid, 'group_classes_test');
-  await seedRecurringSeries(REAL_TENANT_ID, 'group_classes_test', rita.uid);
+  // Fase 11 — o plano de teste passa a incluir também o treino livre.
+  // Sem isto, a aluna semeada entrava e via "o teu plano não inclui
+  // treino livre", que é verdade mas não ajuda a testar o fluxo.
+  await firestore
+    .collection('tenants')
+    .doc(REAL_TENANT_ID)
+    .collection('plans')
+    .doc('plan_test_standard')
+    .collection('services')
+    .doc('free_training')
+    .set({ enabled: true, usage: { type: 'unlimited' } }, { merge: true });
+  await firestore
+    .collection('tenants')
+    .doc(REAL_TENANT_ID)
+    .collection('subscriptions')
+    .doc('subscription_test_rita')
+    .set(
+      { activeServiceIds: ['group_classes_test', 'free_training'] },
+      { merge: true },
+    );
+  console.log('✓ plano de teste inclui treino livre (e a subscrição também)');
+
+  await seedRecurringSeries(REAL_TENANT_ID, 'group_classes_test', rita.uid, ana.uid);
 
   console.log();
   await upsertTenant(GHOST_TENANT_ID, 'Ghost Gym (só para testes de isolamento)');
