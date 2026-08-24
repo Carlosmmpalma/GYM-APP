@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/payment_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../domain/entities/member_summary.dart';
@@ -51,23 +52,42 @@ class PaymentHistoryScreen extends ConsumerWidget {
               ),
             );
           }
-          return ListView.separated(
+          // Agrupado por ano, com o resumo do ano no cabeçalho. Doze
+          // linhas por ano tornam-se depressa quarenta, e a pergunta
+          // que se faz a um histórico de mensalidades é sobre o ano
+          // ("2025 esteve em dia?"), não sobre a lista toda.
+          final byYear = <int, List<PaymentRecord>>{};
+          for (final record in records) {
+            byYear.putIfAbsent(record.year, () => []).add(record);
+          }
+          final years = byYear.keys.toList()..sort((a, b) => b.compareTo(a));
+
+          return ListView(
             padding: const EdgeInsets.all(16),
-            itemCount: records.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final record = records[index];
-              return Card(
-                child: ListTile(
-                  title: Text(paymentMonthLabel(record.month, record.year)),
-                  subtitle: record.amount != null
-                      ? Text('€ ${record.amount!.toStringAsFixed(2)}')
-                      : null,
-                  trailing: PaymentStatusPill(record.status),
-                  onTap: canEdit ? () => _edit(context, ref, record) : null,
-                ),
-              );
-            },
+            children: [
+              for (final year in years) ...[
+                _YearHeader(year: year, records: byYear[year]!),
+                const SizedBox(height: 8),
+                for (final record in byYear[year]!)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Card(
+                      margin: EdgeInsets.zero,
+                      child: ListTile(
+                        title:
+                            Text(paymentMonthLabel(record.month, record.year)),
+                        subtitle: record.amount != null
+                            ? Text('€ ${record.amount!.toStringAsFixed(2)}')
+                            : null,
+                        trailing: PaymentStatusPill(record.status),
+                        onTap:
+                            canEdit ? () => _edit(context, ref, record) : null,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+              ],
+            ],
           );
         },
       ),
@@ -102,8 +122,42 @@ class PaymentHistoryScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível corrigir: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível corrigir. Tenta outra vez.'))),
       );
     }
+  }
+}
+
+/// O ano e o que aconteceu nele — quantos meses em dia, quantos em
+/// atraso. É a leitura que o Gestor faz antes de entrar nos detalhes.
+class _YearHeader extends StatelessWidget {
+  const _YearHeader({required this.year, required this.records});
+
+  final int year;
+  final List<PaymentRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final overdue =
+        records.where((r) => r.status == PaymentStatus.overdue).length;
+    final late =
+        records.where((r) => r.status == PaymentStatus.paidLate).length;
+
+    return Row(
+      children: [
+        Expanded(child: SectionLabel('$year')),
+        if (overdue > 0) ...[
+          Pill('$overdue em atraso', tone: PillTone.danger),
+          const SizedBox(width: 6),
+        ],
+        if (late > 0) ...[
+          Pill('$late fora de prazo', tone: PillTone.warn),
+          const SizedBox(width: 6),
+        ],
+        if (overdue == 0 && late == 0) const Pill('Em dia', tone: PillTone.ok),
+      ],
+    );
   }
 }

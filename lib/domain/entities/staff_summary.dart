@@ -15,11 +15,6 @@ class StaffSummary extends Equatable {
     required this.active,
     this.modalityIds = const {},
     this.serviceIds = const {},
-    this.phone = '',
-    this.birthDate,
-    this.address = '',
-    this.nif = '',
-    this.emergencyContact = '',
   });
 
   final String uid;
@@ -51,14 +46,10 @@ class StaffSummary extends Equatable {
   /// horário do estúdio antes de alguém decidir quais.
   final Set<String> serviceIds;
 
-  /// Pedido pelo Carlo depois de testar "Criar utilizador": mesmos
-  /// dados pessoais do Aluno (`MemberSummary`), para o staff deixar de
-  /// ser um cidadão de segunda classe em termos de ficha pessoal.
-  final String phone;
-  final DateTime? birthDate;
-  final String address;
-  final String nif;
-  final String emergencyContact;
+  // Os restantes dados pessoais (telefone, data de nascimento, morada,
+  // NIF, contacto de emergência) NÃO vivem aqui — ver
+  // [StaffPrivateProfile]. Este documento é legível por todo o tenant
+  // porque é dele que sai o nome do instrutor no cartão de uma aula.
 
   @override
   List<Object?> get props => [
@@ -69,10 +60,5 @@ class StaffSummary extends Equatable {
         active,
         modalityIds,
         serviceIds,
-        phone,
-        birthDate,
-        address,
-        nif,
-        emergencyContact,
       ];
 }

@@ -1,3 +1,4 @@
+import '../domain/entities/staff_private_profile.dart';
 import '../domain/entities/staff_summary.dart';
 
 /// Gap encontrado a comparar com `Functional/nxt-studio-screens.html`:
@@ -6,6 +7,12 @@ import '../domain/entities/staff_summary.dart';
 /// isto é só a leitura/gestão do lado da app.
 abstract class StaffRepository {
   Stream<List<StaffSummary>> watchStaff();
+
+  /// Os dados pessoais de um membro do staff. Só o próprio e o Gestor
+  /// os conseguem ler — ver [StaffPrivateProfile] e as Security Rules.
+  /// A quem não pode, o stream devolve [StaffPrivateProfile.empty] em
+  /// vez de rebentar: a ficha abre na mesma, só sem esses campos.
+  Stream<StaffPrivateProfile> watchPrivateProfile(String staffId);
 
   /// Desativar, nunca eliminar — mesmo padrão de
   /// `MemberRepository.setMemberActive`. Note: quando `staffId` tem

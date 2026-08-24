@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../application/providers/booking_providers.dart';
+import '../../application/providers/free_training_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../core/theme/app_colors.dart';
@@ -10,16 +11,26 @@ import '../../domain/entities/booking.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../widgets/design_system.dart';
 
-/// UC10 — "Minhas marcações". Mostra as marcações ativas do próprio
-/// membro e permite cancelar.
+/// UC10 — "Minhas marcações". Mostra as marcações do próprio membro e
+/// permite cancelar as que ainda estão para acontecer.
 ///
 /// Até à Fase 5 mostrava só "Marcação #abc123" + a data em que foi
 /// FEITA a marcação — nunca o nome do serviço nem a hora da SESSÃO em
-/// si (a Fase 4 já lia a ocorrência associada, mas só internamente,
-/// para calcular o aviso de cancelamento; nunca chegou a mostrar-se).
-/// Bug real, ficou muito mais visível com várias séries possíveis
-/// desde a Fase 5 — corrigido: cada cartão mostra agora o nome do
-/// serviço e a data/hora da sessão.
+/// si. Corrigido nessa altura; a auditoria da Fase 11 encontrou aqui
+/// mais três coisas, todas com a mesma raiz — a marcação não guardava
+/// a data da sessão:
+///
+///  1. **Ordenava pela data em que a marcação foi feita.** Marcar hoje
+///     uma aula do mês que vem punha-a no fim da lista, atrás da de
+///     amanhã marcada na semana passada.
+///  2. **As sessões passadas nunca saíam.** Uma marcação de há três
+///     meses ficava lá com um botão "Cancelar" que não fazia sentido
+///     nenhum.
+///  3. **O treino livre aparecia partido.** A collection group query
+///     apanha os dois tipos de marcação (aulas e treino livre vivem em
+///     caminhos diferentes), e o ecrã tratava tudo como aula: os
+///     cartões de treino livre diziam "Sessão já não disponível" e o
+///     "Cancelar" chamava a Cloud Function errada, falhando sempre.
 class MyBookingsScreen extends ConsumerWidget {
   const MyBookingsScreen({super.key});
 
@@ -31,10 +42,9 @@ class MyBookingsScreen extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stack) => ErrorState(error: error),
       data: (bookings) {
-        final active = bookings
-            .where((b) => b.status == BookingStatus.booked)
-            .toList()
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        final now = DateTime.now();
+        final active =
+            bookings.where((b) => b.status == BookingStatus.booked).toList();
 
         if (active.isEmpty) {
           return const EmptyState(
@@ -46,26 +56,74 @@ class MyBookingsScreen extends ConsumerWidget {
           );
         }
 
-        return ListView.separated(
+        // Marcações antigas não têm `startAt` (o campo é da Fase 11) —
+        // essas ficam sempre no grupo das próximas, porque não há como
+        // saber se já passaram sem ler a ocorrência. O cartão trata
+        // desse caso lendo-a, como fazia antes.
+        final upcoming = active.where((b) => !b.hasPassed(now)).toList()
+          ..sort(_byStartThenCreated);
+        final past = active.where((b) => b.hasPassed(now)).toList()
+          ..sort((a, b) => _byStartThenCreated(b, a));
+
+        return ListView(
           padding: const EdgeInsets.all(16),
-          itemCount: active.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) => _BookingTile(
-            // Ver nota em `book_training_screen.dart`: itens de lista
-            // com estado precisam de key.
-            key: ValueKey(active[index].id),
-            booking: active[index],
-          ),
+          children: [
+            if (upcoming.isEmpty)
+              const PanelCard(
+                child: Text(
+                  'Não tens nenhuma sessão futura marcada.',
+                  style: TextStyle(color: AppColors.mute, fontSize: 12),
+                ),
+              ),
+            for (final booking in upcoming)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _BookingTile(
+                  // Ver nota em `book_training_screen.dart`: itens de
+                  // lista com estado precisam de key.
+                  key: ValueKey(booking.id + booking.occurrenceId),
+                  booking: booking,
+                  isPast: false,
+                ),
+              ),
+            if (past.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const SectionLabel('Já realizadas'),
+              const SizedBox(height: 8),
+              // Sem botão de cancelar: cancelar uma sessão que já
+              // aconteceu não devolve vaga nenhuma nem utilização, e a
+              // Cloud Function recusaria de qualquer forma.
+              for (final booking in past.take(10))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _BookingTile(
+                    key: ValueKey(booking.id + booking.occurrenceId),
+                    booking: booking,
+                    isPast: true,
+                  ),
+                ),
+            ],
+          ],
         );
       },
     );
   }
 }
 
+int _byStartThenCreated(Booking a, Booking b) {
+  final aStart = a.startAt;
+  final bStart = b.startAt;
+  if (aStart != null && bStart != null) return aStart.compareTo(bStart);
+  if (aStart != null) return -1;
+  if (bStart != null) return 1;
+  return a.createdAt.compareTo(b.createdAt);
+}
+
 class _BookingTile extends ConsumerStatefulWidget {
-  const _BookingTile({super.key, required this.booking});
+  const _BookingTile({super.key, required this.booking, required this.isPast});
 
   final Booking booking;
+  final bool isPast;
 
   @override
   ConsumerState<_BookingTile> createState() => _BookingTileState();
@@ -83,10 +141,8 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
   /// dado ainda não carregou, assume o cenário mais simples/otimista
   /// (devolve utilização) em vez de alarmar com informação que pode
   /// estar errada.
-  Future<bool> _confirm() async {
+  Future<bool> _confirm(DateTime? startAt) async {
     final serviceId = widget.booking.serviceId;
-    final SessionOccurrence? occurrence =
-        await ref.read(occurrenceProvider(widget.booking.occurrenceId).future);
     final minNoticeHours =
         await ref.read(minCancellationNoticeHoursProvider.future);
     final rule = serviceId == null
@@ -98,9 +154,9 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
           );
 
     final ruleIsLimited = rule != null && !rule.isUnlimited;
-    final hoursUntilStart = occurrence == null
+    final hoursUntilStart = startAt == null
         ? null
-        : occurrence.startAt.difference(DateTime.now()).inMinutes / 60;
+        : startAt.difference(DateTime.now()).inMinutes / 60;
     final withinWindow = minNoticeHours <= 0 ||
         hoursUntilStart == null ||
         hoursUntilStart >= minNoticeHours;
@@ -146,8 +202,8 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
     return confirmed ?? false;
   }
 
-  Future<void> _cancel() async {
-    final confirmed = await _confirm();
+  Future<void> _cancel(DateTime? startAt) async {
+    final confirmed = await _confirm(startAt);
     if (!confirmed || !mounted) return;
 
     setState(() {
@@ -155,11 +211,19 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
       _error = null;
     });
     try {
-      final useCase = ref.read(cancelBookingUseCaseProvider);
-      final usageRefunded = await useCase(
-        occurrenceId: widget.booking.occurrenceId,
-        memberId: widget.booking.memberId,
-      );
+      final booking = widget.booking;
+      // Cada tipo de marcação cancela-se pela sua Cloud Function. Era
+      // aqui que o treino livre falhava: ia sempre pela das aulas.
+      final usageRefunded = booking.kind == BookingKind.freeTraining
+          ? await ref.read(freeTrainingRepositoryProvider).cancelSlotBooking(
+                weekId: booking.weekId!,
+                slotId: booking.occurrenceId,
+                memberId: booking.memberId,
+              )
+          : await ref.read(cancelBookingUseCaseProvider)(
+              occurrenceId: booking.occurrenceId,
+              memberId: booking.memberId,
+            );
       // Invalida em vez de confiar só no listener do Firestore
       // reemitir sozinho: garante refresco imediato da lista assim que
       // o cancelamento é confirmado, sem esperar pela propagação do
@@ -171,11 +235,11 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
       // sessões esta semana" no ecrã de marcação também precisa de
       // refrescar. `serviceId`/`period` só existem em bookings desta
       // fase em diante — ver nota em `booking.dart`.
-      final serviceId = widget.booking.serviceId;
-      final period = widget.booking.period;
+      final serviceId = booking.serviceId;
+      final period = booking.period;
       if (serviceId != null && period != null) {
         ref.invalidate(usageProvider((
-          memberId: widget.booking.memberId,
+          memberId: booking.memberId,
           serviceId: serviceId,
           period: period,
         )));
@@ -205,23 +269,34 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('EEE, d MMM · HH:mm', 'pt_PT');
-    final occurrenceAsync =
-        ref.watch(occurrenceProvider(widget.booking.occurrenceId));
-    final servicesAsync = ref.watch(servicesProvider);
+    final booking = widget.booking;
+    final isFreeTraining = booking.kind == BookingKind.freeTraining;
 
-    final occurrence = occurrenceAsync.valueOrNull;
+    // A data vem da própria marcação. Só quando falta (marcações
+    // anteriores à Fase 11) é que se vai ler a ocorrência — e só nesse
+    // caso se paga a leitura extra.
+    final needsOccurrence = booking.startAt == null && !isFreeTraining;
+    final occurrenceAsync = needsOccurrence
+        ? ref.watch(occurrenceProvider(booking.occurrenceId))
+        : const AsyncValue<SessionOccurrence?>.data(null);
+    final startAt = booking.startAt ?? occurrenceAsync.valueOrNull?.startAt;
+
     final servicesById = {
-      for (final s in servicesAsync.valueOrNull ?? const []) s.id: s,
+      for (final s in ref.watch(servicesProvider).valueOrNull ?? const [])
+        s.id: s,
     };
-    final serviceName = occurrence == null
-        ? null
-        : servicesById[occurrence.serviceId]?.name ?? occurrence.serviceId;
+    final serviceId =
+        booking.serviceId ?? occurrenceAsync.valueOrNull?.serviceId;
+    final title = isFreeTraining
+        ? 'Treino livre'
+        : (serviceId == null ? 'Marcação' : servicesById[serviceId]?.name) ??
+            'Marcação';
 
-    final subtitleText = occurrenceAsync.isLoading
-        ? 'A carregar…'
-        : occurrence == null
-            ? 'Sessão já não disponível'
-            : dateFormat.format(occurrence.startAt);
+    final subtitleText = startAt != null
+        ? dateFormat.format(startAt)
+        : occurrenceAsync.isLoading
+            ? 'A carregar…'
+            : 'Sessão já não disponível';
 
     return PanelCard(
       padding: const EdgeInsets.all(14),
@@ -234,9 +309,19 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      serviceName ?? 'Marcação',
-                      style: const TextStyle(fontSize: 14),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        if (isFreeTraining) ...[
+                          const SizedBox(width: 6),
+                          const Pill('Livre'),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -248,14 +333,19 @@ class _BookingTileState extends ConsumerState<_BookingTile> {
                 ),
               ),
               const SizedBox(width: 8),
-              if (_isCancelling)
+              if (widget.isPast)
+                const Pill('Realizada', tone: PillTone.neutral)
+              else if (_isCancelling)
                 const SizedBox(
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               else
-                TextButton(onPressed: _cancel, child: const Text('Cancelar')),
+                TextButton(
+                  onPressed: () => _cancel(startAt),
+                  child: const Text('Cancelar'),
+                ),
             ],
           ),
           // O erro do cancelamento era a segunda linha do subtítulo, no

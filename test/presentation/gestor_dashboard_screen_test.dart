@@ -125,7 +125,8 @@ void main() {
     );
   }
 
-  testWidgets('agrega membros ativos, séries ativas, sessões e ocupação média',
+  testWidgets(
+      'agrega membros ativos, séries ativas, sessões e lotação prevista',
       (tester) async {
     final firestore = await seedFirestore();
     await tester.pumpWidget(buildApp(firestore));
@@ -137,7 +138,11 @@ void main() {
     expect(find.text('1'), findsOneWidget); // séries ativas
     expect(find.text('Sessões (próx. 7 dias)'), findsOneWidget);
     expect(find.text('2'), findsOneWidget); // só as scheduled dentro da janela
-    expect(find.text('Ocupação média'), findsOneWidget);
+    // "Ocupação média" era um nome enganador: o número é sobre
+    // sessões que ainda NÃO aconteceram, e lia-se como o enchimento
+    // real do ginásio. A ocupação realizada vive no painel de
+    // Retenção, calculada só sobre sessões já dadas.
+    expect(find.text('Lotação prevista'), findsOneWidget);
     expect(find.text('75%'), findsOneWidget);
   });
 }

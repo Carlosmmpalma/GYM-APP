@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
+import '../../core/utils/offline_write.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../application/providers/training_providers.dart';
 import '../../domain/entities/exercise.dart';
@@ -112,24 +114,37 @@ class _AddPlanEntryScreenState extends ConsumerState<AddPlanEntryScreen> {
 
     final recordedBy = ref.read(currentAppUserProvider).valueOrNull?.uid ?? '';
     try {
-      await ref.read(trainingPlanRepositoryProvider).addEntry(
-            memberId: widget.member.uid,
-            exerciseId: exercise.id,
-            sets: result.sets,
-            reps: result.reps,
-            initialLoad: result.load,
-            recordedBy: recordedBy,
-            workoutId: widget.workoutId,
-            position: widget.nextPosition,
-            restSeconds: result.restSeconds,
-            notes: result.notes,
-          );
+      // Sem `writeOrQueue`, o instrutor com má rede ficava neste ecrã
+      // sem nada acontecer: o exercício ia para a fila local, o ecrã
+      // nunca fechava, e ele voltava a adicioná-lo.
+      final outcome = await writeOrQueue(
+        ref.read(trainingPlanRepositoryProvider).addEntry(
+              memberId: widget.member.uid,
+              exerciseId: exercise.id,
+              sets: result.sets,
+              reps: result.reps,
+              initialLoad: result.load,
+              recordedBy: recordedBy,
+              workoutId: widget.workoutId,
+              position: widget.nextPosition,
+              restSeconds: result.restSeconds,
+              notes: result.notes,
+            ),
+      );
       if (!context.mounted) return;
+      if (outcome == WriteOutcome.queued) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(writeOutcomeMessage(outcome, confirmed: ''))),
+        );
+      }
       Navigator.of(context).pop();
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível adicionar ao plano: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível adicionar ao plano. Tenta outra vez.'))),
       );
     }
   }

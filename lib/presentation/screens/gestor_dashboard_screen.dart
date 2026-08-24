@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
+import '../../core/theme/app_colors.dart';
 import '../../domain/entities/session_occurrence.dart';
 
 /// UC25 — "Visão global": resumo do estado do ginásio para o Gestor,
@@ -32,6 +33,7 @@ class GestorDashboardScreen extends ConsumerWidget {
             Expanded(
               child: _StatCard(
                 label: 'Membros ativos',
+                failed: membersAsync.hasError,
                 value: membersAsync.when(
                   loading: () => null,
                   error: (_, __) => null,
@@ -44,6 +46,7 @@ class GestorDashboardScreen extends ConsumerWidget {
             Expanded(
               child: _StatCard(
                 label: 'Séries ativas',
+                failed: seriesAsync.hasError,
                 value: seriesAsync.when(
                   loading: () => null,
                   error: (_, __) => null,
@@ -60,6 +63,7 @@ class GestorDashboardScreen extends ConsumerWidget {
             Expanded(
               child: _StatCard(
                 label: 'Sessões (próx. 7 dias)',
+                failed: occurrencesAsync.hasError,
                 value: occurrencesAsync.when(
                   loading: () => null,
                   error: (_, __) => null,
@@ -74,7 +78,15 @@ class GestorDashboardScreen extends ConsumerWidget {
             const SizedBox(width: 8),
             Expanded(
               child: _StatCard(
-                label: 'Ocupação média',
+                // "Ocupação média" dizia-se de sessões que ainda não
+                // aconteceram, e lia-se como se fosse o enchimento real
+                // do ginásio — uma aula de sexta ainda por encher punha
+                // o número em 20% numa semana que acabou cheia. O
+                // rótulo passou a dizer o que o número é: uma previsão.
+                // A ocupação REALIZADA vive no painel de Retenção, e é
+                // calculada só sobre sessões já dadas.
+                label: 'Lotação prevista',
+                failed: occurrencesAsync.hasError,
                 value: occurrencesAsync.when(
                   loading: () => null,
                   error: (_, __) => null,
@@ -103,10 +115,19 @@ class GestorDashboardScreen extends ConsumerWidget {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value});
+  const _StatCard({
+    required this.label,
+    required this.value,
+    this.failed = false,
+  });
 
   final String? value;
   final String label;
+
+  /// A leitura falhou. Distinto de `value == null`, que é "ainda a
+  /// carregar": um spinner eterno num cartão de números faz o Gestor
+  /// esperar por algo que nunca vem.
+  final bool failed;
 
   @override
   Widget build(BuildContext context) {
@@ -116,14 +137,21 @@ class _StatCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            value == null
-                ? const SizedBox(
-                    height: 28,
-                    width: 28,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(value!,
-                    style: Theme.of(context).textTheme.headlineMedium),
+            if (failed)
+              const Tooltip(
+                message: 'Não foi possível carregar este número.',
+                child: Icon(Icons.cloud_off_outlined,
+                    size: 26, color: AppColors.mute),
+              )
+            else
+              value == null
+                  ? const SizedBox(
+                      height: 28,
+                      width: 28,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(value!,
+                      style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 4),
             Text(label, style: Theme.of(context).textTheme.bodySmall),
           ],

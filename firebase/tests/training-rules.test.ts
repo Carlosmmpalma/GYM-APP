@@ -205,16 +205,113 @@ describe('Security Rules — loadHistory (Fase 8, UC16 fechado: "nunca sobrescre
     );
   });
 
-  it('um membro NÃO consegue criar um registo de carga', async () => {
+  // Fase 11 — este teste afirmava o CONTRÁRIO, e a mudança é
+  // deliberada. Na Fase 8 só o Instrutor registava cargas, porque não
+  // havia registo de treino: o aluno não tinha por onde o fazer. Com as
+  // sessões de treino, o aluno regista o que fez — num ginásio isso é o
+  // caso normal, não a exceção.
+  //
+  // O que continua a valer, e é o que esta secção protege de facto: um
+  // aluno só escreve no SEU histórico. Coberto aqui e em
+  // `workout-sessions-rules.test.ts`.
+  it('um membro cria um registo de carga no SEU histórico', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/members/member_a1/loadHistory/entry_2`).set({
+        exerciseId: 'exercise_1',
+        load: 60,
+        reps: 8,
+        recordedAt: new Date(),
+        recordedBy: 'member_a1',
+      }),
+    );
+  });
+
+  it('um membro NÃO cria um registo no histórico de OUTRO', async () => {
     const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
     await assertFails(
-      db.doc(`tenants/${TENANT_A}/members/member_a1/loadHistory/entry_2`).set({
+      db.doc(`tenants/${TENANT_A}/members/member_a2/loadHistory/entry_9`).set({
         exerciseId: 'exercise_1',
         load: 999,
         reps: 8,
         recordedAt: new Date(),
         recordedBy: 'member_a1',
       }),
+    );
+  });
+});
+
+// Fase 11 (reportado a testar) — corrigir uma série mal registada.
+//
+// O registo ao vivo escreve um registo de carga por série. Escrever 6
+// em vez de 60 deixava um ponto errado na evolução da carga PARA
+// SEMPRE, porque `loadHistory` era imutável de ponta a ponta.
+//
+// A abertura é estreita de propósito: só `delete`, e só em registos que
+// vieram de uma série (`sessionId` presente). Corrigir é apagar o
+// errado e criar o certo; alterá-lo no lugar seria mesmo reescrever
+// histórico.
+describe('Security Rules — corrigir uma série (Fase 11)', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context
+        .firestore()
+        .doc(`tenants/${TENANT_A}/members/member_a1/loadHistory/from_session`)
+        .set({
+          exerciseId: 'exercise_1',
+          load: 6,
+          reps: 8,
+          recordedAt: new Date(),
+          recordedBy: 'member_a1',
+          sessionId: 'session_1',
+        });
+    });
+  });
+
+  it('o próprio membro apaga o registo criado por uma série sua', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertSucceeds(
+      db
+        .doc(`tenants/${TENANT_A}/members/member_a1/loadHistory/from_session`)
+        .delete(),
+    );
+  });
+
+  it('o Instrutor também apaga — é ele quem regista ao lado do aluno',
+    async () => {
+      const db = contextFor('instructor_a', TENANT_A, ['instructor']).firestore();
+      await assertSucceeds(
+        db
+          .doc(`tenants/${TENANT_A}/members/member_a1/loadHistory/from_session`)
+          .delete(),
+      );
+    });
+
+  it('um registo SEM sessionId continua imutável', async () => {
+    // `entry_1` é o registo que o Instrutor cria ao mudar a carga
+    // prescrita. Essa é a progressão que o UC16 protege, e continua a
+    // não se poder apagar.
+    const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/members/member_a1/loadHistory/entry_1`).delete(),
+    );
+  });
+
+  it('nem o registo de sessão se pode ALTERAR no lugar', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db
+        .doc(`tenants/${TENANT_A}/members/member_a1/loadHistory/from_session`)
+        .update({ load: 60 }),
+    );
+  });
+
+  it('um membro NÃO apaga uma série do histórico de outro', async () => {
+    const db = contextFor('member_a2', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db
+        .doc(`tenants/${TENANT_A}/members/member_a1/loadHistory/from_session`)
+        .delete(),
     );
   });
 });

@@ -15,6 +15,9 @@ import '../../repositories/exercise_repository.dart';
 import '../../repositories/load_history_repository.dart';
 import '../../repositories/storage_repository.dart';
 import '../../repositories/training_plan_repository.dart';
+import '../../domain/entities/workout_session.dart';
+import '../../infrastructure/firebase/firebase_workout_session_repository.dart';
+import '../../repositories/workout_session_repository.dart';
 import 'firebase_providers.dart';
 import 'tenant_context_providers.dart';
 
@@ -64,6 +67,30 @@ final trainingPlanRepositoryProvider = Provider<TrainingPlanRepository>((ref) {
     ref.watch(firestoreProvider),
     ref.watch(tenantAppConfigProvider).tenantId,
   );
+});
+
+final workoutSessionRepositoryProvider =
+    Provider<WorkoutSessionRepository>((ref) {
+  return FirebaseWorkoutSessionRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(tenantAppConfigProvider).tenantId,
+  );
+});
+
+/// Fase 11 — histórico de treinos feitos, do mais recente para o mais
+/// antigo.
+final workoutSessionsProvider = StreamProvider.autoDispose
+    .family<List<WorkoutSession>, String>((ref, memberId) {
+  return ref.watch(workoutSessionRepositoryProvider).watchSessions(memberId);
+});
+
+/// A sessão em curso, se houver. É o que faz o botão dizer "Continuar
+/// treino" em vez de "Iniciar treino".
+final activeWorkoutSessionProvider =
+    StreamProvider.autoDispose.family<WorkoutSession?, String>((ref, memberId) {
+  return ref
+      .watch(workoutSessionRepositoryProvider)
+      .watchActiveSession(memberId);
 });
 
 /// Fase 11 — os treinos do plano de um membro ("Treino A — Costas").

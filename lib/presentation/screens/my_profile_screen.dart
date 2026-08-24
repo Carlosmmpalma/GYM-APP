@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -90,7 +91,9 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível guardar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível guardar. Tenta outra vez.'))),
       );
     } finally {
       if (mounted) setState(() => _saving = false);

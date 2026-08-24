@@ -1,10 +1,11 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManagerOrInstructor } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
 import { notifyMembers } from './lib/notifications';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   title: z.string().min(1),
@@ -39,11 +40,7 @@ export const sendNotification = onCall(async (request) => {
     windowSeconds: 300,
   });
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { title, body, memberId, occurrenceId } = parsed.data;
+  const { title, body, memberId, occurrenceId } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);

@@ -110,6 +110,12 @@ class _FakeSessionOccurrenceRepository implements SessionOccurrenceRepository {
       const Stream.empty();
 
   @override
+  Stream<List<SessionOccurrence>> watchUpcomingOccurrencesForServices(
+    Set<String> serviceIds,
+  ) =>
+      const Stream.empty();
+
+  @override
   Future<SessionOccurrence?> getOccurrence(String occurrenceId) async => null;
 
   @override
@@ -270,6 +276,10 @@ void main() {
     expect(find.text('Membro member_2'), findsOneWidget);
 
     expect(find.byTooltip('Presente'), findsNWidgets(2));
+    // A lista de inscritos ficou abaixo da dobra quando o ecrã ganhou o
+    // botão de treinar com a turma.
+    await tester.ensureVisible(find.byTooltip('Presente').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Presente').first);
     await tester.pumpAndSettle();
 
@@ -283,6 +293,64 @@ void main() {
         .get();
     expect(attendanceDoc.data()?['status'], 'attended');
     expect(attendanceDoc.data()?['recordedBy'], 'staff_1');
+  });
+
+  // Auditoria da Fase 11 — registar presença era um toque por pessoa.
+  // Numa aula de vinte são vinte toques, todos os dias, e é por isso
+  // que na prática ninguém as regista — deixando o painel de retenção
+  // (que se alimenta delas) a mostrar toda a gente "em risco".
+  testWidgets('marca a turma toda de uma vez', (tester) async {
+    final firestore = await seedFirestore(capacity: 3);
+    await tester.pumpWidget(buildApp(firestore));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Marcar todos como presentes'));
+    await tester.pumpAndSettle();
+
+    final attendance = await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('sessionOccurrences')
+        .doc(_occurrenceId)
+        .collection('attendance')
+        .get();
+    expect(attendance.docs.length, 2);
+    expect(
+      attendance.docs.every((d) => d.data()['status'] == 'attended'),
+      isTrue,
+    );
+    expect(find.text('Presenças registadas para todos.'), findsOneWidget);
+  });
+
+  testWidgets('não sobrescreve quem já foi marcado como falta', (tester) async {
+    // O caso normal do instrutor é "vieram todos menos aquele": marca a
+    // falta e carrega no botão para o resto. Apagar-lhe essa marcação
+    // seria apagar-lhe o trabalho.
+    final firestore = await seedFirestore(capacity: 3);
+    await tester.pumpWidget(buildApp(firestore));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byTooltip('Faltou').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Faltou').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Marcar os restantes 1 como presentes'), findsOneWidget);
+    await tester.tap(find.text('Marcar os restantes 1 como presentes'));
+    await tester.pumpAndSettle();
+
+    final attendance = await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('sessionOccurrences')
+        .doc(_occurrenceId)
+        .collection('attendance')
+        .get();
+    final statuses = attendance.docs
+        .map((d) => d.data()['status'] as String)
+        .toList()
+      ..sort();
+    expect(statuses, ['attended', 'no_show']);
   });
 
   testWidgets(

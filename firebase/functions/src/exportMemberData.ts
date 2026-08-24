@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { requireAuthenticated } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   // Ausente = "os meus dados". Um Gestor pode pedir os de outro membro
@@ -50,7 +51,8 @@ async function collectionToArray(
  * removidos, e a password nunca é conhecida por nós — o Firebase Auth
  * só guarda o hash.
  */
-export const exportMemberData = onCall(async (request) => {
+export const exportMemberData =
+    onCall({ timeoutSeconds: 300 }, async (request) => {
   const caller = requireAuthenticated(request);
   // lê a app inteira de um membro; um pedido de RGPD é raro, cinco
   // em cinco minutos é folgado
@@ -60,7 +62,7 @@ export const exportMemberData = onCall(async (request) => {
     maxCalls: 5,
     windowSeconds: 300,
   });
-  const { memberId } = inputSchema.parse(request.data ?? {});
+  const { memberId } = parseInput(inputSchema, request.data ?? {});
 
   const targetId = memberId ?? caller.uid;
   const isSelf = targetId === caller.uid;

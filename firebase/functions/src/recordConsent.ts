@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { requireAuthenticated } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   privacyPolicyVersion: z.number().int().positive(),
@@ -39,7 +40,7 @@ export const recordConsent = onCall(async (request) => {
     maxCalls: 20,
     windowSeconds: 300,
   });
-  const { privacyPolicyVersion, healthDataGranted } = inputSchema.parse(
+  const { privacyPolicyVersion, healthDataGranted } = parseInput(inputSchema, 
     request.data,
   );
 

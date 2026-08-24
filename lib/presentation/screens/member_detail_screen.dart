@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/member_summary.dart';
@@ -106,8 +107,9 @@ class MemberDetailScreen extends ConsumerWidget {
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                        content:
-                            Text('Não foi possível atualizar o membro: $e')),
+                        content: Text(userFacingError(e,
+                            fallback:
+                                'Não foi possível atualizar o membro. Tenta outra vez.'))),
                   );
                 }
               },
@@ -246,7 +248,9 @@ class _EditMemberProfileCardState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível guardar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível guardar. Tenta outra vez.'))),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -372,7 +376,9 @@ class _SubscriptionTileState extends ConsumerState<_SubscriptionTile> {
       if (mounted) setState(() => _recalculating = false);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível recalcular: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível recalcular. Tenta outra vez.'))),
       );
       return;
     }
@@ -536,7 +542,9 @@ class _SubscriptionStatusActionsState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível mudar o plano: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível mudar o plano. Tenta outra vez.'))),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -686,7 +694,9 @@ class _DangerZoneState extends ConsumerState<_DangerZone> {
       if (!mounted) return;
       setState(() => _deleting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível apagar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível apagar. Tenta outra vez.'))),
       );
     }
   }

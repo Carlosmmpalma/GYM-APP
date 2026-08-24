@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/admin_providers.dart';
 import '../../application/providers/modality_providers.dart';
 import '../../domain/entities/role.dart';
+import '../../domain/entities/staff_private_profile.dart';
 import '../../domain/entities/staff_summary.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../application/providers/plan_providers.dart';
@@ -55,7 +57,32 @@ class StaffDetailScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 8),
-          _EditStaffProfileCard(staff: currentStaff),
+          // Os dados pessoais vêm de uma leitura própria: deixaram de
+          // estar no documento de staff, que todo o tenant consegue
+          // ler (ver `StaffPrivateProfile`). Enquanto não chegam, o
+          // formulário não abre — abrir com os campos vazios e gravar
+          // por cima apagava a morada e o NIF de quem lá estava.
+          Consumer(
+            builder: (context, ref, _) {
+              final privateAsync =
+                  ref.watch(staffPrivateProfileProvider(currentStaff.uid));
+              return privateAsync.when(
+                loading: () => const PanelCard(
+                  child: SizedBox(
+                    height: 48,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ),
+                error: (error, stack) =>
+                    ErrorState(error: error, compact: true),
+                data: (profile) => _EditStaffProfileCard(
+                  key: ValueKey(currentStaff.uid),
+                  staff: currentStaff,
+                  profile: profile,
+                ),
+              );
+            },
+          ),
           const SizedBox(height: 16),
           Consumer(
             builder: (context, ref, _) {
@@ -131,8 +158,9 @@ class StaffDetailScreen extends ConsumerWidget {
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                        content: Text(
-                                            'Não foi possível atualizar: $e')),
+                                        content: Text(userFacingError(e,
+                                            fallback:
+                                                'Não foi possível atualizar. Tenta outra vez.'))),
                                   );
                                 }
                               },
@@ -195,8 +223,9 @@ class StaffDetailScreen extends ConsumerWidget {
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                        content: Text(
-                                            'Não foi possível atualizar: $e')),
+                                        content: Text(userFacingError(e,
+                                            fallback:
+                                                'Não foi possível atualizar. Tenta outra vez.'))),
                                   );
                                 }
                               },
@@ -271,7 +300,9 @@ class StaffDetailScreen extends ConsumerWidget {
       } catch (e) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Não foi possível desativar: $e')),
+          SnackBar(
+              content: Text(userFacingError(e,
+                  fallback: 'Não foi possível desativar. Tenta outra vez.'))),
         );
       }
       return;
@@ -285,7 +316,10 @@ class StaffDetailScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível atualizar o staff: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível atualizar o staff. Tenta outra vez.'))),
       );
     }
   }
@@ -298,9 +332,14 @@ class StaffDetailScreen extends ConsumerWidget {
 /// Function `updateStaffProfile` — é o email de LOGIN real, ver nota
 /// de arquitetura em `updateStaffProfile.ts`.
 class _EditStaffProfileCard extends ConsumerStatefulWidget {
-  const _EditStaffProfileCard({required this.staff});
+  const _EditStaffProfileCard({
+    super.key,
+    required this.staff,
+    required this.profile,
+  });
 
   final StaffSummary staff;
+  final StaffPrivateProfile profile;
 
   @override
   ConsumerState<_EditStaffProfileCard> createState() =>
@@ -310,13 +349,14 @@ class _EditStaffProfileCard extends ConsumerStatefulWidget {
 class _EditStaffProfileCardState extends ConsumerState<_EditStaffProfileCard> {
   late final _nameController = TextEditingController(text: widget.staff.name);
   late final _emailController = TextEditingController(text: widget.staff.email);
-  late final _phoneController = TextEditingController(text: widget.staff.phone);
+  late final _phoneController =
+      TextEditingController(text: widget.profile.phone);
   late final _addressController =
-      TextEditingController(text: widget.staff.address);
-  late final _nifController = TextEditingController(text: widget.staff.nif);
+      TextEditingController(text: widget.profile.address);
+  late final _nifController = TextEditingController(text: widget.profile.nif);
   late final _emergencyContactController =
-      TextEditingController(text: widget.staff.emergencyContact);
-  late DateTime? _birthDate = widget.staff.birthDate;
+      TextEditingController(text: widget.profile.emergencyContact);
+  late DateTime? _birthDate = widget.profile.birthDate;
   bool _saving = false;
 
   @override
@@ -359,7 +399,9 @@ class _EditStaffProfileCardState extends ConsumerState<_EditStaffProfileCard> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível guardar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível guardar. Tenta outra vez.'))),
       );
     } finally {
       if (mounted) setState(() => _saving = false);

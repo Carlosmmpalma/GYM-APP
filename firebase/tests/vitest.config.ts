@@ -19,5 +19,9 @@ export default defineConfig({
   test: {
     testTimeout: 30_000,
     hookTimeout: 60_000,
+    // Ver `globalSetup.ts`: os contadores do rate limiter sobrevivem
+    // entre corridas no emulador, e faziam a suite falhar à segunda
+    // vez com "Demasiados pedidos em pouco tempo".
+    globalSetup: ['./globalSetup.ts'],
   },
 });

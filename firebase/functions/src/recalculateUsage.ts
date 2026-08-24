@@ -1,10 +1,11 @@
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
 import { isoWeekKeyToMonday, isoWeekRange } from './lib/isoWeek';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   memberId: z.string().min(1),
@@ -40,11 +41,7 @@ export const recalculateUsage = onCall(async (request) => {
     windowSeconds: 300,
   });
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { memberId, serviceId } = parsed.data;
+  const { memberId, serviceId } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);

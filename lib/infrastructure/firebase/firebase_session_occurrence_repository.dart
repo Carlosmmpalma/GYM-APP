@@ -77,6 +77,34 @@ class FirebaseSessionOccurrenceRepository
         .map((snapshot) => snapshot.docs.map(_fromDoc).toList());
   }
 
+  /// O `whereIn` do Firestore aceita no máximo 30 valores. Acima
+  /// disso não há query possível e volta-se ao horário completo — um
+  /// estúdio com mais de 30 serviços não existe, mas o código não pode
+  /// partir se existir.
+  static const _maxWhereInValues = 30;
+
+  @override
+  Stream<List<SessionOccurrence>> watchUpcomingOccurrencesForServices(
+    Set<String> serviceIds,
+  ) {
+    // Sem direito a nada: nem vale a pena perguntar ao servidor.
+    if (serviceIds.isEmpty) {
+      return Stream.value(const <SessionOccurrence>[]);
+    }
+    if (serviceIds.length > _maxWhereInValues) {
+      return watchUpcomingOccurrencesAllServices();
+    }
+
+    final now = Timestamp.now();
+    return _occurrences
+        .where('serviceId', whereIn: serviceIds.toList())
+        .where('startAt', isGreaterThanOrEqualTo: now)
+        .orderBy('startAt')
+        .limit(_upcomingLimit)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map(_fromDoc).toList());
+  }
+
   @override
   Future<SessionOccurrence?> getOccurrence(String occurrenceId) async {
     final snapshot = await _occurrences.doc(occurrenceId).get();

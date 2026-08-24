@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../application/providers/training_providers.dart';
 import '../../domain/entities/assessment.dart';
@@ -198,7 +199,9 @@ class _AssessmentFormScreenState extends ConsumerState<AssessmentFormScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível guardar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível guardar. Tenta outra vez.'))),
       );
     } finally {
       if (mounted) setState(() => _saving = false);

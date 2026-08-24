@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { requireAuthenticated } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   weekId: z.string().min(1),
@@ -35,11 +36,7 @@ export const bookFreeTrainingSlot = onCall(async (request) => {
     windowSeconds: 60,
   });
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { weekId, slotId, memberId } = parsed.data;
+  const { weekId, slotId, memberId } = parseInput(inputSchema, request.data);
 
   if (memberId !== caller.uid) {
     throw new HttpsError('permission-denied', 'Só podes marcar um horário para ti próprio.');

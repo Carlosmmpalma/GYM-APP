@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/payment_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
@@ -229,7 +230,9 @@ class _PaymentRow extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível guardar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível guardar. Tenta outra vez.'))),
       );
     }
   }

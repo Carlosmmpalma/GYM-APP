@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/admin_providers.dart';
 import '../../application/providers/modality_providers.dart';
 import '../../domain/entities/new_account_credentials.dart';
@@ -107,7 +108,8 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Não foi possível criar a conta: $e';
+          _errorMessage = userFacingError(e,
+              fallback: 'Não foi possível criar a conta. Tenta outra vez.');
           _submitting = false;
         });
       }
@@ -205,9 +207,12 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
                       setState(() => _type = selection.first),
                 ),
                 const SizedBox(height: 16),
+                const RequiredFieldsHint(),
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(labelText: 'Nome completo'),
+                  decoration: InputDecoration(
+                    labelText: requiredLabel('Nome completo'),
+                  ),
                   validator: (v) =>
                       (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
                 ),
@@ -245,8 +250,10 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _emailController,
-                    decoration: const InputDecoration(
-                        labelText: 'Email (usado para login)'),
+                    decoration: InputDecoration(
+                      labelText: requiredLabel('Email (usado para login)'),
+                      helperText: 'É por aqui que esta pessoa entra na app.',
+                    ),
                     keyboardType: TextInputType.emailAddress,
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) return 'Obrigatório';
@@ -254,7 +261,7 @@ class _CreateUserScreenState extends ConsumerState<CreateUserScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  const Text('Papel'),
+                  Text(requiredLabel('Papel')),
                   CheckboxListTile(
                     title: const Text('Instrutor'),
                     value: _staffRoles.contains(Role.instructor),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/plan_providers.dart';
 import '../widgets/design_system.dart';
 import 'plan_detail_screen.dart';
@@ -102,7 +103,9 @@ class ManagePlansScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível criar o plano: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível criar o plano. Tenta outra vez.'))),
       );
     }
   }

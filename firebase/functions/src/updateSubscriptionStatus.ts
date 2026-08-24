@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   subscriptionId: z.string().min(1),
@@ -46,7 +47,7 @@ export const updateSubscriptionStatus = onCall(async (request) => {
     windowSeconds: 300,
   });
 
-  const { subscriptionId, status } = inputSchema.parse(request.data);
+  const { subscriptionId, status } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const subscriptionRef = firestore

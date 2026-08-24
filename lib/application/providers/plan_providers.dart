@@ -109,10 +109,16 @@ final myEligibleServiceIdsProvider =
   return ref
       .watch(subscriptionRepositoryProvider)
       .watchMemberSubscriptions(appUser.uid)
-      .map((subscriptions) => {
-            for (final subscription in subscriptions)
-              if (subscription.isActive) ...subscription.activeServiceIds,
-          });
+      .map((subscriptions) {
+    // `grantsAccessAt` e não `isActive`: um plano com data de fim já
+    // passada continua com `status: active` na base de dados, e
+    // durante muito tempo continuava a dar acesso por causa disso.
+    final now = DateTime.now();
+    return {
+      for (final subscription in subscriptions)
+        if (subscription.grantsAccessAt(now)) ...subscription.activeServiceIds,
+    };
+  });
 });
 
 /// Fase 4 story 7 — a [UsageRule] aplicável a um membro+serviço, para

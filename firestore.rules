@@ -186,12 +186,77 @@ service cloud.firestore {
       // sério aqui, não só na UI: um `update`/`delete` deixaria
       // reescrever um registo já feito, o que o próprio use case
       // fechado proíbe explicitamente.
+      // Fase 11 — duas mudanças, ambas exigidas pelo registo de treino:
+      //
+      // 1. O PRÓPRIO ALUNO passa a poder escrever. Antes só Instrutor e
+      //    Gestor podiam, o que tornava impossível o aluno registar o
+      //    seu treino — e num ginásio isso é o caso normal, não a
+      //    exceção.
+      //
+      // 2. Deixou de exigir consentimento de dados de saúde. "Fez 10
+      //    repetições com 60 kg" é o registo do SERVIÇO prestado — a
+      //    base legal é a execução do contrato, como as marcações e as
+      //    presenças. O artigo 9.º fica reservado ao que revela estado
+      //    de saúde: composição corporal e pressão arterial, que
+      //    continuam a exigir consentimento explícito em
+      //    `assessments`.
+      //
+      //    [ADVOGADO] Esta é uma qualificação jurídica, não técnica, e
+      //    está sinalizada em `legal/01-politica-de-privacidade.md`
+      //    secção 5. A alternativa — manter o gate — tornaria o registo
+      //    de treino indisponível a quem recusasse, o que é o núcleo do
+      //    serviço contratado.
+      //
+      // `update` continua bloqueado: "nunca sobrescrever o histórico"
+      // (UC16) vale para toda a gente, incluindo o próprio.
+      //
+      // `delete` abriu para UM caso, e só esse: registos criados por
+      // uma série de treino (`sessionId` presente). Corrigir uma série
+      // mal registada — 6 kg escritos em vez de 60 — apaga o registo
+      // errado e cria outro, porque alterá-lo no lugar seria mesmo
+      // reescrever histórico.
+      //
+      // O que isto NÃO abre: os registos criados pelo Instrutor ao
+      // mudar a carga prescrita não têm `sessionId`, e continuam
+      // imutáveis. A progressão que o UC16 protege é essa; um engano
+      // de dedo registado há dois minutos não é progressão, é lixo que
+      // fica no gráfico para sempre.
       match /loadHistory/{recordId} {
         allow read: if belongsToTenant(tenantId)
           && (request.auth.uid == memberId || isManager(tenantId) || isInstructor(tenantId));
-        allow create: if (isManager(tenantId) || isInstructor(tenantId))
-          && hasHealthDataConsent(tenantId, memberId);
-        allow update, delete: if false;
+        allow create: if belongsToTenant(tenantId)
+          && (request.auth.uid == memberId
+              || isManager(tenantId)
+              || isInstructor(tenantId));
+        allow delete: if belongsToTenant(tenantId)
+          && (request.auth.uid == memberId
+              || isManager(tenantId)
+              || isInstructor(tenantId))
+          && 'sessionId' in resource.data;
+        allow update: if false;
+      }
+
+      // Fase 11 — sessões de treino: o que foi FEITO num dia.
+      //
+      // Escrita pelos três papéis, pela mesma razão: o aluno regista o
+      // seu treino, e o instrutor ou o gestor registam por ele quando o
+      // acompanham ao lado — que é como um estúdio com PT funciona.
+      //
+      // `delete` permitido para descartar uma sessão aberta por engano.
+      // Uma sessão TERMINADA é histórico e não se apaga por aqui; para
+      // isso existe o apagamento RGPD, que é uma ação deliberada.
+      match /workoutSessions/{sessionId} {
+        allow read: if belongsToTenant(tenantId)
+          && (request.auth.uid == memberId || isManager(tenantId) || isInstructor(tenantId));
+        allow create, update: if belongsToTenant(tenantId)
+          && (request.auth.uid == memberId
+              || isManager(tenantId)
+              || isInstructor(tenantId));
+        allow delete: if belongsToTenant(tenantId)
+          && (request.auth.uid == memberId
+              || isManager(tenantId)
+              || isInstructor(tenantId))
+          && resource.data.finishedAt == null;
       }
 
       // --- Plano de treino (Fase 8, UC13) ---
@@ -260,9 +325,29 @@ service cloud.firestore {
     // por campo. Fica assinalado; fechá-lo a sério exigiria separar os
     // dados pessoais para uma subcoleção própria, que é uma mudança de
     // modelo de dados, não uma regra.
+    // A leitura é ampla dentro do tenant de propósito: é daqui que sai
+    // o NOME do instrutor no cartão de uma aula, que qualquer aluno vê.
+    // Por isso mesmo, os dados pessoais deixaram de estar aqui — ver o
+    // `match /private/` abaixo.
     match /tenants/{tenantId}/staff/{staffId} {
       allow read: if belongsToTenant(tenantId);
       allow write: if isManager(tenantId);
+
+      // Última ronda — morada, NIF, data de nascimento e contacto de
+      // emergência do staff estavam no documento acima, legível por
+      // TODO o tenant: qualquer aluno conseguia ler o NIF e a morada
+      // dos instrutores. É a mesma fuga que foi fechada em `members`
+      // na Fase 11; o staff tinha ficado para trás.
+      //
+      // Escrita sempre `false`: passa por `createStaff`/
+      // `updateStaffProfile` (Admin SDK), como o resto do perfil de
+      // staff. O próprio lê os seus dados; o Gestor lê os de todos,
+      // que é o que a ficha de staff precisa.
+      match /private/{documentId} {
+        allow read: if isManager(tenantId)
+          || (belongsToTenant(tenantId) && request.auth.uid == staffId);
+        allow write: if false;
+      }
       // UC21 — o próprio staff regista o token FCM do seu dispositivo
       // (`registerFcmToken`, `arrayUnion`), tal como um membro faz no
       // seu documento. Só este campo.
@@ -377,6 +462,25 @@ service cloud.firestore {
           || isInstructor(tenantId)
           || (belongsToTenant(tenantId)
               && resource.data.memberId == request.auth.uid);
+        allow write: if false;
+      }
+
+      // Fase 11 — lista de espera de uma sessão cheia.
+      //
+      // Mesma visibilidade das marcações: o aluno vê a SUA posição na
+      // fila, o staff vê a fila toda. Saber quem mais está à espera não
+      // serve de nada a um aluno e é informação sobre terceiros.
+      //
+      // Escrita sempre `false`: entrar na fila exige verificar
+      // capacidade, marcação existente e elegibilidade — decisões que
+      // não podem ficar do lado do cliente. Passa por `joinWaitlist` /
+      // `leaveWaitlist`; a promoção automática é do Admin SDK.
+      match /waitlist/{waitlistMemberId} {
+        allow get: if isManager(tenantId)
+          || isInstructor(tenantId)
+          || (belongsToTenant(tenantId)
+              && request.auth.uid == waitlistMemberId);
+        allow list: if isManager(tenantId) || isInstructor(tenantId);
         allow write: if false;
       }
 

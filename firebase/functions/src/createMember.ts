@@ -1,6 +1,6 @@
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
@@ -9,6 +9,7 @@ import { buildSyntheticEmail } from './lib/loginIdentifier';
 import { nextMemberNumber } from './lib/memberNumber';
 import { parseOptionalDate } from './lib/parseDate';
 import { generateTemporaryPassword } from './lib/tempPassword';
+import { parseInput, rethrowAuthError } from './lib/validation';
 
 const inputSchema = z.object({
   name: z.string().min(1),
@@ -45,15 +46,10 @@ export const createMember = onCall(async (request) => {
     windowSeconds: 300,
   });
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
   // `email` aqui é o CONTACTO (`MemberSummary.email`), distinto do
   // email sintético de login gerado abaixo — nomes diferentes de
   // propósito, para nunca confundir os dois no resto da função.
-  const { name, phone, email: contactEmail, birthDate, address, nif, emergencyContact } =
-    parsed.data;
+  const { name, phone, email: contactEmail, birthDate, address, nif, emergencyContact } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const auth = getAuth();
@@ -66,11 +62,20 @@ export const createMember = onCall(async (request) => {
   const loginEmail = buildSyntheticEmail(caller.tenantId, memberNumber);
   const temporaryPassword = generateTemporaryPassword();
 
-  const userRecord = await auth.createUser({
-    email: loginEmail,
-    password: temporaryPassword,
-    displayName: name,
-  });
+  // O email de login de um aluno é sintético (nº de sócio), por isso um
+  // "já existe" aqui não é culpa de quem preencheu o formulário — é
+  // uma colisão de números de sócio. Traduzido na mesma: ver
+  // `lib/validation.ts`.
+  let userRecord;
+  try {
+    userRecord = await auth.createUser({
+      email: loginEmail,
+      password: temporaryPassword,
+      displayName: name,
+    });
+  } catch (error) {
+    rethrowAuthError(error);
+  }
 
   // Fase 8 (revisão geral) — a partir daqui já existe uma conta no
   // Firebase Auth. Se as claims ou o documento do membro falharem,

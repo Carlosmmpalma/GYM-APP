@@ -1,12 +1,13 @@
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
 import { parseOptionalDate } from './lib/parseDate';
 import { generateTemporaryPassword } from './lib/tempPassword';
+import { parseInput, rethrowAuthError } from './lib/validation';
 
 const inputSchema = z.object({
   name: z.string().min(1),
@@ -53,12 +54,7 @@ export const createStaff = onCall(async (request) => {
     windowSeconds: 300,
   });
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { name, email, roles, modalityIds, serviceIds, phone, birthDate, address, nif, emergencyContact } =
-    parsed.data;
+  const { name, email, roles, modalityIds, serviceIds, phone, birthDate, address, nif, emergencyContact } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const auth = getAuth();
@@ -68,11 +64,20 @@ export const createStaff = onCall(async (request) => {
 
   const temporaryPassword = generateTemporaryPassword();
 
-  const userRecord = await auth.createUser({
-    email,
-    password: temporaryPassword,
-    displayName: name,
-  });
+  // Falhas do Firebase Auth traduzidas antes de subirem: sem isto, um
+  // email já usado devolvia `internal` / "INTERNAL" — o Gestor via
+  // "erro interno" quando o que se passava era uma coisa que ele
+  // percebe e resolve num segundo. Ver `lib/validation.ts`.
+  let userRecord;
+  try {
+    userRecord = await auth.createUser({
+      email,
+      password: temporaryPassword,
+      displayName: name,
+    });
+  } catch (error) {
+    rethrowAuthError(error);
+  }
 
   // Mesmo rollback de `createMember.ts`: um staff sem `staff/{uid}` ou
   // sem claims consegue autenticar-se e fica preso num estado que
@@ -84,28 +89,47 @@ export const createStaff = onCall(async (request) => {
       roles,
     });
 
-    await firestore
+    const staffRef = firestore
       .collection('tenants')
       .doc(caller.tenantId)
       .collection('staff')
-      .doc(userRecord.uid)
-      .set({
-        userId: userRecord.uid,
-        name,
-        email,
-        roles,
-        modalityIds: modalityIds ?? [],
-        serviceIds: serviceIds ?? [],
-        status: 'active',
-        passwordTemporaria: true,
-        phone: phone ?? '',
-        birthDate: birthTimestamp,
-        address: address ?? '',
-        nif: nif ?? '',
-        emergencyContact: emergencyContact ?? '',
-        createdAt: FieldValue.serverTimestamp(),
-        createdBy: caller.uid,
-      });
+      .doc(userRecord.uid);
+
+    // Os dados pessoais do staff vivem numa subcoleção PRIVADA, e não
+    // no documento principal.
+    //
+    // O documento de `staff` é legível por todo o tenant — é dele que
+    // sai o nome do instrutor no cartão de uma aula, que qualquer aluno
+    // vê. Com a morada, o NIF, a data de nascimento e o contacto de
+    // emergência lá dentro, isso queria dizer que qualquer aluno podia
+    // ler o NIF e a morada dos instrutores. É a mesma fuga que já tinha
+    // sido fechada em `members` na Fase 11 — o staff ficou para trás.
+    //
+    // O que fica no documento público é o mínimo para a app funcionar:
+    // nome, email (é a identidade de login e o contacto profissional),
+    // papéis, serviços/modalidades e estado.
+    const batch = firestore.batch();
+    batch.set(staffRef, {
+      userId: userRecord.uid,
+      name,
+      email,
+      roles,
+      modalityIds: modalityIds ?? [],
+      serviceIds: serviceIds ?? [],
+      status: 'active',
+      passwordTemporaria: true,
+      createdAt: FieldValue.serverTimestamp(),
+      createdBy: caller.uid,
+    });
+    batch.set(staffRef.collection('private').doc('profile'), {
+      phone: phone ?? '',
+      birthDate: birthTimestamp,
+      address: address ?? '',
+      nif: nif ?? '',
+      emergencyContact: emergencyContact ?? '',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
   } catch (err) {
     await auth.deleteUser(userRecord.uid).catch(() => undefined);
     throw err;

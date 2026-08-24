@@ -94,6 +94,12 @@ final freeTrainingServiceIdProvider =
   return ref.watch(tenantRepositoryProvider).getFreeTrainingServiceId(tenantId);
 });
 
+/// Fase 11 — antecedência do lembrete da aula (`0` = desligado).
+final sessionReminderHoursProvider = FutureProvider.autoDispose<int>((ref) {
+  final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
+  return ref.watch(tenantRepositoryProvider).getSessionReminderHours(tenantId);
+});
+
 final minBookingNoticeMinutesProvider = FutureProvider.autoDispose<int>((ref) {
   final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
   return ref

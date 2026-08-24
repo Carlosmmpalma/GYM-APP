@@ -12,6 +12,7 @@ import '../../core/utils/iso_week.dart';
 import '../../domain/entities/booking.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/subscription.dart';
+import '../../repositories/waitlist_repository.dart';
 import '../widgets/design_system.dart';
 
 /// UC05/06/07 — "Marcar treino". Até à Fase 5 mostrava só as
@@ -55,11 +56,23 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
     // ignorada (appUser == null). Watch aqui garante que já está resolvido
     // antes de qualquer botão poder ser premido.
     final appUserAsync = ref.watch(currentAppUserProvider);
-    final occurrencesAsync = ref.watch(allUpcomingOccurrencesProvider);
+    final eligibleAsync = ref.watch(myEligibleServiceIdsProvider);
+    // O horário é pedido ao servidor JÁ filtrado pelos serviços do
+    // plano deste aluno (ver `occurrencesForServicesProvider`). Antes
+    // vinha o horário inteiro do ginásio para ser filtrado em memória:
+    // quem só tinha aulas de grupo descarregava Pilates, PT e tudo o
+    // resto para deitar fora, e quem não tinha plano nenhum
+    // descarregava tudo para lhe dizerem que não tinha acesso a nada.
+    //
+    // Enquanto não se sabe a que tem direito, fica em carregamento —
+    // perguntar antes de saber seria perguntar a coisa errada.
+    final eligible = eligibleAsync.valueOrNull;
+    final occurrencesAsync = eligible == null
+        ? const AsyncValue<List<SessionOccurrence>>.loading()
+        : ref.watch(occurrencesForServicesProvider(serviceIdsKey(eligible)));
     final servicesAsync = ref.watch(servicesProvider);
     final staffAsync = ref.watch(staffProvider);
     final modalitiesAsync = ref.watch(modalitiesProvider);
-    final eligibleAsync = ref.watch(myEligibleServiceIdsProvider);
 
     return appUserAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -74,24 +87,19 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
         return occurrencesAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, stack) => ErrorState(error: error),
-          data: (allOccurrences) {
-            // Fase 11 — só o que o plano deste aluno dá. Antes via-se o
-            // horário inteiro do ginásio e só se descobria ao tocar em
-            // "Marcar", com um erro vindo da Cloud Function; mostrava-se
-            // como oferta o que era uma venda por fazer.
-            //
-            // Enquanto a elegibilidade carrega (`null`) NÃO se filtra:
-            // esconder o horário todo por um instante e vê-lo aparecer a
-            // seguir é pior do que mostrá-lo um instante a mais. A
-            // proteção real é do servidor, sempre.
-            final eligible = eligibleAsync.valueOrNull;
-            final occurrences = eligible == null
-                ? allOccurrences
-                : allOccurrences
-                    .where((o) => eligible.contains(o.serviceId))
-                    .toList();
+          data: (upcoming) {
+            // Sessões canceladas pelo estúdio continuavam a aparecer
+            // aqui, com as vagas todas livres e um botão "Marcar"
+            // desativado sem explicação nenhuma. Quem tinha marcação
+            // nelas já foi notificado; para os outros, é ruído.
+            final occurrences = upcoming
+                .where((o) => o.status == SessionOccurrenceStatus.scheduled)
+                .toList();
 
-            if (occurrences.isEmpty && eligible != null && eligible.isEmpty) {
+            // `eligible` é sempre não-nulo aqui: o `data` só corre
+            // depois de a elegibilidade ter resolvido (é ela que
+            // escolhe a query).
+            if (eligible!.isEmpty) {
               return const EmptyState(
                 icon: Icons.lock_outline,
                 title: 'O teu plano não dá acesso a aulas',
@@ -101,20 +109,15 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
               );
             }
 
-            if (occurrences.isEmpty && allOccurrences.isNotEmpty) {
-              return const EmptyState(
-                icon: Icons.event_busy_outlined,
-                title: 'Sem aulas do teu plano nos próximos dias',
-                message: 'Há aulas no horário, mas nenhuma dos serviços a '
-                    'que o teu plano dá acesso. Assim que houver, aparecem '
-                    'aqui.',
-              );
-            }
-
             if (occurrences.isEmpty) {
+              // Uma mensagem só, em vez de distinguir "o ginásio não
+              // tem aulas" de "não tem aulas DO TEU PLANO": para
+              // distinguir era preciso ler também o horário a que este
+              // aluno não tem acesso — exatamente a leitura que se quis
+              // evitar. O que ele pode fazer é o mesmo nos dois casos.
               return const EmptyState(
                 icon: Icons.fitness_center_outlined,
-                title: 'Sem sessões para marcar',
+                title: 'Sem aulas para marcar',
                 message: 'Não há aulas agendadas para os próximos dias nos '
                     'serviços a que o teu plano dá acesso. Assim que o '
                     'ginásio publicar o horário, aparecem aqui.',
@@ -153,6 +156,8 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
                 ? occurrences
                 : occurrences.where((o) => o.modalityId == selected).toList();
 
+            final rows = _rowsByDay(visible);
+
             return Column(
               children: [
                 if (tabModalities.isNotEmpty) ...[
@@ -178,11 +183,24 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
                         )
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
-                          itemCount: visible.length,
+                          itemCount: rows.length,
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 8),
                           itemBuilder: (context, index) {
-                            final occurrence = visible[index];
+                            final row = rows[index];
+                            // Cabeçalho de dia. Agrupar não é
+                            // decoração: uma lista corrida de 40 aulas
+                            // repete a data em cada cartão e obriga a
+                            // lê-la para saber se é hoje ou daqui a
+                            // duas semanas.
+                            if (row.day != null) {
+                              return Padding(
+                                padding: EdgeInsets.only(
+                                    top: index == 0 ? 0 : 12, bottom: 2),
+                                child: SectionLabel(_dayLabel(row.day!)),
+                              );
+                            }
+                            final occurrence = row.occurrence!;
                             return _OccurrenceTile(
                               // Sem `key`, o Flutter emparelha os
                               // elementos por POSIÇÃO: se uma sessão
@@ -213,6 +231,45 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
       },
     );
   }
+}
+
+/// Uma linha da lista: ou um cabeçalho de dia, ou uma sessão.
+class _Row {
+  const _Row.day(this.day) : occurrence = null;
+  const _Row.occurrence(this.occurrence) : day = null;
+
+  final DateTime? day;
+  final SessionOccurrence? occurrence;
+}
+
+/// Intercala cabeçalhos de dia numa lista já ordenada por data.
+List<_Row> _rowsByDay(List<SessionOccurrence> occurrences) {
+  final rows = <_Row>[];
+  DateTime? currentDay;
+  for (final occurrence in occurrences) {
+    final day = DateTime(
+      occurrence.startAt.year,
+      occurrence.startAt.month,
+      occurrence.startAt.day,
+    );
+    if (currentDay == null || day != currentDay) {
+      rows.add(_Row.day(day));
+      currentDay = day;
+    }
+    rows.add(_Row.occurrence(occurrence));
+  }
+  return rows;
+}
+
+/// "Hoje" e "Amanhã" antes da data: é assim que se fala de treino, e
+/// poupa a conta mental de ver "qua, 22 out" e perceber que é amanhã.
+String _dayLabel(DateTime day) {
+  final today = DateTime.now();
+  final startOfToday = DateTime(today.year, today.month, today.day);
+  final difference = day.difference(startOfToday).inDays;
+  if (difference == 0) return 'Hoje';
+  if (difference == 1) return 'Amanhã';
+  return DateFormat('EEEE, d MMM', 'pt_PT').format(day);
 }
 
 class _OccurrenceTile extends ConsumerStatefulWidget {
@@ -259,7 +316,7 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
       // do listener do Firestore. Fase 4: o mesmo vale para a barra de
       // utilização — sem isto, "X/Y" só atualizava depois do próximo
       // evento de snapshot chegar sozinho.
-      ref.invalidate(allUpcomingOccurrencesProvider);
+      ref.invalidate(occurrencesForServicesProvider);
       ref.invalidate(myBookingsProvider);
       ref.invalidate(usageProvider((
         memberId: widget.memberId,
@@ -288,7 +345,7 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
   @override
   Widget build(BuildContext context) {
     final occurrence = widget.occurrence;
-    final dateFormat = DateFormat('EEE, d MMM · HH:mm', 'pt_PT');
+    final timeFormat = DateFormat('HH:mm', 'pt_PT');
 
     // O estado das vagas é a informação que decide se vale a pena ler o
     // resto do cartão — por isso é um `Pill` no topo, à direita, e não
@@ -323,7 +380,7 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
           ),
           const SizedBox(height: 3),
           Text(
-            dateFormat.format(occurrence.startAt) +
+            timeFormat.format(occurrence.startAt) +
                 (widget.instructorName != null
                     ? ' · ${widget.instructorName}'
                     : ''),
@@ -350,6 +407,15 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
                 ),
               ],
             )
+          // Cheia mas ainda agendada: a ação útil deixa de ser marcar e
+          // passa a ser esperar. Um botão "Sem vagas" desativado dizia
+          // ao aluno que não havia nada a fazer — e havia.
+          else if (occurrence.isFull &&
+              occurrence.status == SessionOccurrenceStatus.scheduled)
+            _WaitlistSection(
+              occurrenceId: occurrence.id,
+              memberId: widget.memberId,
+            )
           else
             SizedBox(
               width: double.infinity,
@@ -373,6 +439,144 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
       ),
     );
   }
+}
+
+/// Fase 11 — a alternativa a um botão "Sem vagas" desativado.
+///
+/// A app impõe capacidade por desenho, portanto aulas cheias são o
+/// normal. Antes disto, quem chegava tarde não tinha nada a fazer senão
+/// voltar a abrir a app de vez em quando a ver se alguém tinha
+/// cancelado — e na maior parte das vezes não voltava.
+///
+/// A promessa que a mensagem faz é a que o servidor cumpre: quem
+/// cancela liberta o lugar para o PRIMEIRO da fila, automaticamente e
+/// sem confirmar (`firebase/functions/src/lib/waitlist.ts` explica
+/// porquê essa escolha e não um convite com prazo). Por isso o texto
+/// diz "ficas com o lugar", não "avisamos-te".
+class _WaitlistSection extends ConsumerStatefulWidget {
+  const _WaitlistSection({required this.occurrenceId, required this.memberId});
+
+  final String occurrenceId;
+  final String memberId;
+
+  @override
+  ConsumerState<_WaitlistSection> createState() => _WaitlistSectionState();
+}
+
+class _WaitlistSectionState extends ConsumerState<_WaitlistSection> {
+  bool _isBusy = false;
+  String? _error;
+
+  Future<void> _run(
+      Future<void> Function(WaitlistRepository repo) action) async {
+    setState(() {
+      _isBusy = true;
+      _error = null;
+    });
+    try {
+      await action(ref.read(waitlistRepositoryProvider));
+      // Mesma razão de `_book`: forçar a releitura em vez de esperar
+      // pela propagação do listener.
+      ref.invalidate(myWaitlistEntryProvider(widget.occurrenceId));
+      ref.invalidate(occurrencesForServicesProvider);
+      ref.invalidate(myBookingsProvider);
+    } on WaitlistHasCapacityException catch (e) {
+      setState(() => _error = e.toString());
+    } on WaitlistAlreadyBookedException catch (e) {
+      setState(() => _error = e.toString());
+    } on WaitlistNotEligibleException catch (e) {
+      setState(() => _error = e.toString());
+    } catch (e) {
+      setState(() => _error = 'Não foi possível. Tenta novamente.');
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = ref.watch(myWaitlistEntryProvider(widget.occurrenceId));
+
+    // Enquanto carrega mostra-se o botão de entrar, não um spinner: o
+    // caso esmagadoramente comum é não estar na fila, e piscar um
+    // indicador em cada cartão cheio da lista seria pior do que corrigir
+    // o botão um instante depois.
+    final position = entry.valueOrNull?.position;
+    final inQueue = entry.valueOrNull != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (inQueue)
+          Row(
+            children: [
+              const Icon(Icons.hourglass_top, size: 16, color: AppColors.mute),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  position == null
+                      ? 'Estás na lista de espera. Se vagar um lugar, a '
+                          'marcação é feita automaticamente.'
+                      : position == 1
+                          ? 'És o próximo da lista. Se alguém cancelar, o '
+                              'lugar fica teu automaticamente.'
+                          : 'Estás em $positionº na lista de espera.',
+                  style: const TextStyle(color: AppColors.mute, fontSize: 12),
+                ),
+              ),
+            ],
+          )
+        else
+          const Text(
+            'Sessão cheia. Entra na lista de espera e, se alguém cancelar, '
+            'ficas com o lugar automaticamente.',
+            style: TextStyle(color: AppColors.mute, fontSize: 12),
+          ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: inQueue
+              ? OutlinedButton(
+                  onPressed: _isBusy
+                      ? null
+                      : () => _run((repo) => repo.leave(
+                            occurrenceId: widget.occurrenceId,
+                            memberId: widget.memberId,
+                          )),
+                  child: _isBusy
+                      ? const _TinySpinner()
+                      : const Text('Sair da lista de espera'),
+                )
+              : FilledButton.tonal(
+                  onPressed: _isBusy
+                      ? null
+                      : () => _run((repo) => repo.join(
+                            occurrenceId: widget.occurrenceId,
+                            memberId: widget.memberId,
+                          )),
+                  child: _isBusy
+                      ? const _TinySpinner()
+                      : const Text('Entrar em lista de espera'),
+                ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          AppBanner(text: _error!, tone: PillTone.danger),
+        ],
+      ],
+    );
+  }
+}
+
+class _TinySpinner extends StatelessWidget {
+  const _TinySpinner();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
 }
 
 /// Fase 4 story 7 — "barra '1/2 sessões esta semana'". Até à Fase 5

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_saas/application/providers/plan_providers.dart';
+import 'package:gym_saas/application/providers/booking_providers.dart';
 import 'package:gym_saas/application/providers/free_training_providers.dart';
 import 'package:gym_saas/application/providers/tenant_context_providers.dart';
 import 'package:gym_saas/domain/entities/app_user.dart';
@@ -151,10 +152,15 @@ void main() {
   Widget buildApp(
     _FakeFreeTrainingRepository repository, {
     Set<String>? eligible,
+    List<Booking> myBookings = const [],
   }) {
     return ProviderScope(
       overrides: [
         freeTrainingRepositoryProvider.overrideWithValue(repository),
+        // Otimização de custo (Fase 11): "já reservei este bloco?"
+        // deixou de ser uma leitura por bloco e passa a derivar das
+        // marcações que já vinham carregadas.
+        myBookingsProvider.overrideWith((ref) => Stream.value(myBookings)),
         if (eligible != null)
           myEligibleServiceIdsProvider
               .overrideWith((ref) => Stream.value(eligible)),
@@ -212,12 +218,95 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.bookCalled, isTrue);
-    expect(find.text('Cancelar'), findsOneWidget);
+  });
 
-    await tester.tap(find.text('Cancelar'));
+  testWidgets('um bloco já reservado mostra "Cancelar"', (tester) async {
+    // O estado do botão vem das marcações do próprio aluno, e não de
+    // uma leitura por bloco — ver `myFreeTrainingSlotIdsProvider`.
+    final now = DateTime.now();
+    final schedule = FreeTrainingSchedule(
+      weekId: 'week_1',
+      weekStart: now,
+      status: FreeTrainingScheduleStatus.published,
+    );
+    final slot = FreeTrainingSlot(
+      id: 'slot_1',
+      weekId: 'week_1',
+      serviceId: 'service_1',
+      startAt: now.add(const Duration(hours: 1)),
+      endAt: now.add(const Duration(hours: 3)),
+      capacity: 10,
+      activeBookingCount: 4,
+    );
+    final repository =
+        _FakeFreeTrainingRepository(schedule: schedule, slots: [slot]);
+
+    await tester.pumpWidget(buildApp(
+      repository,
+      myBookings: [
+        Booking(
+          id: _memberId,
+          occurrenceId: 'slot_1',
+          memberId: _memberId,
+          status: BookingStatus.booked,
+          source: BookingSource.self,
+          isExtra: false,
+          createdAt: now,
+          kind: BookingKind.freeTraining,
+          weekId: 'week_1',
+        ),
+      ],
+    ));
     await tester.pumpAndSettle();
 
+    expect(find.text('Cancelar'), findsOneWidget);
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
     expect(repository.cancelCalled, isTrue);
+  });
+
+  testWidgets('a marcação de OUTRA semana não marca este bloco',
+      (tester) async {
+    // O id do slot pode repetir-se entre semanas; a chave tem de
+    // incluir a semana.
+    final now = DateTime.now();
+    final repository = _FakeFreeTrainingRepository(
+      schedule: FreeTrainingSchedule(
+        weekId: 'week_1',
+        weekStart: now,
+        status: FreeTrainingScheduleStatus.published,
+      ),
+      slots: [
+        FreeTrainingSlot(
+          id: 'slot_1',
+          weekId: 'week_1',
+          serviceId: 'service_1',
+          startAt: now.add(const Duration(hours: 1)),
+          endAt: now.add(const Duration(hours: 3)),
+          capacity: 10,
+          activeBookingCount: 4,
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(buildApp(
+      repository,
+      myBookings: [
+        Booking(
+          id: _memberId,
+          occurrenceId: 'slot_1',
+          memberId: _memberId,
+          status: BookingStatus.booked,
+          source: BookingSource.self,
+          isExtra: false,
+          createdAt: now,
+          kind: BookingKind.freeTraining,
+          weekId: 'week_OUTRA',
+        ),
+      ],
+    ));
+    await tester.pumpAndSettle();
+
     expect(find.text('Reservar'), findsOneWidget);
   });
 

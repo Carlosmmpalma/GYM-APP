@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { requireManagerOrInstructor } from './lib/callerContext';
 import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   occurrenceId: z.string().min(1),
@@ -47,11 +48,7 @@ type MemberOutcome =
 export const assignMembersToOccurrence = onCall(async (request) => {
   const caller = requireManagerOrInstructor(request);
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { occurrenceId, memberIds, isExtra } = parsed.data;
+  const { occurrenceId, memberIds, isExtra } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);

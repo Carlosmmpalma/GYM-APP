@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   memberId: z.string().min(1),
@@ -37,11 +38,7 @@ const inputSchema = z.object({
 export const createSubscription = onCall(async (request) => {
   const caller = requireManager(request);
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { memberId, planId, agreedPrice, currency } = parsed.data;
+  const { memberId, planId, agreedPrice, currency } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);

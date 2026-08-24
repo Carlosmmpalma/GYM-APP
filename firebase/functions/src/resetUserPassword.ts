@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { requireManager } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
 import { generateTemporaryPassword } from './lib/tempPassword';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   userId: z.string().min(1),
@@ -47,7 +48,7 @@ export const resetUserPassword = onCall(async (request) => {
     windowSeconds: 300,
   });
 
-  const { userId } = inputSchema.parse(request.data);
+  const { userId } = parseInput(inputSchema, request.data);
 
   if (userId === caller.uid) {
     throw new HttpsError(

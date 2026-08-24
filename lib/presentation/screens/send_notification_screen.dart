@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/notification_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../widgets/design_system.dart';
+import '../widgets/member_picker.dart';
 
 /// Fase 6 (UC21) — enviar uma notificação push. Dois modos, conforme
 /// [occurrenceId]:
@@ -62,19 +64,21 @@ class _SendNotificationScreenState
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, stack) =>
                     ErrorState(error: error, compact: true),
-                data: (members) => DropdownButtonFormField<String>(
-                  initialValue: _selectedMemberId,
-                  decoration: const InputDecoration(labelText: 'Membro'),
-                  items: members
-                      .map(
-                        (m) => DropdownMenuItem<String>(
-                          value: m.uid,
-                          child: Text(m.name),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) =>
-                      setState(() => _selectedMemberId = value),
+                // Um `DropdownButtonFormField` com os membros todos
+                // obriga a percorrer uma lista de centenas de nomes com
+                // o polegar. O `MemberPickerField` (já usado para
+                // atribuir planos) abre uma folha com procura — é a
+                // mesma escolha, feita da mesma maneira, nos dois
+                // sítios onde se escolhe uma pessoa.
+                data: (members) => MemberPickerField(
+                  members: members,
+                  selected: _selectedMemberId == null
+                      ? null
+                      : members
+                          .where((m) => m.uid == _selectedMemberId)
+                          .firstOrNull,
+                  onSelected: (member) =>
+                      setState(() => _selectedMemberId = member.uid),
                 ),
               ),
             const SizedBox(height: 16),
@@ -126,7 +130,9 @@ class _SendNotificationScreenState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível enviar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível enviar. Tenta outra vez.'))),
       );
     } finally {
       if (mounted) setState(() => _sending = false);

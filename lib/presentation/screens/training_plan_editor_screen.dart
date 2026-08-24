@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../application/providers/training_providers.dart';
 import '../../core/theme/app_colors.dart';
@@ -135,7 +136,10 @@ class TrainingPlanEditorScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível criar o treino: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível criar o treino. Tenta outra vez.'))),
       );
     }
   }
@@ -436,7 +440,9 @@ class _PlanEntryTile extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível mover: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível mover. Tenta outra vez.'))),
       );
     }
   }
@@ -462,7 +468,10 @@ class _PlanEntryTile extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível atualizar a carga: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível atualizar a carga. Tenta outra vez.'))),
       );
     }
   }
@@ -475,7 +484,9 @@ class _PlanEntryTile extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível remover: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível remover. Tenta outra vez.'))),
       );
     }
   }

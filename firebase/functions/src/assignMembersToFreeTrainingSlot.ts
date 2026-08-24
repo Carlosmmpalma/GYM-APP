@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
 import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   weekId: z.string().min(1),
@@ -26,11 +27,7 @@ type MemberOutcome =
 export const assignMembersToFreeTrainingSlot = onCall(async (request) => {
   const caller = requireManager(request);
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { weekId, slotId, memberIds } = parsed.data;
+  const { weekId, slotId, memberIds } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);

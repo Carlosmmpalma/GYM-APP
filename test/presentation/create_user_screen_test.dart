@@ -94,7 +94,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Nome completo'),
+      find.widgetWithText(TextFormField, 'Nome completo *'),
       'Rita Ferreira',
     );
     await tester.enterText(

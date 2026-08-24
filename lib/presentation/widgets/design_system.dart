@@ -547,7 +547,7 @@ class EmptyState extends StatelessWidget {
 
 /// Fase 10 — o par do [EmptyState] para quando a leitura FALHA.
 ///
-/// A app tinha ~49 sítios com `Text('Erro: $error')`: o `toString()` de
+/// A app tinha ~49 sítios com `Text(userFacingError(error, fallback: 'Erro. Tenta outra vez.'))`: o `toString()` de
 /// uma exceção do SDK, cru, no meio do ecrã. Foi assim que o bug do
 /// treino livre chegou ao utilizador — como
 /// `[cloud_firestore/permission-denied] ... Null value error for 'get'
@@ -847,6 +847,36 @@ class SectionLabel extends StatelessWidget {
         fontSize: 11,
         letterSpacing: 0.6,
         fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+}
+
+/// Rótulo de um campo obrigatório.
+///
+/// Antes disto, o único sinal de que um campo era preciso era a
+/// mensagem "Obrigatório" que aparecia **depois** de carregar em
+/// gravar — e, quando a validação vivia só no servidor, nem isso: vinha
+/// um erro genérico. Num formulário em que a maior parte dos campos é
+/// opcional (criar utilizador, criar série), saber quais é que contam
+/// antes de começar a escrever poupa a viagem inteira.
+///
+/// Convenção da app: asterisco no fim do rótulo, e uma linha a
+/// explicá-lo uma vez por formulário ([RequiredFieldsHint]).
+String requiredLabel(String label) => '$label *';
+
+/// A legenda do asterisco. Uma vez por formulário, no topo — sem isto o
+/// símbolo pressupõe que toda a gente conhece a convenção.
+class RequiredFieldsHint extends StatelessWidget {
+  const RequiredFieldsHint({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 4),
+      child: Text(
+        'Os campos com * são obrigatórios.',
+        style: TextStyle(color: AppColors.dim, fontSize: 11),
       ),
     );
   }

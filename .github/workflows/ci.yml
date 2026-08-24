@@ -30,6 +30,14 @@ jobs:
       - name: Testes unitários
         run: flutter test --coverage
 
+      # A build que vai para o ar é a de PRODUÇÃO — `lib/main.dart`
+      # aponta para development, e publicar esse artefacto dava uma app
+      # com aspeto normal a escrever na base de dados errada. Compilar
+      # aqui garante que o caminho de produção não parte sem ninguém
+      # dar por isso até ao dia do deploy.
+      - name: Build de produção (web)
+        run: flutter build web --release -t lib/main_production.dart
+
       # integration_test/ (contra o emulador a sério) não corre aqui —
       # precisa de um device/simulador, não só do SDK. Ver README.md.
 

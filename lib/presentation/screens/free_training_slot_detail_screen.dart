@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/free_training_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
@@ -141,7 +142,9 @@ class FreeTrainingSlotDetailScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível atribuir: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível atribuir. Tenta outra vez.'))),
       );
     }
     ref.invalidate(eligibleMembersProvider(slot.serviceId));
@@ -281,7 +284,10 @@ class _MemberTile extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível registar presença: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível registar presença. Tenta outra vez.'))),
       );
     }
   }

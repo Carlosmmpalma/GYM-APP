@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_saas/application/providers/admin_providers.dart';
 import 'package:gym_saas/application/providers/firebase_providers.dart';
 import 'package:gym_saas/domain/entities/role.dart';
+import 'package:gym_saas/domain/entities/staff_private_profile.dart';
 import 'package:gym_saas/domain/entities/staff_summary.dart';
 import 'package:gym_saas/presentation/screens/staff_detail_screen.dart';
 import 'package:gym_saas/repositories/staff_repository.dart';
@@ -33,6 +34,17 @@ class _FakeStaffRepository implements StaffRepository {
 
   @override
   Stream<List<StaffSummary>> watchStaff() => Stream.value([initialStaff]);
+
+  /// Os dados pessoais passaram a ser uma leitura à parte (só o
+  /// próprio e o Gestor lhes chegam) — ver `StaffPrivateProfile`.
+  StaffPrivateProfile privateProfile = const StaffPrivateProfile(
+    phone: '912345678',
+    nif: '123456789',
+  );
+
+  @override
+  Stream<StaffPrivateProfile> watchPrivateProfile(String staffId) =>
+      Stream.value(privateProfile);
 
   @override
   Future<void> setStaffActive(

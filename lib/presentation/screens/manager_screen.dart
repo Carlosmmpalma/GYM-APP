@@ -13,6 +13,7 @@ import 'manage_plans_screen.dart';
 import 'manage_series_screen.dart';
 import 'manage_services_screen.dart';
 import 'manage_users_screen.dart';
+import 'retention_screen.dart';
 import 'send_notification_screen.dart';
 import 'tenant_settings_screen.dart';
 
@@ -120,6 +121,14 @@ class ManagerScreen extends StatelessWidget {
               title: 'Mensalidades',
               subtitle: 'Marcar pago/em atraso e ver o histórico por membro',
               screen: ManagePaymentsScreen(),
+            ),
+            // Fase 11 — fica em "Dinheiro" de propósito: quem deixa de
+            // aparecer acaba por cancelar, e isso é receita a sair.
+            _Item(
+              icon: Icons.trending_down,
+              title: 'Retenção',
+              subtitle: 'Quem deixou de aparecer, ocupação e taxa de faltas',
+              screen: RetentionScreen(),
             ),
           ],
         ),

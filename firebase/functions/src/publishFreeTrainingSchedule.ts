@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   weekId: z.string().min(1),
@@ -23,11 +24,7 @@ const inputSchema = z.object({
 export const publishFreeTrainingSchedule = onCall(async (request) => {
   const caller = requireManager(request);
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { weekId } = parsed.data;
+  const { weekId } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const scheduleRef = firestore

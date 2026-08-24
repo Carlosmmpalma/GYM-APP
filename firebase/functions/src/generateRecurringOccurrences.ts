@@ -4,6 +4,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 
 import { requireManager } from './lib/callerContext';
 import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
+import { tenantTimeZone, zonedWallClockToUtc } from './lib/timeZone';
 
 /** O guia (Fase 5) pede "materializa as próximas N semanas... 4-8 semanas". */
 const HORIZON_WEEKS = 8;
@@ -97,6 +98,7 @@ async function generateForSeries(
   series: SeriesData,
   now: Date,
   summary: GenerationSummary,
+  timeZone: string,
 ): Promise<void> {
   const horizonEnd = new Date(now.getTime());
   horizonEnd.setUTCDate(horizonEnd.getUTCDate() + HORIZON_WEEKS * 7);
@@ -118,8 +120,19 @@ async function generateForSeries(
   for (let i = 0; i < dates.length; i++) {
     if (existingSnaps[i].exists) continue;
 
-    const startAt = new Date(dates[i]);
-    startAt.setUTCHours(hour, minute, 0, 0);
+    // `startTime` é a hora do RELÓGIO do estúdio ("19:00"), não uma
+    // hora UTC. Fazer `setUTCHours(19)` punha a aula às 20:00 em
+    // Lisboa durante os sete meses de horário de verão — ver
+    // `lib/timeZone.ts`.
+    const day = dates[i];
+    const startAt = zonedWallClockToUtc({
+      year: day.getUTCFullYear(),
+      month: day.getUTCMonth() + 1,
+      day: day.getUTCDate(),
+      hour,
+      minute,
+      timeZone,
+    });
     const endAt = new Date(startAt.getTime() + series.durationMinutes * 60 * 1000);
 
     await refs[i].set({
@@ -182,8 +195,11 @@ async function generateForSeries(
  * não do collection group). `tenantId` presente: só esse tenant (o
  * callable manual, abaixo).
  *
- * Cálculo de datas em UTC — mesma limitação já documentada em
- * `lib/isoWeek.ts` (sem biblioteca de timezone nas dependências).
+ * As DATAS são calculadas em UTC (que dia da semana é), mas a HORA de
+ * cada ocorrência é convertida a partir do relógio do estúdio — ver
+ * `lib/timeZone.ts`. Antes não era, e no horário de verão todas as
+ * aulas de todas as séries apareciam uma hora depois do que o Gestor
+ * tinha configurado.
  */
 export async function runGenerateRecurringOccurrences(
   tenantId?: string,
@@ -205,19 +221,32 @@ export async function runGenerateRecurringOccurrences(
         .get()
     : await firestore.collectionGroup('sessionSeries').where('status', '==', 'active').get();
 
+  // O fuso é do estúdio e lê-se uma vez por tenant, não uma vez por
+  // série: numa corrida diária com dezenas de séries seriam dezenas de
+  // leituras do mesmo documento.
+  const timeZoneByTenant = new Map<string, string>();
+
   for (const doc of seriesSnap.docs) {
     const series = seriesFromDoc(doc);
-    await generateForSeries(firestore, series, now, summary);
+    let timeZone = timeZoneByTenant.get(series.tenantRef.path);
+    if (timeZone === undefined) {
+      timeZone = await tenantTimeZone(series.tenantRef);
+      timeZoneByTenant.set(series.tenantRef.path, timeZone);
+    }
+    await generateForSeries(firestore, series, now, summary, timeZone);
     summary.seriesProcessed += 1;
   }
 
   return summary;
 }
 
-export const generateRecurringOccurrences = onSchedule('every day 03:00', async () => {
-  const summary = await runGenerateRecurringOccurrences();
-  console.log('generateRecurringOccurrences', summary);
-});
+export const generateRecurringOccurrences = onSchedule(
+  { schedule: 'every day 03:00', timeoutSeconds: 540 },
+  async () => {
+    const summary = await runGenerateRecurringOccurrences();
+    console.log('generateRecurringOccurrences', summary);
+  },
+);
 
 /**
  * Callable equivalente, restrito ao tenant do chamador. É o caminho

@@ -5,6 +5,7 @@ import '../../application/providers/tenant_context_providers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../repositories/auth_repository.dart';
+import '../../core/utils/firebase_error_text.dart';
 import '../widgets/design_system.dart';
 
 /// UC01 — login por nº de sócio + password (não email) para o Aluno,
@@ -104,7 +105,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível enviar o email: $e')),
+        SnackBar(
+          content: Text(
+            // Sem tradução, isto mostrava
+            // `[firebase_auth/invalid-email] …` a quem só quer
+            // recuperar a password.
+            describeFirebaseError(e) ??
+                'Não foi possível enviar o email. Tenta outra vez.',
+          ),
+        ),
       );
     }
   }

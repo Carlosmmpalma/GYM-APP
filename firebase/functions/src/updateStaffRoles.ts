@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   staffId: z.string().min(1),
@@ -41,7 +42,7 @@ export const updateStaffRoles = onCall(async (request) => {
     windowSeconds: 300,
   });
 
-  const { staffId, roles } = inputSchema.parse(request.data);
+  const { staffId, roles } = parseInput(inputSchema, request.data);
 
   // Um Gestor não se despromove a si próprio. Sem esta trava, o único
   // Gestor de um ginásio consegue tirar-se o papel e ficar sem forma de

@@ -1,9 +1,11 @@
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
+import { addWeeksPreservingWallClock, tenantTimeZone } from './lib/timeZone';
 import { requireManager } from './lib/callerContext';
 import { weekIdForDate } from './lib/isoWeek';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   // Qualquer data dentro da semana pretendida — normalizado
@@ -32,11 +34,7 @@ const inputSchema = z.object({
 export const suggestFreeTrainingSchedule = onCall(async (request) => {
   const caller = requireManager(request);
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { weekStart, serviceId } = parsed.data;
+  const { weekStart, serviceId } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);
@@ -67,15 +65,24 @@ export const suggestFreeTrainingSchedule = onCall(async (request) => {
     createdAt: FieldValue.serverTimestamp(),
   });
 
+  // Uma semana à frente é a MESMA hora do relógio, não mais 7×24
+  // horas: na semana em que o relógio muda, somar milissegundos punha
+  // o bloco das 18:00 às 17:00 (ou às 19:00). Ver `lib/timeZone.ts`.
+  const timeZone = await tenantTimeZone(tenantRef);
+
   for (const slotDoc of previousSlotsSnap.docs) {
     const data = slotDoc.data();
     const prevStart = (data.startAt as Timestamp).toDate();
     const prevEnd = (data.endAt as Timestamp).toDate();
-    const shiftMs = 7 * 24 * 60 * 60 * 1000;
+    const startAt = addWeeksPreservingWallClock(prevStart, 1, timeZone);
+    // A duração é a mesma; só o INÍCIO é que anda pelo calendário.
+    const endAt = new Date(
+      startAt.getTime() + (prevEnd.getTime() - prevStart.getTime()),
+    );
     batch.set(scheduleRef.collection('slots').doc(), {
       serviceId: (data.serviceId as string | undefined) ?? serviceId,
-      startAt: Timestamp.fromDate(new Date(prevStart.getTime() + shiftMs)),
-      endAt: Timestamp.fromDate(new Date(prevEnd.getTime() + shiftMs)),
+      startAt: Timestamp.fromDate(startAt),
+      endAt: Timestamp.fromDate(endAt),
       capacity: data.capacity as number,
       activeBookingCount: 0,
     });

@@ -66,6 +66,39 @@ class FirebaseTenantRepository implements TenantRepository {
     }, SetOptions(merge: true));
   }
 
+  DocumentReference<Map<String, dynamic>> _notificationPolicyDoc(
+    String tenantId,
+  ) =>
+      _firestore
+          .collection('tenants')
+          .doc(tenantId)
+          .collection('config')
+          .doc('notificationPolicy');
+
+  @override
+  Future<int> getSessionReminderHours(String tenantId) async {
+    final snapshot = await _notificationPolicyDoc(tenantId).get();
+    // Mesmo default que a Cloud Function usa quando não há documento
+    // (`lib/reminders.ts`) — se divergissem, o ecrã mostrava um valor
+    // e o servidor usava outro.
+    if (!snapshot.exists) return 12;
+    if (snapshot.data()?['sessionRemindersEnabled'] == false) return 0;
+    return (snapshot.data()?['sessionReminderHours'] as num? ?? 12).toInt();
+  }
+
+  @override
+  Future<void> setSessionReminderHours({
+    required String tenantId,
+    required int hours,
+  }) async {
+    await _notificationPolicyDoc(tenantId).set({
+      'sessionReminderHours': hours,
+      // "0 horas" só pode querer dizer desligado — um lembrete a zero
+      // horas de antecedência chegaria com a aula a começar.
+      'sessionRemindersEnabled': hours > 0,
+    }, SetOptions(merge: true));
+  }
+
   @override
   Future<String?> getFreeTrainingServiceId(String tenantId) async {
     final snapshot = await _bookingPolicyDoc(tenantId).get();

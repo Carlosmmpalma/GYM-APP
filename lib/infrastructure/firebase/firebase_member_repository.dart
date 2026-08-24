@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../core/utils/search_text.dart';
 import '../../domain/entities/consent.dart';
 import '../../domain/entities/member_summary.dart';
 import '../../domain/entities/payment_record.dart';
@@ -51,11 +52,25 @@ class FirebaseMemberRepository implements MemberRepository {
   CollectionReference<Map<String, dynamic>> get _members =>
       _firestore.collection('tenants').doc(_tenantId).collection('members');
 
+  /// Ordenado por nome, aqui e não na query.
+  ///
+  /// A lista chegava pela ordem em que o Firestore devolve os documentos
+  /// — para ids automáticos isso é ordem nenhuma, e um gestor a procurar
+  /// alguém numa lista de duzentos nomes por ordem aleatória desiste e
+  /// usa a procura para tudo. Ordenar no cliente (e não com um
+  /// `orderBy('name')`) porque um `orderBy` EXCLUI documentos sem o
+  /// campo: um registo antigo sem `name` desaparecia da gestão em vez de
+  /// aparecer por arrumar.
+  ///
+  /// `searchNormalize` para os acentos não mandarem "Álvaro" para o fim
+  /// do alfabeto.
   @override
   Stream<List<MemberSummary>> watchMembers() {
-    return _members
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map(_fromDoc).toList());
+    return _members.snapshots().map(
+          (snapshot) => snapshot.docs.map(_fromDoc).toList()
+            ..sort((a, b) =>
+                searchNormalize(a.name).compareTo(searchNormalize(b.name))),
+        );
   }
 
   @override

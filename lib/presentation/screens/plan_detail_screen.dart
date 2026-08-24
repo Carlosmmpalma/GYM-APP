@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/plan.dart';
 import '../../domain/entities/plan_service.dart';
@@ -90,8 +91,9 @@ class PlanDetailScreen extends ConsumerWidget {
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                        content:
-                            Text('Não foi possível atualizar o plano: $e')),
+                        content: Text(userFacingError(e,
+                            fallback:
+                                'Não foi possível atualizar o plano. Tenta outra vez.'))),
                   );
                 }
               },
@@ -213,7 +215,10 @@ class _ServiceTile extends ConsumerWidget {
       // switch simplesmente "não fazia nada".
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível atualizar o serviço: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível atualizar o serviço. Tenta outra vez.'))),
       );
     }
   }
@@ -278,7 +283,10 @@ class _ServiceTile extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível atualizar o serviço: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível atualizar o serviço. Tenta outra vez.'))),
       );
     }
   }

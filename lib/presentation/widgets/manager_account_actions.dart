@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/admin_providers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/entities/role.dart';
@@ -72,7 +73,10 @@ class _ResetPasswordTileState extends ConsumerState<ResetPasswordTile> {
       if (!mounted) return;
       setState(() => _busy = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível repor a password: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível repor a password. Tenta outra vez.'))),
       );
     }
   }
@@ -200,7 +204,10 @@ class _StaffRolesCardState extends ConsumerState<StaffRolesCard> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível mudar os papéis: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível mudar os papéis. Tenta outra vez.'))),
       );
     } finally {
       if (mounted) setState(() => _busy = false);

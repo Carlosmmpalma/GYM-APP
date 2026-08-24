@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../core/utils/search_text.dart';
 import '../../domain/entities/role.dart';
+import '../../domain/entities/staff_private_profile.dart';
 import '../../domain/entities/staff_summary.dart';
 import '../../repositories/staff_repository.dart';
 
@@ -18,6 +20,15 @@ StaffSummary _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     active: (data['status'] as String? ?? 'active') == 'active',
     modalityIds: modalityIdsRaw.map((e) => e as String).toSet(),
     serviceIds: serviceIdsRaw.map((e) => e as String).toSet(),
+  );
+}
+
+StaffPrivateProfile _privateFromDoc(
+  DocumentSnapshot<Map<String, dynamic>> doc,
+) {
+  final data = doc.data();
+  if (!doc.exists || data == null) return StaffPrivateProfile.empty;
+  return StaffPrivateProfile(
     phone: data['phone'] as String? ?? '',
     birthDate: (data['birthDate'] as Timestamp?)?.toDate(),
     address: data['address'] as String? ?? '',
@@ -37,9 +48,27 @@ class FirebaseStaffRepository implements StaffRepository {
       _firestore.collection('tenants').doc(_tenantId).collection('staff');
 
   @override
+  Stream<StaffPrivateProfile> watchPrivateProfile(String staffId) {
+    return _staff
+        .doc(staffId)
+        .collection('private')
+        .doc('profile')
+        .snapshots()
+        .map(_privateFromDoc)
+        // Um Instrutor a abrir a ficha de outro recebe uma recusa das
+        // Rules — e isso não é um erro a mostrar, é a resposta certa.
+        .handleError((Object _) {}, test: (_) => true)
+        .cast<StaffPrivateProfile>();
+  }
+
+  /// Ordenado por nome — ver a nota equivalente em
+  /// `firebase_member_repository.dart`.
+  @override
   Stream<List<StaffSummary>> watchStaff() {
     return _staff.snapshots().map(
-          (snapshot) => snapshot.docs.map(_fromDoc).toList(),
+          (snapshot) => snapshot.docs.map(_fromDoc).toList()
+            ..sort((a, b) =>
+                searchNormalize(a.name).compareTo(searchNormalize(b.name))),
         );
   }
 

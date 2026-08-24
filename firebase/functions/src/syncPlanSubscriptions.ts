@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   planId: z.string().min(1),
@@ -39,7 +40,8 @@ const inputSchema = z.object({
  * concediam faz parte do histórico; reescrevê-lo seria falsificar o
  * passado.
  */
-export const syncPlanSubscriptions = onCall(async (request) => {
+export const syncPlanSubscriptions =
+    onCall({ timeoutSeconds: 300 }, async (request) => {
   const caller = requireManager(request);
   await enforceRateLimit({
     uid: caller.uid,
@@ -48,7 +50,7 @@ export const syncPlanSubscriptions = onCall(async (request) => {
     windowSeconds: 300,
   });
 
-  const { planId } = inputSchema.parse(request.data);
+  const { planId } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);

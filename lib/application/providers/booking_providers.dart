@@ -6,6 +6,7 @@ import '../../domain/entities/booking.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/session_series.dart';
 import '../../domain/entities/usage.dart';
+import '../../domain/entities/waitlist_entry.dart';
 import '../../infrastructure/firebase/firebase_attendance_repository.dart';
 import '../../infrastructure/firebase/firebase_booking_repository.dart';
 import '../../infrastructure/firebase/firebase_service_repository.dart';
@@ -13,6 +14,7 @@ import '../../infrastructure/firebase/firebase_session_occurrence_repository.dar
 import '../../infrastructure/firebase/firebase_session_series_repository.dart';
 import '../../infrastructure/firebase/firebase_subscription_repository.dart';
 import '../../infrastructure/firebase/firebase_usage_repository.dart';
+import '../../infrastructure/firebase/firebase_waitlist_repository.dart';
 import '../../repositories/attendance_repository.dart';
 import '../../repositories/booking_repository.dart';
 import '../../repositories/service_repository.dart';
@@ -20,6 +22,7 @@ import '../../repositories/session_occurrence_repository.dart';
 import '../../repositories/session_series_repository.dart';
 import '../../repositories/subscription_repository.dart';
 import '../../repositories/usage_repository.dart';
+import '../../repositories/waitlist_repository.dart';
 import '../use_cases/book_session_use_case.dart';
 import '../use_cases/cancel_booking_use_case.dart';
 import 'firebase_providers.dart';
@@ -178,6 +181,84 @@ final myBookingsProvider = StreamProvider<List<Booking>>((ref) {
   if (appUser == null) return const Stream.empty();
   return ref.watch(bookingRepositoryProvider).watchMyBookings(appUser.uid);
 });
+
+/// As sessões que ESTE aluno pode mesmo marcar, perguntadas ao
+/// servidor já filtradas pelos serviços do plano dele.
+///
+/// A chave da família é a lista de serviços **ordenada e junta numa
+/// string**, e não o `Set` — em Dart dois `Set` com o mesmo conteúdo
+/// não são iguais, por isso uma família com `Set` criaria um provider
+/// (e um listener Firestore) novo a cada rebuild do ecrã. String vazia
+/// = sem direito a nada, e nesse caso não se faz query nenhuma.
+final occurrencesForServicesProvider = StreamProvider.autoDispose
+    .family<List<SessionOccurrence>, String>((ref, serviceIdsKey) {
+  final serviceIds =
+      serviceIdsKey.isEmpty ? <String>{} : serviceIdsKey.split(',').toSet();
+  return ref
+      .watch(sessionOccurrenceRepositoryProvider)
+      .watchUpcomingOccurrencesForServices(serviceIds);
+});
+
+/// A chave estável para [occurrencesForServicesProvider].
+String serviceIdsKey(Set<String> serviceIds) =>
+    (serviceIds.toList()..sort()).join(',');
+
+/// Os slots de treino livre que o utilizador tem reservados, por
+/// semana (`{weekId: {slotId}}`).
+///
+/// Otimização de custo (Fase 11): o ecrã de treino livre perguntava
+/// "reservei este bloco?" com uma leitura por bloco — vinte blocos numa
+/// semana eram vinte leituras de cada vez que o separador abria, e o
+/// aluno abre-o várias vezes por semana. As marcações de treino livre
+/// já vinham TODAS em `myBookingsProvider` (a mesma collection group
+/// query que serve "as minhas marcações"), só não havia como saber a
+/// que slot pertenciam — desde que a marcação passou a distinguir o
+/// tipo e a guardar a semana, passa a dar para derivar isto sem uma
+/// única leitura extra.
+final myFreeTrainingSlotIdsProvider = Provider<Set<String>>((ref) {
+  final bookings = ref.watch(myBookingsProvider).valueOrNull ?? const [];
+  return {
+    for (final booking in bookings)
+      if (booking.kind == BookingKind.freeTraining &&
+          booking.status == BookingStatus.booked)
+        '${booking.weekId}/${booking.occurrenceId}',
+  };
+});
+
+/// Fase 11 — lista de espera.
+final waitlistRepositoryProvider = Provider<WaitlistRepository>((ref) {
+  return FirebaseWaitlistRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(functionsProvider),
+    ref.watch(tenantAppConfigProvider).tenantId,
+  );
+});
+
+/// A entrada do utilizador autenticado na fila de UMA sessão, ou `null`
+/// se não estiver nela. É um listener por sessão cheia visível no ecrã,
+/// e só por essas — `book_training_screen.dart` só o observa quando a
+/// ocorrência está cheia, que é o único momento em que a fila existe.
+final myWaitlistEntryProvider =
+    StreamProvider.autoDispose.family<WaitlistEntry?, String>(
+  (ref, occurrenceId) {
+    final appUser = ref.watch(currentAppUserProvider).valueOrNull;
+    if (appUser == null) return Stream.value(null);
+    return ref.watch(waitlistRepositoryProvider).watchEntry(
+          occurrenceId: occurrenceId,
+          memberId: appUser.uid,
+        );
+  },
+);
+
+/// A fila inteira de uma sessão, para Instrutor/Gestor. Um aluno não
+/// consegue lê-la (as Rules recusam a listagem) — por isso este
+/// provider só é observado nos ecrãs de gestão.
+final occurrenceWaitlistProvider =
+    StreamProvider.autoDispose.family<List<WaitlistEntry>, String>(
+  (ref, occurrenceId) {
+    return ref.watch(waitlistRepositoryProvider).watchQueue(occurrenceId);
+  },
+);
 
 /// Fase 5 — sessões recorrentes (séries).
 final sessionSeriesRepositoryProvider =

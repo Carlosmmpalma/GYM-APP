@@ -58,8 +58,18 @@ massa muscular, gordura visceral, metabolismo basal, percentagem de
 abdominal, e níveis de força (membros superiores, inferiores e core),
 flexibilidade e resistência.
 
-No acompanhamento do treino: os exercícios do teu plano, séries,
-repetições, e o histórico de cargas levantadas ao longo do tempo.
+### 3.4-A. O teu treino
+
+O teu plano (exercícios, séries, repetições) e o registo do que fazes em
+cada treino: as séries, as repetições e as cargas, com a data.
+
+**Isto é registado sempre** — é o serviço que contrataste, tal como as
+marcações. Não depende da autorização da secção anterior: mesmo que não
+autorizes avaliações físicas, o teu treino continua a ser acompanhado e
+registado.
+
+Pode ser registado por ti, ou pelo instrutor que te acompanha; fica
+guardado quem registou.
 
 ### 3.5. Dados técnicos
 
@@ -101,17 +111,34 @@ telefone) e só o usamos numa emergência real ocorrida no estúdio.
 | Gerir a inscrição e dar acesso à app | Identificação, contacto, credenciais | Execução do contrato — art. 6.º/1/b) |
 | Marcações, presenças, limite semanal | Utilização do serviço | Execução do contrato — b) |
 | Cobrança e controlo de mensalidades | Contratuais, financeiros, NIF | Execução do contrato — b); obrigação legal — c), quanto à conservação fiscal |
-| Avaliação física e evolução do treino | Dados de saúde (3.4) | **Consentimento explícito** — art. 9.º/2/a) |
+| Avaliação física | Dados de saúde (3.4) | **Consentimento explícito** — art. 9.º/2/a) |
+| Prescrever e registar o treino | Plano e sessões (3.4-A) | Execução do contrato — b) |
 | Avisar de alterações às aulas | Identificador do dispositivo | Execução do contrato — b) |
 | Proteger a app de abuso | Dados técnicos | Interesse legítimo — f) |
 | Corrigir erros da aplicação | Diagnóstico técnico | Interesse legítimo — f) |
 | Contacto em emergência no estúdio | Contacto de emergência | Interesse vital — art. 6.º/1/d) |
 
-> **[ADVOGADO]** Confirmar a qualificação do plano de treino e do
-> histórico de cargas. A aplicação trata-os como dados de saúde (exige o
-> mesmo consentimento das avaliações) — a leitura mais conservadora. Se
-> forem entendidos como meros dados de desempenho, podem passar para a
-> base contratual; nesse caso a aplicação teria de ser alterada.
+> **[ADVOGADO] — ponto que mudou, e é o mais importante deste
+> documento.**
+>
+> A aplicação distingue duas coisas que antes tratava como uma:
+>
+> - **Avaliações físicas** (composição corporal, pressão arterial,
+>   perímetros) — dados que revelam estado de saúde. Continuam a exigir
+>   **consentimento explícito** do artigo 9.º, verificado pelo servidor.
+> - **Registo de treino** (séries feitas, repetições, cargas) — o
+>   registo do SERVIÇO prestado. Passou para a base contratual, como as
+>   marcações e as presenças.
+>
+> A razão prática: manter o registo de treino atrás de consentimento
+> tornava-o indisponível a quem recusasse — e o acompanhamento do treino
+> é o núcleo do serviço contratado, não um extra. Um aluno que recusa
+> avaliações físicas continua a treinar, e o treino continua a ser
+> registado.
+>
+> A razão de fundo: "levantou 60 kg em 8 repetições" é o que se fez numa
+> aula, não uma informação sobre saúde. Mas a fronteira é discutível, e
+> é decisão vossa confirmá-la.
 
 ## 6. Quem tem acesso
 
@@ -165,7 +192,8 @@ Quadro completo no documento 06. Em resumo:
   registo financeiro **sem o teu nome nem número de sócio** associados.
 - Se retirares o consentimento para dados de saúde, deixamos de poder
   fazer novas avaliações. As já feitas não desaparecem sozinhas — tens
-  de pedir o apagamento, que é uma ação distinta.
+  de pedir o apagamento, que é uma ação distinta. O teu plano e o
+  registo dos treinos não são afetados: são o serviço contratado.
 
 ## 11. Os teus direitos
 

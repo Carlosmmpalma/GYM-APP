@@ -427,3 +427,160 @@ describe('Security Rules — paymentRecords (Fase 9, UC27 fechado)', () => {
     );
   });
 });
+
+describe('Security Rules — lista de espera (Fase 11)', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db
+        .doc(`tenants/${TENANT_A}/sessionOccurrences/occ_1/waitlist/member_a1`)
+        .set({ memberId: 'member_a1', joinedAt: new Date(), position: 1 });
+      await db
+        .doc(`tenants/${TENANT_A}/sessionOccurrences/occ_1/waitlist/member_a2`)
+        .set({ memberId: 'member_a2', joinedAt: new Date(), position: 2 });
+    });
+  });
+
+  it('um membro lê a SUA entrada (é assim que vê a posição)', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertSucceeds(
+      db
+        .doc(`tenants/${TENANT_A}/sessionOccurrences/occ_1/waitlist/member_a1`)
+        .get(),
+    );
+  });
+
+  it('um membro NÃO lê a entrada de outro', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db
+        .doc(`tenants/${TENANT_A}/sessionOccurrences/occ_1/waitlist/member_a2`)
+        .get(),
+    );
+  });
+
+  it('um membro NÃO consegue listar a fila', async () => {
+    // Quem mais está à espera é informação dos outros — é também por
+    // isto que a posição tem de ser escrita pelo servidor em cada
+    // entrada, em vez de o cliente a contar.
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db
+        .collection(`tenants/${TENANT_A}/sessionOccurrences/occ_1/waitlist`)
+        .get(),
+    );
+  });
+
+  it('um Instrutor consegue listar a fila', async () => {
+    const db = contextFor('instructor_a', TENANT_A, ['instructor']).firestore();
+    await assertSucceeds(
+      db
+        .collection(`tenants/${TENANT_A}/sessionOccurrences/occ_1/waitlist`)
+        .get(),
+    );
+  });
+
+  it('ninguém escreve na fila diretamente — nem o Manager', async () => {
+    // Entrar exige verificar capacidade e elegibilidade; sair tem de
+    // renumerar quem fica. Ambas as coisas só a Cloud Function faz.
+    const managerDb = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertFails(
+      managerDb
+        .doc(`tenants/${TENANT_A}/sessionOccurrences/occ_1/waitlist/member_a3`)
+        .set({ memberId: 'member_a3', joinedAt: new Date() }),
+    );
+
+    const memberDb = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(
+      memberDb
+        .doc(`tenants/${TENANT_A}/sessionOccurrences/occ_1/waitlist/member_a1`)
+        .update({ position: 1 }),
+    );
+  });
+});
+
+// Última ronda — os dados pessoais do staff estavam expostos ao ginásio
+// inteiro.
+//
+// O documento `staff/{id}` é legível por todo o tenant de propósito: é
+// dele que sai o NOME do instrutor no cartão de uma aula, que qualquer
+// aluno vê. Só que lá dentro estavam também a morada, o NIF, a data de
+// nascimento e o contacto de emergência — ou seja, qualquer aluno podia
+// ler o NIF dos instrutores. É a mesma fuga que foi fechada em
+// `members` na Fase 11; o staff tinha ficado para trás.
+describe('Security Rules — dados pessoais do staff (última ronda)', () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc(`tenants/${TENANT_A}/staff/instructor_a`).set({
+        name: 'Ana Costa',
+        email: 'ana@example.test',
+        roles: ['instructor'],
+        status: 'active',
+      });
+      await db
+        .doc(`tenants/${TENANT_A}/staff/instructor_a/private/profile`)
+        .set({
+          phone: '912345678',
+          address: 'Rua das Flores 1',
+          nif: '123456789',
+          emergencyContact: 'Maria — 913333333',
+        });
+    });
+  });
+
+  it('um aluno continua a ver o NOME do instrutor', async () => {
+    // Sem isto, o cartão de uma aula deixava de dizer com quem é.
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/staff/instructor_a`).get(),
+    );
+  });
+
+  it('um aluno NÃO lê a morada nem o NIF do instrutor', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/staff/instructor_a/private/profile`).get(),
+    );
+  });
+
+  it('um instrutor NÃO lê os dados pessoais de outro', async () => {
+    const db = contextFor('instructor_b', TENANT_A, ['instructor']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/staff/instructor_a/private/profile`).get(),
+    );
+  });
+
+  it('o próprio lê os seus dados', async () => {
+    const db = contextFor('instructor_a', TENANT_A, ['instructor']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/staff/instructor_a/private/profile`).get(),
+    );
+  });
+
+  it('o Gestor lê os de todos — é a ficha de staff', async () => {
+    const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/staff/instructor_a/private/profile`).get(),
+    );
+  });
+
+  it('ninguém escreve diretamente — nem o Gestor, nem o próprio', async () => {
+    // Passa por `createStaff`/`updateStaffProfile`, como o resto do
+    // perfil de staff (o email é também a identidade de login).
+    const managerDb = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertFails(
+      managerDb
+        .doc(`tenants/${TENANT_A}/staff/instructor_a/private/profile`)
+        .update({ nif: '999999999' }),
+    );
+
+    const selfDb =
+      contextFor('instructor_a', TENANT_A, ['instructor']).firestore();
+    await assertFails(
+      selfDb
+        .doc(`tenants/${TENANT_A}/staff/instructor_a/private/profile`)
+        .update({ nif: '999999999' }),
+    );
+  });
+});

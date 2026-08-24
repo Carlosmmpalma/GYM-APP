@@ -91,13 +91,69 @@ firebase deploy --project=production --only storage
 firebase deploy --project=production --only functions
 ```
 
+```bash
+firebase deploy --project=production --only hosting
+```
+
+> O `firebase.json` ganhou a secção de **hosting** (não existia): serve
+> o `build/web` como SPA e traz os cabeçalhos de cache certos — o
+> CanvasKit com um ano, o `main.dart.js` a revalidar (devolve `304` e
+> zero bytes quando a app não mudou), e o `index.html`/service worker
+> sem cache.
+
+> ⚠️ **A build tem de ser a de produção — com `-t`.** `flutter build
+> web` sem mais nada compila `lib/main.dart`, que aponta para o
+> ambiente de **development**: publicavas uma app com aspeto normal a
+> escrever na base de dados errada. O comando certo, antes de cada
+> deploy de hosting:
+>
+> ```bash
+> flutter build web --release -t lib/main_production.dart
+> ```
+>
+> Como rede de segurança, tudo o que não é produção passou a mostrar
+> uma **fita laranja no canto** com o nome do ambiente. Se vires
+> "DEVELOPMENT" no site do estúdio, foi publicada a build errada.
+
+### Aplicações móveis
+
+Mesma regra, mesmo `-t`:
+
+```bash
+flutter build appbundle --release -t lib/main_production.dart
+```
+
+```bash
+flutter build ipa --release -t lib/main_production.dart
+```
+
 Os índices demoram alguns minutos a construir; as funções que os usam
 falham até estarem prontos. Confirma na consola antes de continuar.
 
-- [ ] Criar o primeiro Gestor. Não há forma de o fazer pela app (criar
-  staff exige já ser Gestor — é intencional). Usa o script de seed
-  apontado ao projeto real, ou cria o utilizador na consola e atribui-lhe
-  as custom claims `{tenantId, roles: ['manager']}` manualmente.
+- [ ] **Criar o primeiro Gestor.** Não há forma de o fazer pela app
+  (criar staff exige já ser Gestor — é intencional), e a **consola do
+  Firebase não sabe atribuir custom claims**: sem `tenantId` e `roles`
+  no token, a conta autentica-se e fica presa num estado que nenhum ecrã
+  trata. Ou seja, sem este passo não se entra na app acabada de
+  publicar.
+
+  Há um script para isso, e cria tudo o que é preciso (documento do
+  tenant com o fuso horário, conta de Auth, claims e documento de
+  staff):
+
+  ```bash
+  gcloud auth application-default login
+  ```
+
+  ```bash
+  node firebase/scripts/create-first-manager.mjs --project=<id-do-projeto> --tenant=nxt_performance_studio --name="Leo Gil" --email=leo@exemplo.pt --password='UmaPasswordForte123!' --yes
+  ```
+
+  Sem `--yes` ele diz o que ia fazer e não faz nada — a rede de
+  segurança contra correr isto no projeto errado. Testado contra o
+  emulador; correr duas vezes é seguro (não duplica nada).
+
+  A partir daqui, todos os outros utilizadores criam-se pela app.
 
 ---
 
@@ -147,6 +203,24 @@ foram entregues de verdade — falta a configuração:
 - [ ] **Web**: gerar a **VAPID key** e ligá-la à app.
 - [ ] Testar num dispositivo real de cada plataforma.
 
+Desde a última ronda há mais dois eventos automáticos a depender disto,
+e são os que os alunos vão notar em primeiro lugar:
+
+- **Lembrete antes da aula** (`sendSessionReminders`, de hora a hora).
+  Antecedência configurável em Gestão › Definições — 12 horas por
+  omissão, "0" desliga. Existe para reduzir faltas: pede o cancelamento
+  a quem já não pode vir, e esse cancelamento liberta o lugar para a
+  lista de espera.
+- **Promoção da lista de espera** — quem sobe da fila para a aula é
+  avisado. Sem push, fica com o lugar na mesma (a marcação é real e
+  aparece em "Marcações"), mas só dá por isso ao abrir a app.
+
+- [ ] **Cloud Scheduler** tem de estar ativo no projeto: as duas funções
+  agendadas (`generateRecurringOccurrences`, diária, e
+  `sendSessionReminders`, de hora a hora) são criadas no deploy mas o
+  serviço faz parte do Blaze. Confirma na consola que ambas aparecem
+  agendadas depois do primeiro `firebase deploy --only functions`.
+
 ---
 
 ## 6. Custos
@@ -154,7 +228,18 @@ foram entregues de verdade — falta a configuração:
 - [ ] Definir um **orçamento com alertas** no Google Cloud Billing (50%,
   90%, 100%). É a rede de segurança contra um ciclo infinito num cliente.
 - [ ] Ver a consola nos primeiros dias. Firestore cobra por **leitura de
-  documento**, e é aí que uma app deste tipo gasta.
+  documento**; a app foi afinada para uma sessão de aluno custar ~140
+  leituras (ver "Onde está o dinheiro" no README).
+- [ ] **Não ligar `minInstances`** nas Cloud Functions. Tira o arranque
+  a frio e passa a custar dinheiro 24 horas por dia, mesmo sem ninguém
+  a usar a app. `maxInstances: 10` já está definido e é o que interessa.
+- [ ] **Vigiar o tráfego do Storage**, não o do Firestore. É a rubrica
+  que pode crescer a sério: cada aluno que abre um exercício descarrega
+  o vídeo inteiro. Os vídeos já sobem com 30 dias de cache (a segunda
+  visualização no mesmo dispositivo não custa nada), mas a primeira
+  paga-se sempre — e é por isso que o tamanho do ficheiro conta.
+- [ ] Se algum mês surpreender, olhar primeiro para **Storage → tráfego
+  de saída** e só depois para o Firestore.
 
 ---
 
@@ -175,11 +260,24 @@ foram entregues de verdade — falta a configuração:
 
 - [ ] Correr a suite de isolamento entre tenants **contra o projeto real**,
   não só contra o emulador.
+- [ ] **Confirmar que os índices ficaram construídos** antes de abrir a
+  app a alguém. O emulador NÃO exige índices compostos — uma query sem
+  índice funciona em testes e falha em produção com "The query requires
+  an index". Os ecrãs que dependem disso: evolução da carga
+  (`loadHistory`), "tens um treino a decorrer?" (`workoutSessions`,
+  usado no ecrã inicial de qualquer aluno), horário, marcações,
+  mensalidades e lembretes. Na consola: Firestore → Índices, todos em
+  "Ativado".
 - [ ] Entrar como Aluno, como Instrutor e como Gestor, e percorrer um
   ciclo completo: marcar, cancelar, marcar presença, registar uma
   avaliação, lançar uma mensalidade.
 - [ ] Confirmar que o consentimento aparece no primeiro arranque e que
   recusar dados de saúde **não** impede marcar treinos.
+- [ ] **Registar presenças durante uma ou duas semanas antes de olhar
+  para o painel de retenção.** Ele lê presenças e faltas; sem ninguém a
+  marcá-las, mostra toda a gente "em risco" e a taxa de faltas a "—".
+  Não é um erro do painel — é a única resposta honesta a dados que não
+  existem, e o próprio ecrã o diz.
 - [ ] Confirmar que a faixa vermelha "Running in emulator mode"
   desapareceu (é injetada pelo SDK só em modo emulador — se ainda
   aparecer, a build está a apontar para o sítio errado).

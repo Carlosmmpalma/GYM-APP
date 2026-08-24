@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { requireManager } from './lib/callerContext';
 import { applyRelease, prepareRelease, ReleasePlan } from './lib/bookingLogic';
 import { notifyMembers } from './lib/notifications';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   staffId: z.string().min(1),
@@ -33,14 +34,11 @@ const inputSchema = z.object({
  * de forma escalável) — corridas sequencialmente, mesmo padrão de
  * `generateRecurringOccurrences.ts` ao percorrer múltiplas séries.
  */
-export const deactivateInstructor = onCall(async (request) => {
+export const deactivateInstructor =
+    onCall({ timeoutSeconds: 300 }, async (request) => {
   const caller = requireManager(request);
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { staffId } = parsed.data;
+  const { staffId } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);

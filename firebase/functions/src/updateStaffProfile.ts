@@ -1,10 +1,11 @@
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
 import { parseOptionalDate } from './lib/parseDate';
+import { parseInput, rethrowAuthError } from './lib/validation';
 
 const inputSchema = z.object({
   staffId: z.string().min(1),
@@ -33,11 +34,7 @@ const inputSchema = z.object({
 export const updateStaffProfile = onCall(async (request) => {
   const caller = requireManager(request);
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { staffId, name, email, phone, birthDate, address, nif, emergencyContact } = parsed.data;
+  const { staffId, name, email, phone, birthDate, address, nif, emergencyContact } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const auth = getAuth();
@@ -70,23 +67,28 @@ export const updateStaffProfile = onCall(async (request) => {
     try {
       await auth.updateUser(staffId, authUpdate);
     } catch (error) {
-      const code = (error as { code?: string }).code;
-      if (code === 'auth/email-already-exists') {
-        throw new HttpsError('already-exists', 'Já existe outra conta com este email.');
-      }
-      throw error;
+      // Mesma tradução de `createStaff`/`createMember`, num sítio só.
+      rethrowAuthError(error);
     }
   }
 
-  await staffRef.update({
-    name,
-    email,
-    phone: phone ?? '',
-    birthDate: birthTimestamp,
-    address: address ?? '',
-    nif: nif ?? '',
-    emergencyContact: emergencyContact ?? '',
-  });
+  // Ver `createStaff.ts`: os dados pessoais não vivem no documento
+  // que todo o tenant consegue ler.
+  const batch = getFirestore().batch();
+  batch.update(staffRef, { name, email });
+  batch.set(
+    staffRef.collection('private').doc('profile'),
+    {
+      phone: phone ?? '',
+      birthDate: birthTimestamp,
+      address: address ?? '',
+      nif: nif ?? '',
+      emergencyContact: emergencyContact ?? '',
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  await batch.commit();
 
   return { updated: true };
 });

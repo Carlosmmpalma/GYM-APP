@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/training_providers.dart';
 import '../../domain/entities/exercise.dart';
 import '../../core/theme/app_colors.dart';
@@ -89,7 +90,8 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
       if (!mounted) return;
       Navigator.of(context).pop();
     } catch (e) {
-      setState(() => _error = 'Não foi possível guardar: $e');
+      setState(() => _error = userFacingError(e,
+          fallback: 'Não foi possível guardar. Tenta outra vez.'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -111,6 +113,12 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
   /// Aceita qualquer formato de vídeo, não só `.mp4`: um telemóvel
   /// grava `.mov`, e filtrar por extensão fazia o ficheiro nem aparecer
   /// no seletor — que se lê como "o carregamento não funciona".
+  String? _videoWarning;
+
+  /// A partir daqui avisa-se sobre o tamanho. Um clipe de demonstração
+  /// de 20-30 segundos cabe folgadamente abaixo disto.
+  static const _largeVideoMegabytes = 25;
+
   Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.video,
@@ -124,10 +132,10 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
           'Não foi possível ler o ficheiro. Tenta escolher outra vez.');
       return;
     }
-    if (bytes.lengthInBytes > 100 * 1024 * 1024) {
-      final mb = (bytes.lengthInBytes / (1024 * 1024)).toStringAsFixed(0);
-      setState(() =>
-          _error = 'Vídeo demasiado grande ($mb MB). O máximo são 100 MB.');
+    final megabytes = bytes.lengthInBytes / (1024 * 1024);
+    if (megabytes > 100) {
+      setState(() => _error = 'Vídeo demasiado grande '
+          '(${megabytes.toStringAsFixed(0)} MB). O máximo são 100 MB.');
       return;
     }
 
@@ -136,6 +144,16 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
       _pendingVideoName = file.name;
       _pendingVideoContentType = _contentTypeFor(file.name);
       _error = null;
+      // Aviso, não bloqueio: o tamanho do ficheiro é o que cada aluno
+      // descarrega para o ver, e ninguém no estúdio tem como adivinhar
+      // isso ao escolher um ficheiro. Quem quiser mesmo carregar um
+      // vídeo grande, carrega.
+      _videoWarning = megabytes > _largeVideoMegabytes
+          ? 'Este vídeo tem ${megabytes.toStringAsFixed(0)} MB. Cada aluno '
+              'que o abrir descarrega-o inteiro — um clipe curto (menos de '
+              '$_largeVideoMegabytes MB) chega para demonstrar o exercício '
+              'e gasta menos dados a quem o vê.'
+          : null;
     });
   }
 
@@ -192,7 +210,7 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
             children: [
               TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Nome'),
+                decoration: InputDecoration(labelText: requiredLabel('Nome')),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
               ),
@@ -218,11 +236,16 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
               const SectionLabel('Vídeo demonstrativo'),
               const SizedBox(height: 2),
               const Text(
-                'Opcional. Qualquer formato de vídeo, até 100 MB. O aluno '
+                'Opcional. Qualquer formato de vídeo, até 100 MB — mas '
+                'quanto mais curto, mais depressa abre para o aluno. Ele '
                 'vê-o ao abrir o exercício no plano dele.',
                 style:
                     TextStyle(color: AppColors.dim, fontSize: 11, height: 1.4),
               ),
+              if (_videoWarning != null) ...[
+                const SizedBox(height: 8),
+                AppBanner(text: _videoWarning!, tone: PillTone.warn),
+              ],
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: _uploadingVideo ? null : _pickVideo,

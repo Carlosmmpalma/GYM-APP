@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/admin_providers.dart';
 import '../../application/providers/booking_providers.dart';
 import '../../application/providers/modality_providers.dart';
@@ -15,9 +16,11 @@ import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/staff_summary.dart';
 import '../../repositories/session_occurrence_repository.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/offline_write.dart';
 import '../widgets/design_system.dart';
 import '../widgets/occurrence_dialogs.dart';
 import 'manage_series_screen.dart';
+import 'group_workout_screen.dart';
 import 'send_notification_screen.dart';
 
 /// Fase 6 — "detalhe da aula" (mockup: inscritos + presença/UC10-A +
@@ -131,6 +134,30 @@ class OccurrenceDetailScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
+                // O botão da aula a decorrer: registar o treino da
+                // turma toda sem sair daqui. Ver `GroupWorkoutScreen`
+                // — abrir a ficha de cada aluno, um a um, era
+                // impossível de fazer a dar uma aula.
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: activeBookings.isEmpty
+                        ? null
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => GroupWorkoutScreen(
+                                  occurrenceId: occurrence.id,
+                                  title: servicesById[occurrence.serviceId]
+                                          ?.name ??
+                                      'Aula',
+                                ),
+                              ),
+                            ),
+                    icon: const Icon(Icons.groups_outlined),
+                    label: const Text('Treinar com a turma'),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 OutlinedButton.icon(
                   onPressed: activeBookings.isEmpty
                       ? null
@@ -195,19 +222,30 @@ class OccurrenceDetailScreen extends ConsumerWidget {
                     );
                   }
                   return Column(
-                    children: active
-                        .map(
-                          (booking) => _MemberTile(
-                            occurrence: occurrence,
-                            booking: booking,
-                            member: membersByUid[booking.memberId],
-                            modalitiesById: modalitiesById,
-                            staffByUid: staffByUid,
-                          ),
-                        )
-                        .toList(),
+                    children: [
+                      _BulkAttendance(
+                        occurrenceId: occurrence.id,
+                        memberIds: active.map((b) => b.memberId).toList(),
+                      ),
+                      ...active.map(
+                        (booking) => _MemberTile(
+                          occurrence: occurrence,
+                          booking: booking,
+                          member: membersByUid[booking.memberId],
+                          modalitiesById: modalitiesById,
+                          staffByUid: staffByUid,
+                        ),
+                      ),
+                    ],
                   );
                 },
+              ),
+              // Fase 11 — a fila de quem quer entrar se alguém
+              // cancelar. Aparece só quando existe: numa sessão com
+              // vagas seria um título vazio em todos os ecrãs.
+              _WaitlistSection(
+                occurrenceId: occurrenceId,
+                membersByUid: membersByUid,
               ),
             ],
           );
@@ -250,7 +288,9 @@ class OccurrenceDetailScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível reduzir vagas: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível reduzir vagas. Tenta outra vez.'))),
       );
     }
   }
@@ -295,7 +335,9 @@ class OccurrenceDetailScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível cancelar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível cancelar. Tenta outra vez.'))),
       );
     }
   }
@@ -329,7 +371,9 @@ class OccurrenceDetailScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível editar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível editar. Tenta outra vez.'))),
       );
     }
   }
@@ -374,7 +418,9 @@ class OccurrenceDetailScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível atribuir: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível atribuir. Tenta outra vez.'))),
       );
     }
   }
@@ -481,6 +527,130 @@ class _ReduceSlotsDialogState extends State<_ReduceSlotsDialog> {
         ),
       ],
     );
+  }
+}
+
+/// Marcar a turma inteira de uma vez.
+///
+/// Registar presença é o que alimenta o painel de retenção — sem
+/// presenças registadas, o painel mostra toda a gente "em risco" e a
+/// taxa de faltas a "—". Só que registá-las era um toque por pessoa:
+/// numa aula de vinte, vinte toques, todos os dias. Ninguém faz isso
+/// mais do que uma semana.
+///
+/// O botão só marca quem ainda NÃO tem registo. O caso normal do
+/// instrutor é "vieram todos menos aqueles dois" — marca os dois que
+/// faltaram e carrega aqui para o resto; sobrescrever o que ele acabou
+/// de marcar seria apagar-lhe o trabalho.
+class _BulkAttendance extends ConsumerStatefulWidget {
+  const _BulkAttendance({required this.occurrenceId, required this.memberIds});
+
+  final String occurrenceId;
+  final List<String> memberIds;
+
+  @override
+  ConsumerState<_BulkAttendance> createState() => _BulkAttendanceState();
+}
+
+class _BulkAttendanceState extends ConsumerState<_BulkAttendance> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final recorded = (ref
+                .watch(occurrenceAttendanceProvider(widget.occurrenceId))
+                .valueOrNull ??
+            const <Attendance>[])
+        .map((a) => a.memberId)
+        .toSet();
+    final pending =
+        widget.memberIds.where((id) => !recorded.contains(id)).toList();
+
+    if (pending.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle_outline, size: 15, color: AppColors.ok),
+            SizedBox(width: 6),
+            Text(
+              'Presenças registadas para todos.',
+              style: TextStyle(color: AppColors.mute, fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: _busy ? null : () => _markAll(pending),
+          icon: _busy
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.done_all, size: 18),
+          label: Text(
+            pending.length == widget.memberIds.length
+                ? 'Marcar todos como presentes'
+                : 'Marcar os restantes ${pending.length} como presentes',
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _markAll(List<String> pending) async {
+    // `await ... .future`: um StreamProvider só arranca quando alguém
+    // olha para ele, e este ecrã não o observa. Com `valueOrNull`, a
+    // primeira vez que se carregava no botão apanhava-o ainda em
+    // carregamento e não acontecia nada — o mesmo engano já
+    // documentado em `book_training_screen.dart`.
+    final recordedBy = (await ref.read(currentAppUserProvider.future))?.uid;
+    if (recordedBy == null) return;
+
+    setState(() => _busy = true);
+    try {
+      final repository = ref.read(attendanceRepositoryProvider);
+      // Em paralelo e com desistência ao fim de alguns segundos: são
+      // escritas independentes, e no ginásio a ligação cai. Ver
+      // `writeOrQueue` — sem isto, marcar vinte presenças com má rede
+      // deixava o botão a rodar para sempre.
+      final outcome = await writeOrQueue(
+        Future.wait([
+          for (final memberId in pending)
+            repository.recordAttendance(
+              occurrenceId: widget.occurrenceId,
+              memberId: memberId,
+              status: AttendanceStatus.attended,
+              recordedBy: recordedBy,
+            ),
+        ]),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(writeOutcomeMessage(
+            outcome,
+            confirmed: '${pending.length} presença(s) registada(s).',
+          )),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível registar. Tenta outra vez.'))),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 }
 
@@ -599,31 +769,51 @@ class _MemberTile extends ConsumerWidget {
     } on RescheduleFailedException catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e'), duration: const Duration(seconds: 8)),
+        SnackBar(
+          content: Text(userFacingError(e,
+              fallback: 'Não foi possível remarcar. Tenta outra vez.')),
+          duration: const Duration(seconds: 8),
+        ),
       );
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível remarcar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível remarcar. Tenta outra vez.'))),
       );
     }
   }
 
   Future<void> _record(
       BuildContext context, WidgetRef ref, AttendanceStatus status) async {
-    final recordedBy = ref.read(currentAppUserProvider).valueOrNull?.uid;
+    // Ver a nota em `_BulkAttendanceState._markAll`.
+    final recordedBy = (await ref.read(currentAppUserProvider.future))?.uid;
     if (recordedBy == null) return;
     try {
-      await ref.read(attendanceRepositoryProvider).recordAttendance(
-            occurrenceId: occurrenceId,
-            memberId: booking.memberId,
-            status: status,
-            recordedBy: recordedBy,
-          );
+      // A marca no ecrã muda logo (vem da cache local do Firestore); o
+      // que isto evita é ficar à espera de uma confirmação que, sem
+      // rede, não chega — ver `writeOrQueue`.
+      final outcome = await writeOrQueue(
+        ref.read(attendanceRepositoryProvider).recordAttendance(
+              occurrenceId: occurrenceId,
+              memberId: booking.memberId,
+              status: status,
+              recordedBy: recordedBy,
+            ),
+      );
+      if (outcome == WriteOutcome.queued && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(writeOutcomeMessage(outcome, confirmed: ''))),
+        );
+      }
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível registar presença: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível registar presença. Tenta outra vez.'))),
       );
     }
   }
@@ -677,6 +867,73 @@ class _RescheduleDialog extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Fechar'),
         ),
+      ],
+    );
+  }
+}
+
+/// Fase 11 — a lista de espera vista pelo estúdio.
+///
+/// O aluno vê apenas a sua posição (as Rules não lhe deixam listar a
+/// fila); aqui vêem-se os nomes, que é o que permite a conversa "posso
+/// abrir mais uma vaga?" com dados à frente em vez de de memória.
+class _WaitlistSection extends ConsumerWidget {
+  const _WaitlistSection({
+    required this.occurrenceId,
+    required this.membersByUid,
+  });
+
+  final String occurrenceId;
+  final Map<String, MemberSummary> membersByUid;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final queueAsync = ref.watch(occurrenceWaitlistProvider(occurrenceId));
+    final queue = queueAsync.valueOrNull ?? const [];
+    if (queue.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        Text(
+          'Lista de espera (${queue.length})',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Se alguém cancelar, o primeiro da fila fica com o lugar '
+          'automaticamente e é notificado.',
+          style: TextStyle(color: AppColors.mute, fontSize: 12),
+        ),
+        const SizedBox(height: 8),
+        ...queue.asMap().entries.map(
+              (indexed) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: PanelCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      // A posição vem escrita pelo servidor; o índice só
+                      // serve no instante entre entrar na fila e a
+                      // numeração chegar.
+                      Pill('${indexed.value.position ?? indexed.key + 1}º'),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          membersByUid[indexed.value.memberId]?.name ??
+                              indexed.value.memberId,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
       ],
     );
   }

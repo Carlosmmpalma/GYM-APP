@@ -9,7 +9,15 @@ Booking _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
   final data = doc.data()!;
   // occurrenceId é o segmento pai do path:
   // tenants/{t}/sessionOccurrences/{occurrenceId}/bookings/{bookingId}
-  final occurrenceId = doc.reference.parent.parent!.id;
+  final parent = doc.reference.parent.parent!;
+  final occurrenceId = parent.id;
+  // ...ou de um slot de treino livre:
+  // tenants/{t}/freeTrainingSchedules/{weekId}/slots/{slotId}/bookings/{id}
+  //
+  // A collection group query de "as minhas marcações" apanha as duas —
+  // o caminho é a única coisa que as distingue, e sem essa distinção o
+  // ecrã tratava as de treino livre como aulas.
+  final isFreeTraining = parent.parent.id == 'slots';
   return Booking(
     id: doc.id,
     occurrenceId: occurrenceId,
@@ -28,6 +36,9 @@ Booking _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     // `booking.dart`.
     serviceId: data['serviceId'] as String?,
     period: data['period'] as String?,
+    startAt: (data['startAt'] as Timestamp?)?.toDate(),
+    kind: isFreeTraining ? BookingKind.freeTraining : BookingKind.session,
+    weekId: isFreeTraining ? parent.parent.parent!.id : null,
   );
 }
 

@@ -3,7 +3,9 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireAuthenticated } from './lib/callerContext';
+import { promoteFromWaitlist } from './lib/waitlist';
 import { enforceRateLimit } from './lib/rateLimit';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   occurrenceId: z.string().min(1),
@@ -33,11 +35,7 @@ export const cancelBooking = onCall(async (request) => {
     windowSeconds: 60,
   });
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { occurrenceId, memberId } = parsed.data;
+  const { occurrenceId, memberId } = parseInput(inputSchema, request.data);
 
   if (memberId !== caller.uid) {
     throw new HttpsError(
@@ -135,5 +133,17 @@ export const cancelBooking = onCall(async (request) => {
     throw new HttpsError('not-found', 'Não tens uma marcação ativa nesta sessão.');
   }
 
-  return { cancelled: true, usageRefunded: result.usageRefunded };
+  // Fase 11 — o lugar que acabou de vagar vai para o primeiro da
+  // lista de espera. Depois do cancelamento estar concluído, e sem
+  // nunca o desfazer se falhar: ver `lib/waitlist.ts`.
+  const promotion = await promoteFromWaitlist({
+    tenantRef,
+    occurrenceId,
+  });
+
+  return {
+    cancelled: true,
+    usageRefunded: result.usageRefunded,
+    promotedFromWaitlist: promotion.promotedMemberIds.length > 0,
+  };
 });

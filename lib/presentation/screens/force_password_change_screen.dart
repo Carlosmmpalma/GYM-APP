@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../domain/entities/app_user.dart';
 import '../widgets/design_system.dart';
@@ -50,8 +51,9 @@ class _ForcePasswordChangeScreenState
       // hasTemporaryPasswordProvider (autoDispose) é recalculado e o
       // AuthGate avança sozinho assim que a flag ficar false.
     } catch (e) {
-      setState(
-          () => _errorMessage = 'Não foi possível definir a nova password: $e');
+      setState(() => _errorMessage = userFacingError(e,
+          fallback:
+              'Não foi possível definir a nova password. Tenta outra vez.'));
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }

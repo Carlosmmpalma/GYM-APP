@@ -53,6 +53,31 @@ class Subscription extends Equatable {
 
   bool get isActive => status == SubscriptionStatus.active;
 
+  /// Fase 11 — a subscrição já passou da data de fim?
+  ///
+  /// Vale até ao FIM do dia do [endDate]: quem tem plano "até 31 de
+  /// março" treina no dia 31. Sem data de fim, nunca expira.
+  bool hasExpiredAt(DateTime now) {
+    if (endDate == null) return false;
+    final end = DateTime(
+      endDate!.year,
+      endDate!.month,
+      endDate!.day,
+      23,
+      59,
+      59,
+    );
+    return end.isBefore(now);
+  }
+
+  /// Dá acesso NESTE momento — estado ativo E dentro do prazo.
+  ///
+  /// É esta a pergunta que a elegibilidade deve fazer, e não [isActive].
+  /// Durante muito tempo perguntava-se só o estado, e o `endDate` era
+  /// guardado, mostrado no ecrã e ignorado por toda a autorização: um
+  /// plano terminado continuava a deixar marcar.
+  bool grantsAccessAt(DateTime now) => isActive && !hasExpiredAt(now);
+
   /// UC06/07/08/09 + Firestore Data Model v1 §18 — "este membro tem uma
   /// subscription ativa que concede acesso a este service?".
   bool grantsAccessTo(String serviceId) =>

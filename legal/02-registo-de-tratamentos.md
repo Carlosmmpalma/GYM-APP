@@ -91,10 +91,13 @@ peso, altura, percentagem de massa gorda, massa muscular, gordura
 visceral, metabolismo basal, percentagem de água, idade metabólica,
 pressão arterial, perímetro da cintura e abdominal, níveis de força
 (membros superiores, inferiores, core), flexibilidade e resistência.
-Plano de treino (exercícios, séries, repetições) e histórico de cargas.
 
 **Fundamento.** Artigo 9.º, n.º 2, alínea a) — **consentimento
 explícito** do titular. Conjugado com o artigo 6.º, n.º 1, alínea a).
+
+> O **plano de treino e o registo do que foi feito** (séries,
+> repetições, cargas) saíram deste tratamento e passaram ao Tratamento
+> 7. Ver a nota [ADVOGADO] no documento 01, secção 5.
 
 **Como o consentimento é obtido e demonstrado.** Documento 03. Registo
 com data do servidor, versão do texto e histórico imutável de cada
@@ -109,6 +112,38 @@ Limited.
 **servidor**: sem ele, nem um instrutor autenticado consegue escrever
 uma avaliação, mesmo contornando a aplicação. Existe teste automatizado
 que o demonstra.
+
+---
+
+## Tratamento 7 — Prescrição e registo de treino
+
+**Finalidade.** Prescrever o plano de treino, registar o que foi feito
+em cada sessão, e acompanhar a progressão de carga ao longo do tempo.
+
+**Categorias de titulares.** Alunos inscritos.
+
+**Categorias de dados.** Plano de treino (exercícios, séries,
+repetições, descanso, notas). Sessões de treino: data e hora de início e
+fim, quem registou, e cada série feita com repetições e carga. Histórico
+de cargas por exercício.
+
+**Fundamento.** Artigo 6.º, n.º 1, alínea b) — execução do contrato. É o
+serviço contratado: um ginásio com acompanhamento prescreve treino e
+regista o que foi feito.
+
+**Quem regista.** O próprio aluno, ou o instrutor/gestor que o
+acompanha. O autor de cada registo fica guardado.
+
+**Destinatários.** Gestor e instrutores do estúdio. Google Ireland
+Limited.
+
+**Prazo de conservação.** Documento 06 (mesmo prazo do plano de treino).
+
+> **[ADVOGADO]** Este tratamento estava dentro do Tratamento 3
+> (consentimento do artigo 9.º) e foi separado. A justificação está na
+> nota do documento 01, secção 5. Se a decisão for tratá-lo como dado de
+> saúde, a aplicação volta a exigir consentimento — e o registo de
+> treino fica indisponível a quem o recuse.
 
 ---
 
@@ -200,7 +235,12 @@ Descrição factual do que está implementado e testado.
     morada nem contactos de mais ninguém;
   - **um aluno não vê quem está inscrito numa aula**, apenas quantos
     lugares estão ocupados;
-  - um aluno não lê as subscrições nem os preços acordados de outro.
+  - um aluno não lê as subscrições nem os preços acordados de outro;
+  - **os dados pessoais do pessoal (telefone, data de nascimento,
+    morada, NIF, contacto de emergência) estão separados do registo que
+    identifica o instrutor de uma aula**: o primeiro só é acessível ao
+    próprio e ao gestor, o segundo (nome e papel) é o que permite dizer
+    a um aluno quem dá a aula.
 
 ### Autenticação
 

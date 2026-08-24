@@ -11,9 +11,9 @@ import '../../domain/entities/member_summary.dart';
 import '../../domain/entities/payment_record.dart';
 import '../../domain/entities/plan.dart';
 import '../../domain/entities/service.dart';
-import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/subscription.dart';
 import '../widgets/design_system.dart';
+import '../widgets/start_workout_button.dart';
 import 'assessment_list_screen.dart';
 import 'book_training_screen.dart';
 import 'my_bookings_screen.dart';
@@ -87,11 +87,29 @@ class MemberHomeScreen extends ConsumerWidget {
             return _AccountCard(memberId: memberId, member: member);
           },
         ),
+        // Auditoria da Fase 11 — desativar um membro passou a impedi-lo
+        // mesmo de marcar (`resolveEligibility`). Sem este aviso, ele
+        // via os botões todos e recebia uma recusa que parecia um bug
+        // da app.
+        if (memberAsync.valueOrNull?.active == false) ...[
+          const SizedBox(height: 12),
+          const AppBanner(
+            title: 'Conta inativa',
+            text: 'A tua conta está inativa, por isso não consegues marcar '
+                'treinos. Fala com o estúdio para a reativar.',
+            tone: PillTone.warn,
+          ),
+        ],
         const SizedBox(height: 16),
         const SectionLabel('Próxima marcação'),
         const SizedBox(height: 8),
         _NextBookingCard(memberId: memberId),
         const SizedBox(height: 16),
+        // Fase 11 — iniciar o treino é a ação mais frequente de quem
+        // chega ao ginásio, e por isso fica acima dos atalhos em vez de
+        // ser mais um card no meio deles.
+        StartWorkoutButton(memberId: memberId),
+        const SizedBox(height: 12),
         _ShortcutGrid(memberId: memberId, onOpenTab: onOpenTab),
       ],
     );
@@ -207,10 +225,17 @@ class _NextBookingCard extends ConsumerWidget {
   }
 }
 
-/// `myBookingsProvider` devolve as marcações ativas mas SEM a data da
-/// sessão (essa vive na ocorrência). Para saber qual é a "próxima" é
-/// preciso resolver cada ocorrência — por isso este widget à parte, em
-/// vez de o cálculo estar inline no card.
+/// Qual é a próxima sessão, de entre as marcações ativas.
+///
+/// **Lê a data da própria marcação.** Antes resolvia uma ocorrência por
+/// marcação (`occurrenceProvider`) só para as comparar — uma leitura
+/// extra por cada aula reservada, sempre que o ecrã inicial abria. Pior:
+/// as marcações de treino livre não são ocorrências, resolviam para
+/// `null` e eram descartadas em silêncio — um aluno com treino livre
+/// marcado para amanhã lia "não tens nenhuma sessão futura marcada".
+///
+/// Marcações anteriores a `startAt` existir continuam a resolver-se
+/// pela ocorrência, para não desaparecerem do cartão.
 class _NextBookingResolver extends ConsumerWidget {
   const _NextBookingResolver({required this.bookings});
 
@@ -219,21 +244,26 @@ class _NextBookingResolver extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
-    SessionOccurrence? next;
+    DateTime? nextStart;
     Booking? nextBooking;
 
     for (final booking in bookings) {
-      final occurrence =
-          ref.watch(occurrenceProvider(booking.occurrenceId)).valueOrNull;
-      if (occurrence == null) continue;
-      if (occurrence.startAt.isBefore(now)) continue;
-      if (next == null || occurrence.startAt.isBefore(next.startAt)) {
-        next = occurrence;
+      var startAt = booking.startAt;
+      if (startAt == null && booking.kind == BookingKind.session) {
+        startAt = ref
+            .watch(occurrenceProvider(booking.occurrenceId))
+            .valueOrNull
+            ?.startAt;
+      }
+      if (startAt == null) continue;
+      if (startAt.isBefore(now)) continue;
+      if (nextStart == null || startAt.isBefore(nextStart)) {
+        nextStart = startAt;
         nextBooking = booking;
       }
     }
 
-    if (next == null || nextBooking == null) {
+    if (nextStart == null || nextBooking == null) {
       return const PanelCard(
         child: Text(
           'Não tens nenhuma sessão futura marcada.',
@@ -247,7 +277,11 @@ class _NextBookingResolver extends ConsumerWidget {
           in ref.watch(servicesProvider).valueOrNull ?? const <Service>[])
         s.id: s,
     };
-    final serviceName = servicesById[next.serviceId]?.name ?? next.serviceId;
+    final serviceName = nextBooking.kind == BookingKind.freeTraining
+        ? 'Treino livre'
+        : servicesById[nextBooking.serviceId]?.name ??
+            nextBooking.serviceId ??
+            'Sessão';
 
     return PanelCard(
       child: Row(
@@ -268,7 +302,7 @@ class _NextBookingResolver extends ConsumerWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _nextBookingFormat.format(next.startAt),
+                  _nextBookingFormat.format(nextStart),
                   style: const TextStyle(color: AppColors.mute, fontSize: 12),
                 ),
               ],

@@ -50,4 +50,19 @@ abstract class TenantRepository {
     required String tenantId,
     required int minutes,
   });
+
+  /// Fase 11 — com quantas horas de antecedência sai o lembrete da
+  /// aula. `0` = lembretes desligados.
+  ///
+  /// Vive em `config/notificationPolicy` e não em `bookingPolicy`
+  /// porque não decide se uma marcação é válida — decide só quando é
+  /// que se avisa. 12 horas por omissão: apanha a aula da manhã
+  /// seguinte na noite anterior, que é quando ainda dá para cancelar a
+  /// tempo de alguém da lista de espera aproveitar o lugar.
+  Future<int> getSessionReminderHours(String tenantId);
+
+  Future<void> setSessionReminderHours({
+    required String tenantId,
+    required int hours,
+  });
 }

@@ -4275,6 +4275,1032 @@ continua a usar-se `flutter run`.
 
 Precisa dos emuladores a correr e semeados.
 
+## Quando a app "está toda bugada"
+
+Aconteceu, e a causa não estava no código: arranques e paragens
+repetidos do Emulator Suite deixaram um processo **zombie** a segurar as
+portas 5001 e 8080. O hub e a UI não respondiam, e o emulador devolvia
+**404 em todas as Cloud Functions**. Do lado da app isso aparece como
+`[firebase_functions/internal] internal` e nada funciona: marcar,
+cancelar, gerar grelhas.
+
+Passou a haver forma de distinguir isso de um bug a sério, em segundos:
+
+```bash
+npm --prefix firebase/tests test -- smoke
+```
+
+`smoke-fluxo-completo.test.ts` corre o percurso de uma pessoa sobre os
+dados semeados — gerar e publicar a grelha de treino livre, marcar uma
+aula, cancelá-la, e confirmar que a subscrição da aluna dá acesso aos
+serviços do plano. Se isto passa, o servidor está bom e o problema é
+outro; se falha, a mensagem diz onde.
+
+É idempotente de propósito: limpa a marcação e a utilização semanal da
+execução anterior antes de começar. Sem isso falhava à segunda vez com
+"já tens uma marcação" e "atingiste o limite semanal" — o teste a
+tropeçar em si próprio, não a app.
+
+**Se as portas ficarem presas**, o remédio é matar quem as segura e
+levantar um único emulador:
+
+```powershell
+Get-NetTCPConnection -LocalPort 5001,8080,9099,9199 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+```
+
+Depois `firebase emulators:start` e voltar a semear. **Os dados do
+emulador não sobrevivem** a isto — é memória, não disco.
+
+## Registo de treino: sessões, séries e histórico
+
+Pedido: *"tanto o gestor, como o treinador, como o próprio aluno deveriam
+conseguir iniciar treinos, marcar quantas repetições o aluno fez e ter
+acesso a um histórico. Isto é um ginásio com acompanhamento."*
+
+Faltava mesmo, e era o buraco maior que restava. Havia a **prescrição**
+(o plano) e um **histórico de cargas solto** por exercício — mas não
+havia o **treino**: a ida ao ginásio, com as séries que se fizeram, na
+ordem em que se fizeram.
+
+### Como as apps da área resolvem isto
+
+Hevy, Strong, Trainerize e TrueCoach convergem no mesmo modelo, e adotei-o:
+
+1. **Sessão** — escolhe-se um treino do plano e abre-se um registo ao vivo.
+2. **Uma linha por série**: `kg × reps` + confirmar, com os campos já
+   preenchidos pela prescrição.
+3. **O que se fez da última vez**, em cinzento, ao lado. É a peça que faz
+   a progressão acontecer: ninguém se lembra do peso da semana passada, e
+   sem essa referência o registo vira burocracia em vez de ferramenta.
+4. **Terminar** fecha a sessão com duração e volume total.
+5. **Histórico** por sessão e por exercício.
+
+A diferença entre as apps de auto-registo e as de acompanhamento é
+**quem regista**. Aqui são os três, e é o mesmo componente para todos —
+o que muda é o `performedBy` que fica no registo, não haver dois
+caminhos na app.
+
+### Duas Rules que impediam isto
+
+**O aluno não podia escrever o seu próprio histórico de cargas.** Era
+Instrutor/Gestor apenas. Num ginásio, o aluno registar o seu treino é o
+caso normal, não a exceção.
+
+**Estava atrás do consentimento de dados de saúde.** Separei os dois
+conceitos, e é a decisão com mais peso desta fase:
+
+- **Avaliações físicas** (composição corporal, pressão arterial) —
+  continuam a exigir consentimento explícito do artigo 9.º.
+- **Registo de treino** (séries, repetições, cargas) — passou à base
+  contratual. É o registo do serviço prestado.
+
+Manter o gate tornava o registo de treino indisponível a quem recusasse
+avaliações — e o acompanhamento é o núcleo do serviço, não um extra.
+Está sinalizado [ADVOGADO] em `legal/01` secção 5, com um tratamento
+próprio no registo do artigo 30.º.
+
+### Decisões de modelo
+
+**As séries vivem num array no documento da sessão**, não numa
+subcoleção: uma sessão lê-se e escreve-se como uma unidade, e a
+alternativa custaria uma leitura por série sempre que o ecrã abrisse.
+
+**O `loadHistory` continua a ser escrito** em paralelo. É o que alimenta
+o gráfico de evolução — uma pergunta ("quanto levantava há três meses")
+que as sessões sozinhas não respondem, porque as séries estão dentro de
+um array e não são consultáveis.
+
+**O nome do treino é copiado para a sessão.** Um treino pode ser
+renomeado ou apagado; um registo que muda de nome retroativamente não é
+um registo.
+
+**Uma sessão terminada não se apaga** — nem pelo Gestor. Descartar só
+vale para uma em curso, aberta por engano. Apagar histórico passa pelo
+apagamento RGPD, que é deliberado e auditável.
+
+### Um teste que mudou de significado
+
+`um membro NÃO consegue criar um registo de carga` (Fase 8) afirmava o
+contrário do que agora é correto. Não o apaguei: reescrevi-o para o que
+a secção protege de facto — um aluno escreve no SEU histórico e não no
+de outro — e deixei o porquê da mudança em comentário.
+
+### Estado
+
+**256 testes Flutter** · **221 contra o Emulator Suite** (12 novos de
+sessões de treino, quase todos sobre fronteiras: aluno no treino de
+outro, apagar histórico, sobrescrever registos).
+
+## O que ainda faltava a um ginásio com acompanhamento
+
+Perguntaste se existia mais alguma funcionalidade primordial em falta.
+Encontrei quatro coisas, uma delas um bug com dinheiro em cima, e
+escolheste fazer as quatro.
+
+### 1. Planos expirados continuavam a dar acesso
+
+`endDate` era guardado ao criar a subscrição, mostrado na ficha do
+aluno... e ignorado por toda a lógica de autorização, que olhava só
+para `status == 'active'`. Um plano terminado em março deixava marcar
+aulas em agosto, e a ficha dizia "Ativo" com a data de fim já passada.
+Isto não é um detalhe de UI: é receita que o estúdio deixa de cobrar
+sem dar por isso.
+
+A correção está em `resolveEligibility`
+(`firebase/functions/src/lib/bookingLogic.ts`) e no equivalente do
+lado do cliente (`Subscription.grantsAccessAt`), deliberadamente com a
+mesma regra dos dois lados — se divergissem, a app mostrava serviços
+que o servidor recusa.
+
+Havia ainda um `limit(1)` na query de subscrições que tornava o bug
+pior: com dois planos a dar acesso ao mesmo serviço, bastava o
+primeiro devolvido estar expirado para o acesso ser negado, mesmo
+havendo outro válido. Passou a procurar um válido entre todos.
+
+**Política, decidida e escrita:** vale até ao **fim do dia** do
+`endDate`. Quem tem plano "até 31 de março" treina no dia 31. Sem
+tolerância depois disso — uma janela de cortesia seria uma decisão de
+negócio tua, não minha, e fica fácil de acrescentar num sítio só.
+
+### 2. Lista de espera
+
+A app impõe capacidade por desenho, portanto aulas cheias são o normal
+e não a exceção. Sem fila, um cancelamento deixava **um lugar vazio
+que ninguém sabia que existia**: quem estava interessado tinha de
+andar a abrir a app a ver se tinha vagado, e na maior parte das vezes
+não voltava a abrir.
+
+Agora, numa sessão cheia, o botão desativado "Sem vagas" dá lugar a
+"Entrar em lista de espera". Quando alguém cancela, o primeiro da fila
+**fica com o lugar automaticamente** e é notificado.
+
+**Promoção automática e não convite com prazo.** Algumas apps avisam e
+dão X minutos para confirmar. Isso exige um temporizador por cada lugar
+vago e deixa o lugar em suspenso enquanto ninguém responde — num
+estúdio pequeno, aulas a começar com lugares reservados para quem não
+viu a notificação. A troca é justa porque cancelar é barato: quem for
+promovido e já não puder vir cancela, e dentro da janela de
+antecedência recupera a utilização semanal. A notificação diz-lhe
+exatamente isso.
+
+A promoção percorre a fila em vez de levar só o primeiro: quem perdeu
+a elegibilidade entretanto (plano acabou, foi cancelado) sai da fila em
+silêncio e passa-se ao seguinte — senão bloqueava a fila para sempre.
+
+**A posição é escrita pelo servidor em cada entrada**, e recalculada a
+cada entrada, saída e promoção. Não é o cliente a contar: as Rules não
+deixam um aluno **listar** a fila, só ler a entrada dele. Quem mais
+está à espera é informação dos outros.
+
+### 3. Lembrete antes da aula
+
+A falta sem aviso é o custo real de um estúdio com capacidade
+limitada: o lugar ficou ocupado, ninguém o pôde usar, e a aula correu
+com menos gente do que a lista dizia. Quase nunca é má-fé — é alguém
+que marcou na segunda-feira e se esqueceu na quinta.
+
+Uma função agendada (de hora a hora) avisa quem tem marcação, com a
+antecedência que definires nas Definições (12 horas por omissão, "0"
+desliga). O corpo da mensagem pede explicitamente o cancelamento a
+quem já não puder vir — o objetivo não é só recordar, é **provocar o
+cancelamento atempado**, que devolve a utilização semanal e liberta o
+lugar para o primeiro da lista de espera. As duas funcionalidades
+desta fase encaixam uma na outra de propósito.
+
+`reminderSentAt` na ocorrência garante um único aviso por sessão,
+mesmo com a função a correr de hora a hora. Marca-se mesmo quando não
+há ninguém inscrito, senão a sessão era relida a cada hora até começar.
+
+A mensagem diz "daqui a cerca de N horas" e nunca uma hora absoluta —
+o runtime das Functions não sabe o fuso do aluno e imprimir a hora em
+UTC dava uma notificação errada metade do ano (a mesma limitação já
+assinalada na Fase 6, aqui contornada em vez de ignorada).
+
+### 4. Painel de retenção
+
+Num ginásio de proximidade, quem desiste não cancela: deixa de
+aparecer, continua a pagar dois ou três meses, e só depois cancela.
+Nessa altura já não há conversa possível. O sinal existia nos dados
+desde a Fase 6 — presenças e faltas — mas não havia nenhum ecrã que o
+lesse: só se via aula a aula, uma de cada vez.
+
+Gestão › Dinheiro › **Retenção**: ocupação e taxa de faltas dos
+últimos 30 dias, e a lista de quem não aparece há 2 semanas / 3
+semanas / 1 mês / 2 meses. A lista ocupa o resto do ecrã e cada linha
+abre a ficha do aluno, porque é a única das três coisas que se traduz
+numa ação hoje: ligar a estas pessoas.
+
+Decisões que separam um número útil de um número enganador, todas com
+teste:
+
+* **Só quem tem plano ativo** entra na lista de risco. Quem já não tem
+  plano não está em risco de sair — já saiu; contá-lo inflacionava o
+  número e enterrava quem ainda dá para recuperar.
+* **Ocupação é sobre lugares, não sobre sessões.** Uma aula de 10 com
+  2 pessoas e outra de 2 com 2 não são "50% e 100%, média 75%": são 4
+  lugares ocupados em 12, 33%.
+* **Sessões futuras e canceladas não contam.** Uma aula de amanhã com
+  duas marcações não é uma aula com 20% de ocupação.
+* **Sem presenças registadas, a taxa de faltas é "—" e não "0%".** 0%
+  diria que está tudo bem; a verdade é que ninguém registou nada — e o
+  ecrã diz isso, incluindo no estado vazio da lista de risco.
+* **"Sem presença nos últimos N dias", nunca "nunca veio".** Só se
+  procura até ao início do período; afirmar mais do que isso seria
+  mentira.
+
+Fica no servidor (`getRetentionOverview`) e não no cliente porque
+agregar isto obriga a ler as presenças de todas as sessões do mês, e
+essas vivem em subcoleções que o cliente nem sequer pode percorrer de
+uma vez — as Rules não abrem `attendance` a collection group queries,
+de propósito.
+
+### Estado
+
+**256 testes Flutter** · **263 contra o Emulator Suite** (+42 nesta
+ronda: 4 do bug dos planos expirados, 12 da lista de espera incluindo
+as Rules da fila, 8 dos lembretes, 13 da retenção, 5 das regras de
+leitura da fila).
+
+**Índice novo por implantar:** `sessionOccurrences (status, startAt)`,
+usado pelos lembretes. Junta-se aos que já estavam à espera de
+`firebase deploy --only firestore:indexes`.
+
+## Quatro coisas estranhas no treino
+
+Reportadas a testar, e todas com a mesma raiz: a Fase 11 acrescentou
+treinos e registo ao vivo, mas os ecrãs que já existiam não foram
+revistos à luz dos dados novos que passaram a receber.
+
+### 1. O aluno não via a que treino pertencia cada exercício
+
+O editor do instrutor ganhou "Treino A — Costas" / "Treino B — Peito".
+O ecrã do aluno continuou a ser a lista corrida que era antes de os
+treinos existirem: dezoito exercícios seguidos, sem dizer quais eram os
+de hoje. A informação estava na base de dados e não chegava a quem
+precisa dela para treinar.
+
+"O meu plano" passou a ser uma secção por treino, com o nome, as
+instruções que o instrutor escreveu (que até aqui só ele próprio via),
+os exercícios pela ordem prescrita, e **um botão para começar aquele
+treino** — sem voltar a perguntar qual, porque a pergunta já foi
+respondida ao ler o cabeçalho.
+
+Exercícios sem treino atribuído continuam visíveis, num grupo próprio.
+Esconder o que o instrutor prescreveu seria pior do que os mostrar
+desarrumados.
+
+### 2. Uma série registada não se podia corrigir
+
+Só havia "anular a última". Enganar-se na segunda de quatro séries
+obrigava a apagar as outras duas e a registá-las de cabeça — e o erro
+mais caro (60 kg escritos como 6) ficava também no histórico de cargas,
+onde não havia forma nenhuma de lhe tocar.
+
+Agora toca-se na série confirmada e corrige-se ali, ou apaga-se. A
+parte que interessa é o que acontece por baixo: **cada série passou a
+guardar o id do registo de carga que criou** (`SetLog.loadHistoryId`).
+Sem essa ligação era impossível saber qual dos registos do exercício
+correspondia à série errada — e por isso é que, até aqui, "anular"
+deixava deliberadamente um registo órfão no gráfico.
+
+Isso obrigou a abrir uma fresta nas Security Rules, e o desenho da
+fresta é a decisão importante:
+
+* `update` continua bloqueado para toda a gente. "Nunca sobrescrever o
+  histórico" (UC16) mantém-se.
+* `delete` passou a ser permitido **apenas** em registos que vieram de
+  uma série (`sessionId` presente). Corrigir é apagar o errado e criar
+  o certo.
+* Os registos que o Instrutor cria ao mudar a carga prescrita **não
+  têm `sessionId`** e continuam imutáveis. A progressão que o UC16
+  protege é essa; um engano de dedo registado há dois minutos não é
+  progressão, é lixo que fica no gráfico para sempre.
+
+**Limite assumido:** corrigir é durante a sessão. Depois de terminada,
+o treino é histórico e a app não oferece edição — as Rules até a
+permitiriam, mas não há ecrã para isso, e dizê-lo aqui é melhor do que
+deixar alguém à procura.
+
+### 3. A evolução da carga mostrava todas as séries
+
+Com o registo ao vivo, cada exercício escreve um registo por série:
+quatro séries num dia davam quatro linhas iguais, e três treinos por
+semana davam doze linhas por semana — para responder sempre à mesma
+pergunta, "estou a subir?".
+
+Passou a ser **uma linha por dia de treino, com a melhor série desse
+dia**: a carga mais alta, e as repetições que saíram nela. Empate na
+carga resolve-se pelas repetições (60 × 10 é melhor série do que 60 ×
+8). Cada linha traz o ganho em relação ao treino anterior, e o número
+de séries do dia como contexto do que ficou de fora.
+
+Por cima, um gráfico da progressão — desenhado à mão com um
+`CustomPainter`, sem biblioteca nova: uma linha e alguns pontos não
+pagam uma dependência, e um pacote de gráficos traz temas próprios que
+teriam de ser dobrados ao design da app.
+
+### 4. Históricos sem filtragem nem agrupamento
+
+Três ecrãs que eram listas corridas e cresciam para sempre:
+
+* **Treinos feitos** — agrupado por mês, com filtro por treino e um
+  resumo no topo (quantos treinos, volume total, há quantos dias foi o
+  último). O mês é a régua com que se pensa em treino ("em julho fui
+  doze vezes"); o filtro responde à outra pergunta frequente, "quando
+  foi a última vez que fiz pernas?".
+* **Avaliações** — agrupadas por ano, e cada linha traz a diferença de
+  peso para a avaliação anterior. Antes era preciso abrir duas fichas e
+  subtrair de cabeça. A diferença é mostrada sem cor de "bom/mau": quem
+  treina para ganhar massa quer o sinal contrário de quem treina para
+  perder peso, e não cabe à app decidir qual é qual.
+* **Mensalidades** — agrupadas por ano, com o estado do ano no
+  cabeçalho ("Em dia", "2 em atraso"). A pergunta que se faz a um
+  histórico de mensalidades é sobre o ano, não sobre a lista toda.
+
+### Estado
+
+**266 testes Flutter** (+10: cinco do plano agrupado por treino, cinco
+da evolução por dia) · **268 contra o Emulator Suite** (+5, todos sobre
+a fresta nova nas Rules — incluindo a prova de que os registos sem
+`sessionId` continuam intocáveis).
+
+## Varredura de bugs e de UX
+
+Passagem por todos os 51 ecrãs, todos os repositórios e todas as Cloud
+Functions, à procura do que estava errado e do que estava só
+desconfortável. O que se segue é o que encontrei e corrigi, dos bugs
+para os detalhes.
+
+### Um campo em falta explicava quatro bugs
+
+A marcação não guardava **quando é que a sessão acontece**. Só isso, e
+daí saíam quatro comportamentos errados:
+
+1. **"As minhas marcações" ordenava pela data em que a marcação foi
+   FEITA.** Marcar hoje uma aula do mês que vem punha-a antes da de
+   amanhã, marcada na semana passada.
+2. **As sessões passadas nunca saíam da lista**, com um botão
+   "Cancelar" que já não fazia sentido nenhum (e que o servidor
+   recusaria).
+3. **As marcações de treino livre apareciam partidas.** A app lê as
+   marcações todas com uma collection group query, e o treino livre
+   vive noutro caminho (`freeTrainingSchedules/{semana}/slots/{slot}/
+   bookings`). O ecrã tratava tudo como aula: o cartão dizia "Sessão já
+   não disponível" e o "Cancelar" chamava a Cloud Function das aulas —
+   falhava **sempre**, e não havia forma de tirar o cartão de lá.
+4. **O ecrã inicial dizia "não tens nenhuma sessão futura marcada"** a
+   quem tinha treino livre marcado para o dia seguinte: procurava a
+   próxima sessão resolvendo uma ocorrência por marcação, e as de
+   treino livre resolviam para `null`.
+
+A correção é `startAt` copiado para a marcação no momento em que ela é
+criada (`bookingLogic.ts`), mais o tipo de marcação derivado do
+caminho. Com isso, "as minhas marcações" ordena, separa próximas de
+"já realizadas", identifica o treino livre e cancela-o pela função
+certa — e o ecrã inicial deixou de fazer **uma leitura extra por
+marcação** só para saber qual é a próxima.
+
+### "Membro ativo: não" era uma etiqueta
+
+Desativar um aluno na ficha dele não impedia nada: a autorização olhava
+só para as subscrições, e a subscrição de quem sai raramente é
+cancelada no mesmo instante. O interruptor existia, dizia "Inativo", e
+a pessoa continuava a marcar aulas.
+
+Passou a ser verificado em `resolveEligibility` — o sítio por onde
+passam **todos** os caminhos (marcar, treino livre, atribuição manual,
+geração automática, promoção da lista de espera), em vez de em cada um
+deles. Ausência do campo conta como ativo, para não trancar dados
+antigos. Do lado do aluno, a conta inativa passou a dizê-lo numa faixa
+no ecrã inicial: sem isso ele via os botões todos e recebia uma recusa
+que parecia um bug da app.
+
+### Treino livre: três coisas no mesmo cartão
+
+* **Sem estado de ocupado.** O botão ficava ativo durante a chamada ao
+  servidor; dois toques seguidos disparavam duas reservas.
+* **Blocos já passados ofereciam "Reservar".** Na sexta, o bloco de
+  segunda às 8h continuava a convidar; o servidor recusava, e a recusa
+  chegava como erro genérico.
+* **Erros em cru.** `'$e'` num SnackBar dá exatamente aquele
+  `[firebase_functions/internal] internal` que já tinhas apanhado. Usa
+  agora a mesma tradução do resto da app (`describeFirebaseError`), tal
+  como o "esqueci-me da password" no login.
+
+### Sessões canceladas na lista do aluno
+
+Uma aula cancelada pelo estúdio continuava a aparecer em "Marcar", com
+as vagas todas livres e um botão desativado sem explicação. Quem tinha
+marcação nela já foi notificado; para os outros era só ruído — deixou
+de aparecer.
+
+### Ordenação e agrupamento
+
+* **Marcar treino** — agrupado por dia, com "Hoje" e "Amanhã" em vez da
+  data. O cartão deixou de repetir a data (o cabeçalho já a dá) e
+  mostra só a hora. Uma lista corrida de quarenta aulas obrigava a ler
+  a data de cada cartão para saber se era hoje ou daqui a duas semanas.
+* **Aulas / Horários** (Gestor) — ganhou procura (serviço, instrutor,
+  dia) e filtro por serviço; as séries passaram a estar ordenadas por
+  dia da semana e hora, que é como um horário se lê. As canceladas
+  saíram do meio das ativas para uma secção própria no fim: uma série
+  cancelada não é horário, é histórico que se pode querer reativar.
+* **Listas de pessoas** — `watchMembers`/`watchStaff` devolviam os
+  documentos pela ordem do Firestore, que para ids automáticos é ordem
+  nenhuma. Passaram a vir por nome, com os acentos normalizados para
+  "Álvaro" não cair no fim do alfabeto. Ordenado no cliente e não com
+  `orderBy('name')` de propósito: um `orderBy` **exclui** documentos
+  sem o campo, e um registo antigo sem nome desapareceria da gestão em
+  vez de aparecer por arrumar.
+* **Notificar um membro** — a escolha era um `DropdownButtonFormField`
+  com todos os alunos lá dentro. Passou a usar o mesmo seletor com
+  procura que já existia para atribuir planos.
+
+### "Ocupação média" que não era ocupação
+
+O painel do Gestor mostrava "Ocupação média" calculada sobre sessões
+que **ainda não aconteceram**: uma aula de sexta ainda por encher punha
+o número em 20% numa semana que acabou cheia. Passou a chamar-se
+**"Lotação prevista"**, que é o que é. A ocupação realizada vive no
+painel de Retenção e é calculada só sobre sessões já dadas — os dois
+números coexistem agora sem se contradizerem.
+
+Os cartões desse painel também mostravam um spinner eterno quando a
+leitura falhava (o estado de erro estava mapeado para o mesmo `null` do
+estado de carregamento). Passaram a mostrar que falharam.
+
+### Marcar presenças era um toque por pessoa
+
+Numa aula de vinte, vinte toques — todos os dias. Ninguém faz isso mais
+do que uma semana, e sem presenças registadas o painel de retenção
+mostra toda a gente "em risco" e a taxa de faltas a "—". Ou seja: a
+funcionalidade que mede a retenção dependia de um gesto que ninguém
+repetiria.
+
+"Marcar todos como presentes" resolve-o num toque, e **não sobrescreve
+quem já foi marcado**: o caso normal é "vieram todos menos aquele
+dois" — marcam-se as faltas e o botão trata do resto, dizendo quantos
+faltam ("Marcar os restantes 3 como presentes").
+
+### Custo
+
+`getRetentionOverview` é a função mais cara do projeto — percorre as
+sessões do mês e lê as presenças de cada uma. Não tinha limite de
+chamadas: um ecrã com um bug de refrescamento custava leituras a sério.
+Ganhou o mesmo rate limiting das funções de marcação.
+
+### O que ficou por fazer, e porquê
+
+* **Lista de espera no treino livre.** As aulas têm; os blocos de
+  treino livre cheios continuam a mostrar "Sem vagas". A promoção
+  automática está escrita contra `sessionOccurrences` e estendê-la aos
+  slots é uma mudança de fundo, não um retoque — fica sinalizada em vez
+  de meio-feita.
+* **Corrigir séries de um treino já terminado.** Corrige-se durante a
+  sessão; depois de terminada não há ecrã para isso (as Rules até o
+  permitiriam).
+* **`watchMembers` continua sem limite.** Para um estúdio (centenas de
+  alunos) é uma leitura completa aceitável e simplifica muita coisa;
+  para milhares seria preciso paginar, e aí a procura teria de passar a
+  ser feita no servidor.
+
+### Estado
+
+**272 testes Flutter** (+6: quatro sobre os tipos de marcação e a
+ordenação em "as minhas marcações", dois sobre a marcação de presenças
+em bloco) · **270 contra o Emulator Suite** (+2 sobre a conta
+desativada — deixa de poder marcar, e reativar devolve o acesso — mais
+a prova de que a marcação guarda mesmo a data da sessão, que é a peça
+de que dependem quatro das correções acima).
+
+## Onde está o dinheiro (e o que passou a custar menos)
+
+Antes de mexer em nada, contei o que a app pede ao Firebase numa
+utilização normal. A ordem das contas não é a que se espera.
+
+**O Firestore não é o problema.** Uma sessão de um aluno (abrir a app,
+ver o horário, ver o plano) custava ~250 leituras. Com 200 alunos a
+abrir a app 20 vezes por mês são ~1M de leituras/mês — dentro do
+plafond gratuito diário (50 000 leituras/dia) na maior parte dos dias,
+e a poucos cêntimos se o ultrapassar.
+
+**O tráfego dos vídeos é o problema.** Cada aluno que abre um exercício
+descarrega o ficheiro inteiro. Um vídeo de 40 MB, visto uma vez por 150
+alunos, são 6 GB — por exercício. Uma biblioteca de 40 exercícios vista
+uma vez por toda a gente são 240 GB, e o tráfego de saída do Storage é
+a rubrica mais cara do Firebase. Isto podia ser **duas ordens de
+grandeza** acima de tudo o resto junto.
+
+### O que mudou
+
+**1. Vídeos com cache (a correção que mais poupa).** Os vídeos subiam
+sem `Cache-Control`, por isso o browser voltava a descarregar o
+ficheiro inteiro em cada visualização. Passaram a subir com 30 dias de
+cache — a segunda vez que o mesmo aluno vê o mesmo exercício deixa de
+custar tráfego. É seguro apesar de o caminho ser sempre o mesmo:
+substituir o vídeo gera um token de download novo, logo um URL novo,
+que a cache antiga não serve.
+
+Ao escolher o ficheiro, o instrutor passa a ver um aviso acima de 25 MB
+a dizer o que isso significa para quem o vai ver. Aviso, não bloqueio:
+quem quiser mesmo carregar um vídeo grande, carrega.
+
+**2. O horário deixou de vir todo.** "Marcar treino" lia as sessões de
+TODOS os serviços do ginásio e filtrava em memória pelos serviços do
+plano do aluno. Passou a pedir ao servidor só os serviços a que ele tem
+direito (`whereIn`, que usa o índice `serviceId+startAt` que já
+existia). Um aluno só com aulas de grupo deixou de descarregar Pilates
+e PT para os deitar fora.
+
+E o caso extremo: um aluno **sem plano nenhum** lia o horário completo
+para lhe dizerem que não tinha acesso a nada. Agora não se faz query
+nenhuma — conjunto de serviços vazio, zero leituras.
+
+**3. O treino livre deixou de perguntar bloco a bloco.** "Já reservei
+este horário?" era uma leitura por bloco: vinte blocos numa semana,
+vinte leituras de cada vez que o separador abria. As marcações de
+treino livre já vinham todas na mesma consulta que serve "as minhas
+marcações" — desde que a marcação passou a saber a que semana e a que
+slot pertence, isto deriva-se sem uma única leitura extra.
+
+**4. O ecrã inicial deixou de resolver uma ocorrência por marcação**
+(corrigido na varredura anterior, mas conta aqui: era uma leitura por
+marcação ativa, em cada abertura da app, só para saber qual era a
+próxima).
+
+**5. Cache no alojamento web.** O `firebase.json` não tinha secção de
+hosting nenhuma. Ficou configurada com os cabeçalhos certos: o
+CanvasKit (a maior fatia do que o browser descarrega, e que só muda com
+a versão do Flutter) com um ano de cache imutável; o `main.dart.js` com
+`must-revalidate` — que devolve `304 Não modificado` e **zero bytes**
+quando a app não mudou, sem nunca arriscar servir uma versão velha; e
+o `index.html` e o service worker sem cache, que são eles que decidem
+que versão se usa.
+
+**6. Rate limiting na função mais cara.** `getRetentionOverview` — a
+única que percorre um mês de sessões — não tinha limite de chamadas. Um
+ecrã com um bug de refrescamento custava leituras a sério; agora tem o
+mesmo teto das funções de marcação.
+
+Resultado: a sessão de um aluno passou de ~250 para ~140 leituras, e os
+casos que liam o horário todo para mostrar um estado vazio passaram a
+zero. O tráfego de vídeo repetido passou a zero.
+
+### O que NÃO fiz, e porquê
+
+Isto é tão importante como a lista de cima. Três otimizações que
+pareciam boas e não pagam a complexidade que trazem:
+
+* **Contadores de presença desnormalizados** (um trigger a manter
+  `attendedCount`/`lastAttendanceAt`) para o painel de retenção deixar
+  de percorrer as presenças sessão a sessão. Poupa ~3 000 leituras por
+  mês — **menos de um cêntimo** — e traz um trigger que pode ficar
+  dessincronizado com a verdade. O painel é do Gestor, abre-se meia
+  dúzia de vezes por dia e já tem rate limiting. Fica como nota: se um
+  dia forem várias centenas de sessões por mês, é este o passo
+  seguinte.
+* **Juntar as três leituras do documento de configuração numa só.** São
+  duas leituras a mais por abertura das Definições, num ecrã que só o
+  Gestor abre. Trocar clareza por isso não se justifica.
+* **Ler só os exercícios do plano do aluno** em vez da biblioteca toda.
+  Faria sentido com uma biblioteca de centenas; com a cache offline
+  ligada (Fase 8), a segunda abertura da app já só paga os documentos
+  que mudaram.
+
+### O que continua a ser teu
+
+* **Orçamento com alertas** no Google Cloud Billing (já está no
+  `LANCAMENTO.md`) — é a rede de segurança que nenhuma otimização
+  substitui.
+* **Não ligues `minInstances`** nas Cloud Functions. Tira o arranque a
+  frio e passa a custar dinheiro 24h por dia, mesmo sem ninguém a usar
+  a app. `maxInstances: 10` já está definido, e é o que interessa:
+  transforma um bug caro num bug lento.
+* **Vídeos curtos.** É a única decisão do dia a dia com impacto real na
+  fatura: 40 exercícios a 5 MB são 200 MB de biblioteca; a 50 MB são 2
+  GB, e cada visualização multiplica isso pelo número de alunos.
+
+### Estado
+
+**278 testes Flutter** (+6: quatro sobre a query filtrada por serviço —
+incluindo a prova de que um aluno sem plano não gera query nenhuma — e
+dois sobre o estado do botão de treino livre agora que ele deixou de
+custar uma leitura por bloco) · **270 contra o Emulator Suite**.
+
+Nenhum dos comportamentos mudou para quem usa a app: as mesmas sessões,
+as mesmas reservas, os mesmos avisos. O que mudou foi quanto se pede ao
+servidor para os mostrar.
+
+## Última ronda
+
+Seis coisas, e três delas eram bugs a sério — do tipo que só se descobre
+a ler o código com tempo, porque nenhuma delas rebenta: dão a resposta
+errada em silêncio.
+
+### 1. As aulas apareciam uma hora depois no verão
+
+O maior. Uma série guarda `startTime: "19:00"` — a hora a que a aula
+começa, escrita por quem a criou a olhar para o relógio da parede. A
+geração das ocorrências fazia `setUTCHours(19)`, ou seja tratava essas
+19:00 como **UTC**.
+
+Em Portugal isso está certo no inverno e errado no verão: do último
+domingo de março ao último de outubro Lisboa é UTC+1, e a mesma aula
+passava a aparecer **às 20:00** na app — para o aluno, para o instrutor,
+para toda a gente, sete meses por ano. As sessões avulsas não tinham o
+problema (nascem de um seletor de data/hora, já com o instante certo),
+o que tornava tudo mais confuso ainda: no horário, as aulas da série
+apareciam uma hora depois das outras.
+
+A cópia da semana de treino livre tinha a mesma doença por outra via:
+somava `7 × 24h` em milissegundos, o que na semana da mudança da hora
+muda o bloco das 18:00 para as 17:00.
+
+Corrigido sem dependência nova — o Node traz os dados de fusos horários
+completos e o `Intl` sabe responder a "que horas eram em Lisboa neste
+instante?"; com isso mede-se o desvio e faz-se a conversão
+(`lib/timeZone.ts`, 9 testes só sobre as semanas em que o relógio muda,
+nos dois sentidos). O fuso vem do documento do estúdio, e não está
+escrito à força em lado nenhum.
+
+### 2. Remarcar um aluno podia deixá-lo sem nada
+
+`rescheduleBooking` cancelava na origem e só depois descobria que o
+destino estava cheio, cancelado, inexistente, ou fora do plano do
+aluno. O instrutor carregava num botão para mudar alguém de hora e o
+aluno **saía do horário** — com uma mensagem a explicar-lhe que agora
+tinha de o marcar à mão.
+
+Agora tudo o que se consegue saber de antemão é verificado antes de
+tocar em nada. A janela que sobra é uma corrida real e estreita (alguém
+ocupar a última vaga do destino nos milissegundos entre a validação e a
+marcação), e essa continua a ser reportada como tal.
+
+A ordem contrária — marcar no destino primeiro, largar a origem depois —
+eliminaria a corrida por completo, mas parte quem tem limite semanal: o
+aluno passaria a ocupar duas utilizações ao mesmo tempo e uma
+remarcação neutra seria recusada por limite atingido. Fica escrito no
+código, para não ser "melhorado" mais tarde.
+
+### 3. Qualquer aluno lia o NIF e a morada dos instrutores
+
+O documento de `staff` é legível por todo o ginásio de propósito — é
+dele que sai o nome do instrutor no cartão de uma aula. Só que lá
+dentro estavam também **telefone, data de nascimento, morada, NIF e
+contacto de emergência**.
+
+É exatamente a mesma fuga que foi encontrada e fechada em `members` na
+Fase 11 (foi escrever a política de privacidade que a revelou); o staff
+tinha ficado para trás. E o registo de tratamentos já dizia, na altura,
+que o destinatário destes dados era "o gestor do estúdio" — o documento
+estava certo e o código é que não.
+
+Os dados pessoais passaram para `staff/{uid}/private/profile`, que só o
+próprio e o Gestor leem, com escrita sempre pelas Cloud Functions. O
+documento público fica com o mínimo para a app funcionar: nome, email
+(é a identidade de login e o contacto profissional), papéis, serviços,
+modalidades e estado.
+
+### 4. A lista de espera só olhava para os cancelamentos
+
+Abrir mais vagas numa aula cheia não puxava ninguém da fila. E é o caso
+mais comum de todos: a aula enche, ficam três pessoas à espera, o
+instrutor decide que "cabem mais dois" e edita a lotação de 8 para 10 —
+e os dois lugares novos ficavam vazios com três pessoas a olhar para
+eles.
+
+Passou a haver um trigger sobre o documento da sessão (e não uma
+função chamada pela app: editar a sessão é uma escrita direta do
+cliente, e há mais do que um caminho até lá — incluindo uma correção
+feita à mão na consola). Tirar alguém de uma sessão pelo ecrã de gestão
+também passou a puxar a fila.
+
+### 5. Escritas que ficavam à espera para sempre
+
+Com a cache offline ligada, o `Future` de uma escrita no Firestore **só
+completa quando o servidor confirma**. A cache local atualiza-se logo —
+mas o `await` fica pendurado. Num ginásio, onde a ligação cai a toda a
+hora e o instrutor está a marcar presenças com o telemóvel na mão, isso
+é um botão que roda para sempre: nem erro, nem sucesso. A pessoa toca
+outra vez, e outra.
+
+`writeOrQueue` espera pela confirmação, mas não para sempre: passado o
+tempo limite devolve o controlo à UI e diz a verdade — *"guardado no
+telemóvel; assim que houver ligação, sobe sozinho"*. A escrita não é
+cancelada, só se deixa de a esperar. Um erro que aconteça **enquanto
+ainda se espera** continua a subir (se as Rules recusam à frente da
+pessoa, ela tem de saber); só o que chega depois de termos desistido é
+que é engolido — nessa altura já ninguém está à escuta, e deixá-lo
+solto rebentava num sítio sem relação nenhuma com o que se estava a
+fazer.
+
+### 6. Funções que podiam morrer a meio
+
+As que percorrem um número de documentos que cresce com o ginásio —
+desativar um instrutor, sincronizar um plano, apagar os dados de um
+aluno, gerar o horário — corriam com o tempo-limite por omissão de 60
+segundos. Num estúdio grande, uma delas podia parar a meio: metade das
+sessões canceladas, metade não, e nada a dizer que ficou assim. Levam
+agora tempo-limite explícito, uma a uma. As de marcação continuam com o
+teto normal, de propósito: uma marcação que demore 60 segundos é um
+bug, não um caso a acomodar.
+
+### Estado
+
+**285 testes Flutter** · **294 contra o Emulator Suite** (+24 nesta
+ronda: 9 sobre as semanas em que o relógio muda, 6 sobre remarcações que
+não podem perder a marcação de origem, 6 sobre os dados pessoais do
+staff, 3 sobre a fila de espera quando se abrem vagas), mais 5 testes
+Flutter sobre as escritas offline.
+
+Cada um destes testes falha na versão anterior do código — foi assim que
+confirmei que os bugs eram reais e não interpretações minhas do que o
+código parecia fazer.
+
+**Nota para o ambiente de testes:** as ocorrências geradas antes desta
+ronda ficaram com a hora antiga (UTC). Não há dados de produção, mas o
+emulador tem — apagar e voltar a gerar o horário é o mais simples.
+
+## Estatísticas do aluno, e treinar com a turma
+
+Duas peças para quem acompanha — e as duas saíram de olhar para o que
+as apps da área fazem, não de inventar.
+
+### Estatísticas por aluno
+
+O Instrutor tinha o histórico (treino a treino) e as avaliações (uma a
+uma), mas nenhum sítio onde ver a pessoa toda: se está a aparecer, se
+está a subir, se treina sempre a mesma coisa. É isso que se olha antes
+de falar com alguém, e era o que faltava.
+
+Ficha do aluno › **Estatísticas**. A ordem das secções é a decisão
+principal, e é a mesma a que o Hevy, o Strong, o Trainerize e o
+TrueCoach chegaram:
+
+1. **Consistência** — treinos por semana, nas últimas 12 semanas, mais
+   a sequência de semanas seguidas. É o número que melhor prevê se
+   alguém ainda é sócio daqui a seis meses, e o único que se traduz
+   numa conversa hoje. As semanas vazias aparecem no gráfico: sem elas,
+   três treinos em três meses desenhavam a mesma linha que três treinos
+   numa semana.
+2. **Equilíbrio** — séries por grupo muscular (dos últimos 30 dias). É
+   onde se vê quem faz peito três vezes por semana e pernas nunca.
+3. **Força** — por exercício, a melhor série e a **estimativa de 1RM**
+   (Epley, `carga × (1 + reps/30)`), com a variação desde o primeiro
+   registo. Toca e abre a evolução da carga, dia a dia, que já existia.
+4. **Composição corporal** — peso, massa gorda, massa muscular e IMC,
+   com a variação desde a primeira avaliação.
+
+Três decisões que separam um número útil de um número bonito:
+
+* **Acima de 12 repetições não se estima 1RM.** A fórmula afasta-se
+  depressa da realidade — uma série de 20 daria um valor que a pessoa
+  nunca levantaria. Aparece "—" em vez de um número falso.
+* **Sem carga não há 1RM.** Uma prancha ou uma corrida entram nas
+  contagens, mas não em força.
+* **A variação de peso não tem cor de "bom" ou "mau".** Ganhar peso é o
+  objetivo de quem treina para massa e o contrário de quem treina para
+  emagrecer; a app mostra a direção, quem interpreta é o instrutor.
+
+E uma que é sobre honestidade: quando não há treinos registados, o ecrã
+diz que as estatísticas saem do que fica registado em cada treino — não
+acusa o aluno de não treinar. Pode treinar e ninguém registar.
+
+O cálculo é uma função pura (`computeMemberStats`), com 16 testes que
+fixam cada uma destas regras. E não custa uma leitura a mais: usa as
+mesmas duas queries que a ficha do aluno já fazia.
+
+### Treinar com a turma
+
+Registar o treino de dez pessoas abrindo a ficha de cada uma, uma a
+uma, é impossível de fazer com o telemóvel na mão enquanto se dá a
+aula. O resultado prático era não se registar nada — e sem registos, as
+estatísticas acima e o painel de retenção ficam a olhar para o vazio.
+
+O modelo é o que os softwares de box e estúdio usam para exatamente
+esta situação (Wodify, SugarWOD, PushPress, e o "group training" do
+Trainerize): **parte-se da AULA, não do aluno**. Na sessão, o botão
+"Treinar com a turma" abre um ecrã com:
+
+* a turma inteira numa tira horizontal, cada um com o seu estado ("por
+  iniciar", "4 séries");
+* **"Iniciar treino para a turma"** — abre a sessão de toda a gente de
+  uma vez, e salta quem já estava a treinar (alguém que chegou mais
+  cedo e começou pelo telemóvel; abrir-lhe uma segunda sessão seria não
+  saber a qual pertence a próxima série);
+* o registo do aluno selecionado por baixo, com a **prescrição dele à
+  frente** — trocar de pessoa é um toque, sem sair do ecrã;
+* **"Terminar todos"** no fim, que fecha o que tem séries e descarta o
+  que ficou vazio (um treino sem uma única série no histórico é ruído).
+
+Por baixo continuam a ser sessões individuais, uma por aluno, com o
+nome da aula. É deliberado: o histórico, as estatísticas e a evolução
+da carga de cada um continuam a funcionar exatamente como antes, sem
+nenhum conceito novo de "sessão partilhada" para tratar em todo o lado.
+
+O registo de uma série passou a ser um widget partilhado
+(`ExerciseLogger`): é a mesma peça no treino individual e no de turma —
+o que muda é de quem é a sessão.
+
+### Um bug apanhado a construir isto
+
+O botão "Iniciar treino para a turma" não fazia nada à primeira. A
+causa é conhecida nesta base de código e está documentada desde a Fase
+2: um `StreamProvider` só arranca quando alguém olha para ele, e ler
+`currentAppUserProvider` com `valueOrNull` dentro do handler de um
+toque apanha-o ainda em carregamento — o utilizador fica `null` e a
+função sai em silêncio. O mesmo estava a acontecer no registo de
+presenças (que só funcionava porque outro ecrã tinha inicializado o
+provider antes). Os dois passaram a esperar por ele (`await ...
+.future`) em vez de torcer para que já lá esteja.
+
+### Estado
+
+**311 testes Flutter** (+26: 16 sobre as regras das métricas, 4 sobre o
+ecrã de estatísticas, 6 sobre o treino de turma) · **294 contra o
+Emulator Suite** (sem alterações no servidor nesta ronda).
+
+## "Erro interno" quando faltava preencher um campo
+
+Reportado a testar: criar uma conta sem preencher tudo dava
+`firebase internal`. Confirmei contra o emulador antes de mexer em
+nada, e eram **duas** causas diferentes — mais uma terceira, do lado da
+app, que fazia com que qualquer falha do servidor aparecesse assim.
+
+### 1. Metade das funções lançava o erro de validação em cru
+
+Dez Cloud Functions faziam `schema.parse(...)`. Quando a validação
+falha, isso lança um erro da biblioteca — e uma exceção que não é
+`HttpsError` chega ao cliente como **`internal` / `INTERNAL`**. Ou
+seja: o Gestor esquecia-se do nome e a app dizia-lhe "erro interno",
+que não diz o que fazer e sugere que a app se partiu.
+
+As outras dezoito usavam `safeParse` e devolviam `error.message` — que
+é o JSON do erro da biblioteca. O ecrã mostrava um bloco
+`[{"code":"too_small","path":["name"]...}]`.
+
+Passou a haver um sítio só (`lib/validation.ts#parseInput`) que traduz
+qualquer falha de validação para uma frase em português a dizer **que
+campo falta**: "Falta preencher: nome." / "Escolhe pelo menos um:
+papéis (Instrutor/Gestor)." / "O email não tem um formato válido." Os
+`details` levam os nomes dos campos, para a app poder marcá-los no
+formulário quando isso fizer falta.
+
+### 2. Email repetido nem chegava à validação
+
+Criar um instrutor com um email que já existe não é um erro de
+validação: é o Firebase Auth a recusar. Esse erro não estava a ser
+apanhado por ninguém — outra vez `internal`. Agora dá
+`already-exists` com "Já existe uma conta com este email. Usa outro, ou
+procura a pessoa na lista de utilizadores." O mesmo para email
+malformado, conta inexistente e demasiadas tentativas.
+
+### 3. A app mostrava a exceção em bruto — em 67 sítios
+
+Este é o problema de fundo, e era transversal: quase todos os ecrãs
+faziam `Text('Não foi possível X: $e')`. A app pedia desculpa e a
+seguir despejava `[firebase_functions/internal] INTERNAL` no ecrã.
+
+Há agora uma função única (`userFacingError`) com uma ordem
+deliberada:
+
+1. **o que o Firebase diz, traduzido** — é onde estão os casos
+   acionáveis (sem rede, sem permissão, campo em falta, email
+   repetido);
+2. **a mensagem do próprio erro, quando foi escrita para uma pessoa** —
+   é o caso das exceções de domínio desta app, que existem
+   precisamente para explicar o que aconteceu em português;
+3. **a frase de quem chamou**, que descreve a ação que falhou.
+
+O detalhe técnico não se perde: continua atrás de "Detalhe técnico" no
+`ErrorState` e continua a ir para o Crashlytics. O que muda é o que a
+pessoa lê primeiro.
+
+### Os campos obrigatórios não se viam
+
+A outra metade da pergunta. Havia validação, mas o único sinal de que
+um campo era preciso aparecia **depois** de carregar em gravar — e num
+formulário onde a maioria dos campos é opcional (criar utilizador tem
+nove campos, dois obrigatórios), isso é descobrir a regra por
+tentativa e erro.
+
+Convenção adotada: asterisco no rótulo (`requiredLabel`) e uma linha a
+explicá-lo uma vez por formulário (`RequiredFieldsHint`). Aplicada onde
+o formulário MISTURA obrigatórios e opcionais — criar utilizador, criar
+série, atribuir plano, criar exercício. Onde tudo é obrigatório (as
+duas passwords, o login) o asterisco não acrescenta nada e não foi
+posto.
+
+O email de staff ganhou também um `helperText` a dizer o que ele é
+("É por aqui que esta pessoa entra na app") — era o campo com mais
+potencial de engano, porque o aluno tem um email de contacto que NÃO
+serve para entrar.
+
+### Um teste que só falhava à segunda vez
+
+A suite do emulador passava e, corrida outra vez a seguir, falhava com
+"Demasiados pedidos em pouco tempo". Não era contaminação entre testes:
+os contadores do rate limiter vivem no Firestore e **sobrevivem entre
+corridas** no emulador. Um `globalSetup` limpa-os antes de cada corrida
+— nenhum destes testes anda a provar o limitador (esse tem os seus), e
+um teste que falha à segunda vez é um teste em que ninguém confia.
+
+Confirmado com duas corridas completas seguidas, ambas limpas.
+
+### Estado
+
+**313 testes Flutter** (+2: as regras da tradução de erros, incluindo
+que um bloco de JSON e um `INTERNAL` NUNCA vão para o ecrã) ·
+**301 contra o Emulator Suite** (+7 sobre exatamente o que foi
+reportado: campo em falta, sem papéis, data malformada, email
+repetido — todos a exigir código certo E mensagem legível).
+
+Cada um destes testes falha na versão anterior do código.
+
+## Última ronda, véspera de produção
+
+Nesta não acrescentei nada à app. Fui procurar o que só se parte **em
+produção** — as coisas que passam no emulador e falham no dia seguinte.
+Encontrei três, e todas seriam visíveis logo na primeira hora.
+
+### 1. Dois índices em falta (o emulador não os exige)
+
+O Firestore precisa de índices compostos para queries com filtro +
+ordenação. **O emulador não os exige; a produção exige.** É a categoria
+de erro mais traiçoeira que há: a suite passa inteira, e em produção o
+ecrã devolve "The query requires an index".
+
+Faltavam dois, e nos dois piores sítios possíveis:
+
+* `loadHistory (exerciseId, recordedAt DESC)` — a evolução da carga,
+  que é o ecrã para onde toda a gente vai ver se está a progredir.
+* `workoutSessions (finishedAt, startedAt DESC)` — a pergunta "tens um
+  treino a decorrer?". Esta corre no **ecrã inicial de qualquer aluno**
+  e em qualquer sítio com o botão de iniciar treino: sem o índice, a
+  app abria partida para toda a gente.
+
+Fiz a auditoria a todas as queries do projeto (cliente e servidor)
+contra o `firestore.indexes.json`. As outras dezasseis estavam
+cobertas. As duas novas já lá estão, e o checklist ganhou um passo para
+confirmar na consola que ficaram **construídos** antes de abrir a app a
+alguém — construir demora minutos e, enquanto não termina, a query
+falha na mesma.
+
+### 2. `flutter build web` publicava a app de DESENVOLVIMENTO
+
+O comando sem `-t` compila `lib/main.dart`, que aponta para o ambiente
+de development. Com a secção de hosting que ficou configurada na ronda
+anterior, o deploy publicaria uma app com aspeto perfeitamente normal a
+escrever na base de dados errada — e ninguém daria por isso.
+
+Três coisas mudaram:
+
+* o checklist passou a ter o comando certo, em destaque
+  (`flutter build web --release -t lib/main_production.dart`), e o
+  equivalente para Android e iOS;
+* tudo o que **não** é produção mostra agora uma fita laranja no canto
+  com o nome do ambiente. Se aparecer "DEVELOPMENT" no site do estúdio,
+  foi publicada a build errada — passa a ver-se em vez de se descobrir
+  pelos dados;
+* a CI passou a compilar a build de produção. Se o caminho de produção
+  partir, sabe-se no momento, não no dia do deploy.
+
+### 3. Não havia forma de entrar no projeto novo
+
+O checklist dizia "cria o primeiro Gestor com o script de seed apontado
+ao projeto real, ou na consola". As duas coisas estão erradas: o seed
+está preso ao projeto do emulador, e **a consola do Firebase não sabe
+atribuir custom claims** — sem `tenantId` e `roles` no token, a conta
+autentica-se e fica num estado que nenhum ecrã trata.
+
+Ou seja: seguindo o checklist à letra, amanhã de manhã ninguém
+conseguia entrar na app acabada de publicar.
+
+Há agora um script para isso
+(`firebase/scripts/create-first-manager.mjs`), que cria o documento do
+tenant (com o fuso horário, de que a geração de aulas depende), a conta
+de Auth, as claims e o documento de staff. Sem `--yes` diz o que ia
+fazer e não faz nada — a rede contra correr no projeto errado. Testado
+contra o emulador, incluindo correr duas vezes seguidas.
+
+### O que verifiquei e estava bem
+
+* **Rules**: nenhuma coleção fora do `deny` final; `_rateLimits`
+  inacessível ao cliente; a suite de isolamento passa.
+* **Sem TODOs nem `print`** perdidos no código de produção (o único
+  `print` está atrás de `kDebugMode`).
+* **Seed de teste** não consegue tocar num projeto real: força o
+  emulador e tem o id do projeto de desenvolvimento escrito no código.
+* **App Check** fica em modo debug na web até existir a chave reCAPTCHA
+  — já estava assinalado, e como o *enforcement* só se liga depois de
+  uma ou duas semanas em monitorização, não bloqueia ninguém no dia um.
+
+### Estado final
+
+**316 testes Flutter** · **301 contra o Emulator Suite** · `dart
+format` limpo · `flutter analyze --fatal-infos` sem problemas · build e
+lint das Cloud Functions · build de produção a compilar.
+
 ## Próximo passo
 
 Fechar o que resta do re-skin (avaliações do Aluno, formulários do
@@ -4289,7 +5315,8 @@ custos por tenant.
 
 **Por fazer antes de qualquer deploy** (arrasta-se desde a Fase 9 e não
 é opcional): `firebase deploy --only firestore:indexes` (índices novos
-de `bookings(memberId,status)` e `paymentRecords(year,month)`) e
+de `bookings(memberId,status)`, `paymentRecords(year,month)` e
+`sessionOccurrences(status,startAt)`) e
 `firebase deploy --only firestore:rules` (regras apertadas de
 `staff`/`tenants`/`paymentRecords`). Em emulador funciona sem isto; em
 produção, as queries falham e as regras antigas continuam em vigor.

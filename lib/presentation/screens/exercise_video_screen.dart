@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/training_providers.dart';
 import '../../domain/entities/exercise.dart';
 
@@ -43,7 +44,8 @@ class _ExerciseVideoScreenState extends ConsumerState<ExerciseVideoScreen> {
       setState(() => _controller = controller..play());
     } catch (e) {
       if (mounted) {
-        setState(() => _error = 'Não foi possível carregar o vídeo: $e');
+        setState(() => _error = userFacingError(e,
+            fallback: 'Não foi possível carregar o vídeo. Tenta outra vez.'));
       }
     }
   }

@@ -31,22 +31,61 @@ export interface EligibilityInfo {
  * raciocínio já aceite desde a Fase 4: não é uma corrida de
  * concorrência entre membros diferentes, cada um só lê a SUA
  * subscription). `null` quando o membro não tem nenhuma subscription
- * ativa que dê acesso a este serviço.
+ * ativa que dê acesso a este serviço — ou quando a própria conta está
+ * desativada.
  */
 export async function resolveEligibility(
   tenantRef: FirebaseFirestore.DocumentReference,
   memberId: string,
   serviceId: string,
 ): Promise<EligibilityInfo | null> {
+  // Fase 11 (bug encontrado a avaliar funcionalidades em falta) — o
+  // `endDate` era guardado, mostrado no ecrã e IGNORADO por toda a
+  // lógica de autorização. Um plano terminado em março continuava a
+  // deixar marcar em agosto, e a ficha do aluno dizia "Ativo" com uma
+  // data de fim já passada.
+  //
+  // Fase 11 (auditoria) — uma conta desativada continuava a poder
+  // marcar. "Membro ativo: não" era, na prática, uma etiqueta: o
+  // Gestor desligava o interruptor na ficha do aluno e ele continuava
+  // a marcar aulas na mesma, porque a autorização só olhava para as
+  // subscrições. Verificado AQUI, no sítio por onde passam todos os
+  // caminhos (marcar, treino livre, atribuição manual, geração
+  // automática, promoção da lista de espera), em vez de em cada um.
+  //
+  // Ausência do campo conta como ativo: é o que existe em dados
+  // criados antes de `status` ser escrito, e negar acesso a essas
+  // pessoas seria pior do que o problema que isto resolve.
+  const memberSnap = await tenantRef.collection('members').doc(memberId).get();
+  if (memberSnap.exists && (memberSnap.get('status') as string | undefined)
+      && memberSnap.get('status') !== 'active') {
+    return null;
+  }
+
+  // Sem `limit(1)`: agora é preciso percorrer as candidatas, porque a
+  // primeira pode estar expirada e uma seguinte não. O Firestore não
+  // consegue exprimir "endDate ausente OU endDate no futuro" numa só
+  // query, por isso o filtro é aqui — são poucas subscrições por
+  // membro.
   const subscriptionsSnap = await tenantRef
     .collection('subscriptions')
     .where('memberId', '==', memberId)
     .where('status', '==', 'active')
     .where('activeServiceIds', 'array-contains', serviceId)
-    .limit(1)
     .get();
-  if (subscriptionsSnap.empty) return null;
-  const planId = subscriptionsSnap.docs[0].data().planId as string;
+
+  const now = new Date();
+  const valid = subscriptionsSnap.docs.find((doc) => {
+    const endDate = doc.get('endDate') as FirebaseFirestore.Timestamp | null;
+    // Sem data de fim = sem prazo. Com data de fim, vale até ao FIM
+    // desse dia: quem tem plano "até 31 de março" treina no dia 31.
+    if (!endDate) return true;
+    const end = endDate.toDate();
+    end.setHours(23, 59, 59, 999);
+    return end >= now;
+  });
+  if (!valid) return null;
+  const planId = valid.data().planId as string;
 
   const planServiceSnap = await tenantRef
     .collection('plans')
@@ -80,7 +119,10 @@ export async function runBookingTransaction(
     memberId: string;
     serviceId: string;
     startAt: Date;
-    source: 'self' | 'instructor' | 'manager';
+    // Fase 11 — 'waitlist': a marcação nasceu de uma promoção
+    // automática da lista de espera, não de um ato do próprio.
+    // Fica no registo porque muda como se lê a marcação depois.
+    source: 'self' | 'instructor' | 'manager' | 'waitlist';
     eligibility: EligibilityInfo;
     // UC08 (fechado) — "atribuição manual conta sempre para o limite
     // semanal, exceto UC08-A (sessão extra explícita)". `false` por
@@ -147,6 +189,21 @@ export async function runBookingTransaction(
       isExtra,
       serviceId,
       period,
+      // Quando a SESSÃO acontece, copiado para a marcação.
+      //
+      // Sem isto, "as minhas marcações" não sabia a data de nada: cada
+      // cartão tinha de ir buscar a ocorrência para a mostrar, o ecrã
+      // não conseguia ordenar por data nem esconder as que já
+      // passaram, e as marcações de treino livre (que vivem noutro
+      // caminho) apareciam como cartões vazios com um botão de
+      // cancelar que falhava sempre.
+      //
+      // Denormalização deliberada, como `serviceId`/`period` ao lado:
+      // a hora de uma sessão pode ser editada depois, e nesse caso
+      // esta cópia envelhece — é o mesmo compromisso já aceite para o
+      // resto do documento, e o ecrã lê a ocorrência quando precisa do
+      // valor autoritativo.
+      startAt: Timestamp.fromDate(startAt),
       createdAt: FieldValue.serverTimestamp(),
     });
     tx.update(occurrenceRef, { activeBookingCount: activeCount + 1 });

@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireManagerOrInstructor } from './lib/callerContext';
+import { parseInput } from './lib/validation';
 import {
   applyRelease,
   prepareRelease,
@@ -27,26 +28,103 @@ const inputSchema = z.object({
  * **Não é atómico entre origem e destino** — são duas ocorrências
  * (dois documentos + subcoleções) diferentes, e o Firestore não dá
  * para juntar isso numa única transação de forma que valha a pena.
- * Se o passo 2 falhar (sessão de destino cheia, sem elegibilidade), a
- * origem JÁ FOI cancelada — a função devolve um erro com `reason`
- * prefixado `from-cancelled-` precisamente para a UI conseguir
- * mostrar isto com clareza, em vez de sugerir que nada aconteceu.
- * Mesmo espírito de `assignMembersToOccurrence.ts`: melhor um
- * resultado parcial claro do que fingir atomicidade que não existe.
+ *
+ * O que se pode fazer, e passou a fazer-se, é **validar o destino
+ * ANTES de largar a origem**. Antes, remarcar para uma sessão cheia,
+ * cancelada, inexistente, ou para um serviço que o plano do aluno não
+ * cobre, cancelava-lhe a marcação e deixava-o sem nada — o instrutor
+ * carregava num botão para mudar alguém de hora e o aluno saía do
+ * horário. Agora esses casos recusam antes de tocar em nada, e o
+ * aluno fica exatamente onde estava.
+ *
+ * A janela que sobra é uma corrida real e estreita: alguém ocupar a
+ * última vaga do destino entre a validação e a marcação. Nesse caso o
+ * erro continua a vir com `reason` prefixado `from-cancelled-`, para a
+ * UI dizer com clareza que a origem já não existe — melhor um
+ * resultado parcial explícito do que fingir atomicidade que não há.
+ *
+ * A ordem contrária (marcar no destino primeiro, largar a origem
+ * depois) eliminaria a corrida, mas parte quem tem limite semanal: o
+ * aluno passaria a ocupar duas utilizações ao mesmo tempo e uma
+ * remarcação neutra seria recusada por limite atingido.
  */
 export const rescheduleBooking = onCall(async (request) => {
   const caller = requireManagerOrInstructor(request);
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { fromOccurrenceId, toOccurrenceId, memberId } = parsed.data;
+  const { fromOccurrenceId, toOccurrenceId, memberId } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);
   const fromRef = tenantRef.collection('sessionOccurrences').doc(fromOccurrenceId);
   const toRef = tenantRef.collection('sessionOccurrences').doc(toOccurrenceId);
+
+  // Passo 0 — o destino aguenta esta remarcação?
+  //
+  // Tudo o que se pode saber antes de mexer em nada é verificado
+  // aqui. Não substitui as validações da transação de marcação (a
+  // capacidade é reavaliada lá dentro, que é onde a corrida se
+  // resolve); serve para que uma remarcação impossível não comece
+  // sequer por cancelar o que o aluno já tinha.
+  const toSnapBefore = await toRef.get();
+  if (!toSnapBefore.exists) {
+    throw new HttpsError('not-found', 'A sessão de destino não existe.');
+  }
+  if ((toSnapBefore.get('status') as string) !== 'scheduled') {
+    throw new HttpsError(
+      'failed-precondition',
+      'A sessão de destino já não está agendada.',
+      { reason: 'to-not-scheduled' },
+    );
+  }
+  if (toOccurrenceId === fromOccurrenceId) {
+    throw new HttpsError(
+      'invalid-argument',
+      'A sessão de destino é a mesma que a de origem.',
+    );
+  }
+
+  const existingAtDestination = await toRef
+    .collection('bookings')
+    .doc(memberId)
+    .get();
+  if (
+    existingAtDestination.exists &&
+    existingAtDestination.get('status') === 'booked'
+  ) {
+    throw new HttpsError(
+      'already-exists',
+      'Este membro já tem marcação na sessão de destino.',
+      { reason: 'to-already-booked' },
+    );
+  }
+
+  const destinationServiceId = toSnapBefore.get('serviceId') as string;
+  const destinationEligibility = await resolveEligibility(
+    tenantRef,
+    memberId,
+    destinationServiceId,
+  );
+  if (!destinationEligibility) {
+    throw new HttpsError(
+      'permission-denied',
+      'O plano deste membro não dá acesso ao serviço da sessão de destino.',
+      { reason: 'to-not-eligible' },
+    );
+  }
+
+  // A capacidade é verificada aqui só para recusar cedo o caso óbvio;
+  // quem decide de facto é a transação, e é lá que a última vaga se
+  // resolve entre pedidos simultâneos.
+  const destinationCapacity = (toSnapBefore.get('capacity') as number) ?? 0;
+  const destinationActive =
+    (toSnapBefore.get('activeBookingCount') as number) ?? 0;
+  if (destinationActive >= destinationCapacity) {
+    throw new HttpsError(
+      'resource-exhausted',
+      'A sessão de destino não tem vagas.',
+      { reason: 'to-capacity' },
+    );
+  }
 
   // Passo 1 — liberta a marcação de origem. `wasExtra` viaja daqui
   // para o passo 2: UC08-A, remarcar uma sessão extra tem de manter-se
@@ -69,30 +147,12 @@ export const rescheduleBooking = onCall(async (request) => {
     );
   }
 
-  // Passo 2 — tenta marcar no destino. A origem já está cancelada a
-  // partir daqui, independentemente do que acontecer a seguir.
-  const toSnap = await toRef.get();
-  if (!toSnap.exists) {
-    throw new HttpsError(
-      'not-found',
-      'A sessão de origem foi cancelada, mas a sessão de destino já não ' +
-        'está disponível — o membro ficou sem marcação. Marca-o manualmente.',
-      { reason: 'from-cancelled-to-not-found' },
-    );
-  }
-  const toData = toSnap.data()!;
-  const serviceId = toData.serviceId as string;
-  const startAt = (toData.startAt as Timestamp).toDate();
-
-  const eligibility = await resolveEligibility(tenantRef, memberId, serviceId);
-  if (!eligibility) {
-    throw new HttpsError(
-      'permission-denied',
-      'A sessão de origem foi cancelada, mas o membro não tem um plano ' +
-        'ativo que dê acesso ao serviço da sessão de destino.',
-      { reason: 'from-cancelled-not-eligible' },
-    );
-  }
+  // Passo 2 — marca no destino. A origem já está cancelada a partir
+  // daqui; o que o passo 0 garantiu é que só uma corrida pela última
+  // vaga pode fazer isto falhar.
+  const serviceId = destinationServiceId;
+  const startAt = (toSnapBefore.get('startAt') as Timestamp).toDate();
+  const eligibility = destinationEligibility;
 
   const bookingRef = toRef.collection('bookings').doc(memberId);
   const result = await runBookingTransaction(firestore, {

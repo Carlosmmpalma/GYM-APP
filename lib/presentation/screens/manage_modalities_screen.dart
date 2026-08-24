@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/modality_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/modality.dart';
@@ -81,7 +82,10 @@ class ManageModalitiesScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível criar a modalidade: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível criar a modalidade. Tenta outra vez.'))),
       );
     }
   }
@@ -168,7 +172,10 @@ class ModalityDetailScreen extends ConsumerWidget {
                 } catch (e) {
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Não foi possível atualizar: $e')),
+                    SnackBar(
+                        content: Text(userFacingError(e,
+                            fallback:
+                                'Não foi possível atualizar. Tenta outra vez.'))),
                   );
                 }
               },
@@ -235,7 +242,10 @@ class _ServiceTile extends ConsumerWidget {
           } catch (e) {
             if (!context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Não foi possível atualizar: $e')),
+              SnackBar(
+                  content: Text(userFacingError(e,
+                      fallback:
+                          'Não foi possível atualizar. Tenta outra vez.'))),
             );
           }
         },

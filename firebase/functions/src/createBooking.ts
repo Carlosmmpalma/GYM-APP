@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { requireAuthenticated } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   occurrenceId: z.string().min(1),
@@ -51,11 +52,7 @@ export const createBooking = onCall(async (request) => {
     windowSeconds: 60,
   });
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { occurrenceId, memberId } = parsed.data;
+  const { occurrenceId, memberId } = parseInput(inputSchema, request.data);
 
   if (memberId !== caller.uid) {
     throw new HttpsError(

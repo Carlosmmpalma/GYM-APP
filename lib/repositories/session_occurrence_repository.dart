@@ -14,6 +14,21 @@ abstract class SessionOccurrenceRepository {
   /// — bug real, corrigido depois de reportado).
   Stream<List<SessionOccurrence>> watchUpcomingOccurrencesAllServices();
 
+  /// As ocorrências futuras APENAS dos serviços indicados.
+  ///
+  /// Otimização de custo (Fase 11): o ecrã de marcar treino lia o
+  /// horário inteiro do ginásio e filtrava em memória pelos serviços a
+  /// que o plano do aluno dá acesso. Um aluno só com "Aulas de Grupo"
+  /// descarregava as sessões de Pilates, de PT e de tudo o resto para
+  /// as deitar fora a seguir — e um aluno SEM plano nenhum
+  /// descarregava o horário completo para lhe dizerem que não tem
+  /// acesso a nada.
+  ///
+  /// Conjunto vazio devolve uma lista vazia **sem fazer query nenhuma**.
+  Stream<List<SessionOccurrence>> watchUpcomingOccurrencesForServices(
+    Set<String> serviceIds,
+  );
+
   Future<SessionOccurrence?> getOccurrence(String occurrenceId);
 
   /// Fase 6 — versão reativa de [getOccurrence], para

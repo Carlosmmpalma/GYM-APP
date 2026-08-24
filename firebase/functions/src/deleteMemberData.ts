@@ -10,6 +10,7 @@ import { z } from 'zod';
 
 import { requireManager } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   memberId: z.string().min(1),
@@ -66,7 +67,8 @@ async function deleteSubcollection(
  * devolve a contagem separada — para o Gestor poder dizer ao titular
  * exatamente o que ficou.
  */
-export const deleteMemberData = onCall(async (request) => {
+export const deleteMemberData =
+    onCall({ timeoutSeconds: 300 }, async (request) => {
   const caller = requireManager(request);
   // irreversível e caro — nunca é uma operação repetida
   await enforceRateLimit({
@@ -75,7 +77,7 @@ export const deleteMemberData = onCall(async (request) => {
     maxCalls: 5,
     windowSeconds: 300,
   });
-  const { memberId, confirmMemberNumber } = inputSchema.parse(request.data);
+  const { memberId, confirmMemberNumber } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);

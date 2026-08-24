@@ -29,6 +29,17 @@ setGlobalOptions({
   maxInstances: 10,
 });
 
+// Estas funções percorrem um número de documentos que cresce com o
+// ginásio, uma transação de cada vez. Com o tempo-limite por omissão
+// (60 segundos) um estúdio grande podia vê-las MORRER a meio: metade
+// das sessões canceladas, metade não — e nada a dizer que ficou assim.
+// Nenhuma delas é interativa ao ponto de alguém estar à espera com o
+// dedo no ecrã.
+// Por isso levam `timeoutSeconds` explícito, uma a uma, em vez de um
+// valor global: o teto por omissão é a proteção certa para tudo o
+// resto, e uma marcação que demore 60 segundos é um bug, não um
+// caso a acomodar.
+
 // Fase 10 — saiu daqui o `healthCheck` da Fase 0. Era um `onCall` SEM
 // guard nenhum (a única função do projeto assim) que devolvia o
 // `GCLOUD_PROJECT` a quem o chamasse — em produção, um endpoint público
@@ -117,3 +128,31 @@ export { updateStaffRoles } from './updateStaffRoles';
 // tirada na criação da subscrição e nunca mais atualizada. Ver
 // `syncPlanSubscriptions.ts`.
 export { syncPlanSubscriptions } from './syncPlanSubscriptions';
+
+// Fase 11 — lista de espera. A app impõe capacidade por desenho, logo
+// aulas cheias são o normal; sem fila, um cancelamento deixava um lugar
+// vazio que ninguém sabia que existia. A promoção acontece dentro de
+// `cancelBooking` (ver `lib/waitlist.ts`), não é chamada pelo cliente.
+export { joinWaitlist, leaveWaitlist } from './waitlist';
+
+// Fase 11 — lembrete antes da aula. A falta sem aviso é o custo real
+// de um estúdio com capacidade limitada: o lugar ficou ocupado e
+// ninguém o pôde usar. O lembrete serve tanto para quem vem confirmar
+// como para quem já não pode vir cancelar a tempo — libertando o lugar
+// para a lista de espera. Ver `lib/reminders.ts`.
+export {
+  sendSessionReminders,
+  sendSessionRemindersNow,
+} from './sendSessionReminders';
+
+// Fase 11 — painel de retenção. Num ginásio de proximidade quem
+// desaparece não cancela: deixa de aparecer e só cancela meses depois,
+// quando já não há conversa possível. O sinal existia nos dados desde
+// a Fase 6 (presenças) mas não havia ecrã que o lesse.
+export { getRetentionOverview } from './getRetentionOverview';
+
+// Fase 11 (última ronda) — abrir mais vagas numa aula cheia puxa a
+// lista de espera. A promoção automática só existia no cancelamento;
+// o caso mais comum no estúdio é o instrutor decidir que "cabem mais
+// dois", e esses dois lugares ficavam vazios com gente na fila.
+export { onOccurrenceCapacityChanged } from './onOccurrenceCapacityChanged';

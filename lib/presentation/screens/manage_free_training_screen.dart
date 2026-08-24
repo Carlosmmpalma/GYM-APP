@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/free_training_providers.dart';
 import '../../core/utils/iso_week.dart';
 import '../../domain/entities/free_training_schedule.dart';
@@ -108,7 +109,10 @@ class _ManageFreeTrainingScreenState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível gerar a grelha: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível gerar a grelha. Tenta outra vez.'))),
       );
     } finally {
       if (mounted) setState(() => _suggesting = false);
@@ -350,7 +354,10 @@ class _ScheduleView extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível adicionar o bloco: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback:
+                    'Não foi possível adicionar o bloco. Tenta outra vez.'))),
       );
     }
   }
@@ -366,7 +373,9 @@ class _ScheduleView extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível publicar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível publicar. Tenta outra vez.'))),
       );
     }
   }
@@ -398,7 +407,9 @@ class _ScheduleView extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível editar: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível editar. Tenta outra vez.'))),
       );
     }
   }
@@ -441,7 +452,9 @@ class _ScheduleView extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível remover: $e')),
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível remover. Tenta outra vez.'))),
       );
     }
   }

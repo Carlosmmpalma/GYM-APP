@@ -5,7 +5,24 @@ enum BookingStatus { booked, cancelled }
 /// Domain Model v1 §24 — distingue quem originou a reserva. Na Fase 2
 /// só `self` é possível (o próprio membro marca-se); `instructor`/
 /// `manager` (atribuição manual) ficam para a Fase 5+/6.
-enum BookingSource { self, instructor, manager }
+/// Fase 11 — `waitlist`: a marcação foi feita automaticamente quando
+/// vagou um lugar e o membro era o primeiro da lista de espera. Fica
+/// distinta das outras porque não partiu de um ato dele naquele momento.
+enum BookingSource { self, instructor, manager, waitlist }
+
+/// Onde vive a sessão que esta marcação reservou.
+///
+/// As duas coisas são marcações a sério, feitas pela mesma transação
+/// (`bookingLogic.ts`), mas vivem em caminhos diferentes: uma aula em
+/// `sessionOccurrences/{id}/bookings`, o treino livre em
+/// `freeTrainingSchedules/{weekId}/slots/{slotId}/bookings`.
+///
+/// A distinção não é cosmética — cancelar cada uma chama uma Cloud
+/// Function diferente. "As minhas marcações" lê as duas com uma
+/// collection group query e, sem saber qual era qual, oferecia
+/// "Cancelar" nas de treino livre chamando a função das aulas: falhava
+/// sempre, e o cartão ficava lá para sempre.
+enum BookingKind { session, freeTraining }
 
 /// Reserva de um membro numa [SessionOccurrence] (Domain Model v1 §23).
 ///
@@ -24,6 +41,9 @@ class Booking extends Equatable {
     this.cancelledAt,
     this.serviceId,
     this.period,
+    this.startAt,
+    this.kind = BookingKind.session,
+    this.weekId,
   });
 
   final String id;
@@ -48,6 +68,25 @@ class Booking extends Equatable {
   /// `null` pela mesma razão que [serviceId].
   final String? period;
 
+  /// Quando a sessão reservada começa, copiado no momento da marcação.
+  ///
+  /// É o que permite ordenar as marcações pela data da SESSÃO (e não
+  /// pela data em que foram feitas), esconder as que já passaram, e
+  /// saber qual é a próxima sem ir ler uma ocorrência por marcação.
+  /// `null` em marcações anteriores a este campo existir — a UI
+  /// recorre então à ocorrência, como fazia antes.
+  final DateTime? startAt;
+
+  final BookingKind kind;
+
+  /// Só para [BookingKind.freeTraining]: a semana a que o slot
+  /// pertence, necessária para o cancelar.
+  final String? weekId;
+
+  /// Uma marcação de uma sessão que já começou. Continua a ser um
+  /// registo válido — só não há nada a fazer com ela.
+  bool hasPassed(DateTime now) => startAt != null && startAt!.isBefore(now);
+
   @override
   List<Object?> get props => [
         id,
@@ -60,6 +99,9 @@ class Booking extends Equatable {
         cancelledAt,
         serviceId,
         period,
+        startAt,
+        kind,
+        weekId,
       ];
 }
 

@@ -519,7 +519,7 @@ void main() {
       expect(find.text('Marcar'), findsNothing);
     });
 
-    testWidgets('com plano, mas sem aulas desse serviço, diz outra coisa',
+    testWidgets('com plano, mas sem aulas desse serviço, explica-o',
         (tester) async {
       final firestore = await seedTwoServices();
       // O plano passa a dar só Pilates... e apaga-se a aula de Pilates.
@@ -545,10 +545,13 @@ void main() {
       await tester.pumpAndSettle();
 
       // Distinto de "não tens plano": aqui há plano, faltam é sessões.
-      expect(
-        find.text('Sem aulas do teu plano nos próximos dias'),
-        findsOneWidget,
-      );
+      //
+      // Deixou de haver uma terceira mensagem para "o ginásio TEM
+      // aulas, mas não do teu plano": distingui-la obrigava a ler
+      // também o horário a que este aluno não tem acesso — a leitura
+      // que a query filtrada por serviço passou a evitar. O que ele
+      // pode fazer é o mesmo nos dois casos.
+      expect(find.text('Sem aulas para marcar'), findsOneWidget);
     });
   });
 }

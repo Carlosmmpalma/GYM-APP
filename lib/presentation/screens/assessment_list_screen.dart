@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../application/providers/training_providers.dart';
+import '../../domain/entities/assessment.dart';
 import '../../domain/entities/member_summary.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
+import '../../core/theme/app_colors.dart';
 import '../widgets/design_system.dart';
 import 'assessment_detail_screen.dart';
 import 'assessment_form_screen.dart';
@@ -95,32 +97,107 @@ class AssessmentListScreen extends ConsumerWidget {
                   : null,
             );
           }
-          return ListView.separated(
+          // Agrupadas por ano, e cada linha comparada com a avaliação
+          // ANTERIOR. Uma lista de datas com peso e IMC não responde à
+          // pergunta com que se abre este ecrã — "está a resultar?" —
+          // e obrigava a abrir duas fichas e a subtrair de cabeça.
+          final byYear = <int, List<Assessment>>{};
+          for (final assessment in assessments) {
+            byYear
+                .putIfAbsent(assessment.createdAt.year, () => [])
+                .add(assessment);
+          }
+          final years = byYear.keys.toList()..sort((a, b) => b.compareTo(a));
+
+          return ListView(
             // Espaço para o botão flutuante não tapar a última linha.
             padding: EdgeInsets.fromLTRB(16, 16, 16, canCreate ? 88 : 16),
-            itemCount: assessments.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final assessment = assessments[index];
-              return Card(
-                child: ListTile(
-                  title: Text(_dateFormat.format(assessment.createdAt)),
-                  subtitle: Text(
-                    'Peso ${assessment.peso}kg · IMC ${assessment.imc.toStringAsFixed(1)}'
-                    '${assessment.wasEdited ? ' · editada' : ''}',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => AssessmentDetailScreen(
-                          member: member, assessment: assessment),
+            children: [
+              for (final year in years) ...[
+                SectionLabel('$year'),
+                const SizedBox(height: 8),
+                for (final assessment in byYear[year]!)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _AssessmentRow(
+                      member: member,
+                      assessment: assessment,
+                      // `assessments` vem da mais recente para a mais
+                      // antiga: a anterior é a seguinte na lista.
+                      previous: _previousOf(assessments, assessment),
                     ),
                   ),
-                ),
-              );
-            },
+                const SizedBox(height: 12),
+              ],
+            ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// A avaliação imediatamente anterior a [current], ou `null` se for a
+/// primeira. A lista chega da mais recente para a mais antiga.
+Assessment? _previousOf(List<Assessment> all, Assessment current) {
+  final index = all.indexOf(current);
+  return index >= 0 && index + 1 < all.length ? all[index + 1] : null;
+}
+
+class _AssessmentRow extends StatelessWidget {
+  const _AssessmentRow({
+    required this.member,
+    required this.assessment,
+    required this.previous,
+  });
+
+  final MemberSummary member;
+  final Assessment assessment;
+  final Assessment? previous;
+
+  @override
+  Widget build(BuildContext context) {
+    final delta = previous == null ? null : assessment.peso - previous!.peso;
+
+    return PanelCard(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              AssessmentDetailScreen(member: member, assessment: assessment),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _dateFormat.format(assessment.createdAt),
+                  style: const TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Peso ${assessment.peso} kg · IMC '
+                  '${assessment.imc.toStringAsFixed(1)}'
+                  '${assessment.wasEdited ? ' · editada' : ''}',
+                  style: const TextStyle(color: AppColors.mute, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          if (delta != null && delta.abs() >= 0.05)
+            // Sem juízo de valor na cor: perder peso não é
+            // universalmente "bom" — quem treina para ganhar massa quer
+            // o contrário. Mostra-se a direção, não uma avaliação.
+            Text(
+              '${delta > 0 ? '+' : ''}${delta.toStringAsFixed(1)} kg',
+              style: const TextStyle(color: AppColors.mute, fontSize: 12),
+            ),
+          const SizedBox(width: 6),
+          const Icon(Icons.chevron_right, size: 18, color: AppColors.mute),
+        ],
       ),
     );
   }

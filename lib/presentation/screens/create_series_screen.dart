@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/admin_providers.dart';
 import '../../application/providers/booking_providers.dart';
 import '../../application/providers/modality_providers.dart';
@@ -232,8 +233,8 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _durationController,
-                decoration:
-                    const InputDecoration(labelText: 'Duração (minutos)'),
+                decoration: InputDecoration(
+                    labelText: requiredLabel('Duração (minutos)')),
                 keyboardType: TextInputType.number,
                 onChanged: (_) => setState(() {}),
                 validator: (v) {
@@ -274,7 +275,8 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
               const SizedBox(height: 8),
               TextFormField(
                 controller: _capacityController,
-                decoration: const InputDecoration(labelText: 'Capacidade'),
+                decoration:
+                    InputDecoration(labelText: requiredLabel('Capacidade')),
                 keyboardType: TextInputType.number,
                 onChanged: (_) => setState(() {}),
                 validator: (v) {
@@ -418,7 +420,8 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
       if (!mounted) return;
       Navigator.of(context).pop();
     } catch (e) {
-      setState(() => _error = 'Não foi possível criar: $e');
+      setState(() => _error = userFacingError(e,
+          fallback: 'Não foi possível criar. Tenta outra vez.'));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

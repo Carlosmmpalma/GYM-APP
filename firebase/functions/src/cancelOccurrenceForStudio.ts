@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { requireManagerOrInstructor } from './lib/callerContext';
 import { applyRelease, prepareRelease, ReleasePlan } from './lib/bookingLogic';
 import { describeOccurrence, notifyMembers } from './lib/notifications';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   occurrenceId: z.string().min(1),
@@ -24,14 +25,11 @@ const inputSchema = z.object({
  * raciocínio de `removeMembersFromOccurrence`) e só depois marca a
  * ocorrência como `cancelled`. Manager OU Instrutor.
  */
-export const cancelOccurrenceForStudio = onCall(async (request) => {
+export const cancelOccurrenceForStudio =
+    onCall({ timeoutSeconds: 120 }, async (request) => {
   const caller = requireManagerOrInstructor(request);
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { occurrenceId } = parsed.data;
+  const { occurrenceId } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);

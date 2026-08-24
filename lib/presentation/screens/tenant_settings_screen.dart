@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../widgets/design_system.dart';
@@ -23,6 +24,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _hoursController = TextEditingController();
   final _minutesController = TextEditingController();
+  final _reminderHoursController = TextEditingController();
   bool _initialized = false;
   bool _saving = false;
   String? _message;
@@ -31,6 +33,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
   void dispose() {
     _hoursController.dispose();
     _minutesController.dispose();
+    _reminderHoursController.dispose();
     super.dispose();
   }
 
@@ -50,12 +53,18 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
             tenantId: tenantId,
             minutes: int.parse(_minutesController.text.trim()),
           );
+      await ref.read(tenantRepositoryProvider).setSessionReminderHours(
+            tenantId: tenantId,
+            hours: int.parse(_reminderHoursController.text.trim()),
+          );
       ref.invalidate(minCancellationNoticeHoursProvider);
       ref.invalidate(minBookingNoticeMinutesProvider);
+      ref.invalidate(sessionReminderHoursProvider);
       if (!mounted) return;
       setState(() => _message = 'Guardado.');
     } catch (e) {
-      setState(() => _message = 'Não foi possível guardar: $e');
+      setState(() => _message = userFacingError(e,
+          fallback: 'Não foi possível guardar. Tenta outra vez.'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -75,7 +84,8 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
       setState(() => _message = 'Serviço de treino livre atualizado.');
     } catch (e) {
       if (!mounted) return;
-      setState(() => _message = 'Não foi possível guardar: $e');
+      setState(() => _message = userFacingError(e,
+          fallback: 'Não foi possível guardar. Tenta outra vez.'));
     }
   }
 
@@ -84,6 +94,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     final hoursAsync = ref.watch(minCancellationNoticeHoursProvider);
     final minutesAsync = ref.watch(minBookingNoticeMinutesProvider);
     final freeTrainingAsync = ref.watch(freeTrainingServiceIdProvider);
+    final reminderHoursAsync = ref.watch(sessionReminderHoursProvider);
     final servicesAsync = ref.watch(servicesProvider);
 
     return Scaffold(
@@ -98,9 +109,14 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, stack) => ErrorState(error: error, compact: true),
               data: (minutes) {
-                if (!_initialized) {
+                // O lembrete não bloqueia o ecrã enquanto carrega (é
+                // o último campo, e tem default) — só se espera por
+                // ele para preencher a caixa.
+                final reminderHours = reminderHoursAsync.valueOrNull;
+                if (!_initialized && reminderHours != null) {
                   _hoursController.text = hours.toString();
                   _minutesController.text = minutes.toString();
+                  _reminderHoursController.text = reminderHours.toString();
                   _initialized = true;
                 }
                 return Form(
@@ -157,6 +173,37 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
                             return 'Introduz um número inteiro';
                           }
                           return parsed < 0 ? 'Não pode ser negativo' : null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      // Fase 11 — lembrete antes da aula. A falta sem
+                      // aviso é o custo real de um estúdio com
+                      // capacidade limitada: o lugar ficou ocupado e
+                      // ninguém o pôde usar.
+                      const Text(
+                        'Com quantas horas de antecedência o aluno recebe o '
+                        'lembrete da aula marcada. Serve tanto para quem vem '
+                        'confirmar como para quem já não pode vir cancelar a '
+                        'tempo — libertando o lugar para quem está em lista '
+                        'de espera. "0" desliga os lembretes.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _reminderHoursController,
+                        decoration: const InputDecoration(
+                          labelText: 'Lembrete da aula (horas antes)',
+                        ),
+                        keyboardType: TextInputType.number,
+                        validator: (v) {
+                          final parsed = int.tryParse((v ?? '').trim());
+                          if (parsed == null) {
+                            return 'Introduz um número inteiro';
+                          }
+                          if (parsed < 0) return 'Não pode ser negativo';
+                          // Mais do que uma semana deixa de ser
+                          // lembrete e passa a ser ruído.
+                          return parsed > 168 ? 'No máximo 168 (7 dias)' : null;
                         },
                       ),
                       const SizedBox(height: 24),

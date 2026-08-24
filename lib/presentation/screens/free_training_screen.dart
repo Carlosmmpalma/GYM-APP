@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../application/providers/booking_providers.dart';
 import '../../application/providers/free_training_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/utils/firebase_error_text.dart';
 import '../../core/utils/iso_week.dart';
 import '../../domain/entities/free_training_slot.dart';
 import '../../application/providers/plan_providers.dart';
@@ -159,92 +162,121 @@ class _SlotsList extends ConsumerWidget {
   }
 }
 
-class _SlotTile extends ConsumerWidget {
+/// Um bloco de treino livre, do lado do Aluno.
+///
+/// Auditoria da Fase 11 — três coisas erradas aqui:
+///
+///  1. **Sem estado de ocupado.** O botão ficava ativo durante a
+///     chamada à Cloud Function; dois toques seguidos disparavam duas
+///     reservas (a segunda falhava, mas com um erro cru na cara de quem
+///     só tinha tocado depressa).
+///  2. **Blocos já passados ofereciam "Reservar".** Na sexta-feira, o
+///     bloco de segunda às 8h continuava com o botão ativo; o servidor
+///     recusava, e a recusa chegava como erro genérico.
+///  3. **Erros mostrados em cru.** `'$e'` num SnackBar dá exatamente o
+///     `[firebase_functions/internal] internal` que não diz nada a
+///     ninguém. Passou a usar a mesma tradução do resto da app.
+class _SlotTile extends ConsumerStatefulWidget {
   const _SlotTile({required this.slot, required this.memberId});
 
   final FreeTrainingSlot slot;
   final String memberId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final myBookingAsync = ref.watch(
-      myFreeTrainingBookingProvider(
-          (weekId: slot.weekId, slotId: slot.id, memberId: memberId)),
-    );
-    final isBooked = myBookingAsync.valueOrNull != null;
+  ConsumerState<_SlotTile> createState() => _SlotTileState();
+}
+
+class _SlotTileState extends ConsumerState<_SlotTile> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final slot = widget.slot;
+    // Derivado das marcações que já vêm carregadas (ver
+    // `myFreeTrainingSlotIdsProvider`): era uma leitura por bloco,
+    // multiplicada por cada abertura do separador.
+    final isBooked = ref
+        .watch(myFreeTrainingSlotIdsProvider)
+        .contains('${slot.weekId}/${slot.id}');
+    final hasPassed = slot.startAt.isBefore(DateTime.now());
 
     return Card(
       child: ListTile(
         title: Text(
           '${_timeFormat.format(slot.startAt)}–${_timeFormat.format(slot.endAt)}',
+          style: TextStyle(color: hasPassed ? AppColors.mute : null),
         ),
         subtitle: Text(
-          isBooked
-              ? '${slot.availableSlots} vaga(s) restante(s) · já reservaste'
-              : '${slot.availableSlots} vaga(s) restante(s)',
+          hasPassed
+              ? (isBooked ? 'Já passou · tinhas reservado' : 'Já passou')
+              : isBooked
+                  ? '${slot.availableSlots} vaga(s) restante(s) · já reservaste'
+                  : '${slot.availableSlots} vaga(s) restante(s)',
         ),
-        trailing: myBookingAsync.isLoading
+        trailing: _busy
             ? const SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : FilledButton(
-                onPressed: isBooked
-                    ? () => _cancel(context, ref)
-                    : (slot.isFull ? null : () => _book(context, ref)),
-                child: Text(isBooked
-                    ? 'Cancelar'
-                    : (slot.isFull ? 'Sem vagas' : 'Reservar')),
-              ),
+            : hasPassed
+                ? null
+                : FilledButton(
+                    onPressed:
+                        isBooked ? _cancel : (slot.isFull ? null : _book),
+                    child: Text(isBooked
+                        ? 'Cancelar'
+                        : (slot.isFull ? 'Sem vagas' : 'Reservar')),
+                  ),
       ),
     );
   }
 
-  Future<void> _book(BuildContext context, WidgetRef ref) async {
+  void _show(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _book() async {
+    setState(() => _busy = true);
     try {
       await ref.read(freeTrainingRepositoryProvider).bookSlot(
-            weekId: slot.weekId,
-            slotId: slot.id,
-            memberId: memberId,
+            weekId: widget.slot.weekId,
+            slotId: widget.slot.id,
+            memberId: widget.memberId,
           );
-      ref.invalidate(myFreeTrainingBookingProvider);
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reservado.')),
-      );
+      ref.invalidate(myBookingsProvider);
+      _show('Reservado.');
     } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')),
-      );
+      // As exceções de domínio (`NotEligibleForServiceException`,
+      // `UsageLimitReachedException`, …) já dizem o que aconteceu em
+      // português; só o que vem cru do Firebase precisa de tradução.
+      _show(describeFirebaseError(e) ?? '$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _cancel(BuildContext context, WidgetRef ref) async {
+  Future<void> _cancel() async {
+    setState(() => _busy = true);
     try {
       final usageRefunded =
           await ref.read(freeTrainingRepositoryProvider).cancelSlotBooking(
-                weekId: slot.weekId,
-                slotId: slot.id,
-                memberId: memberId,
+                weekId: widget.slot.weekId,
+                slotId: widget.slot.id,
+                memberId: widget.memberId,
               );
-      ref.invalidate(myFreeTrainingBookingProvider);
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            usageRefunded
-                ? 'Cancelado — utilização semanal devolvida.'
-                : 'Cancelado — fora da janela mínima, utilização não devolvida.',
-          ),
-        ),
+      ref.invalidate(myBookingsProvider);
+      _show(
+        usageRefunded
+            ? 'Cancelado — utilização semanal devolvida.'
+            : 'Cancelado — fora da janela mínima, utilização não devolvida.',
       );
     } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')),
-      );
+      _show(describeFirebaseError(e) ?? '$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 }

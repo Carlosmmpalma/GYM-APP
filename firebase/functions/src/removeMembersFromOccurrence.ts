@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { requireManagerOrInstructor } from './lib/callerContext';
 import { applyRelease, prepareRelease, ReleasePlan } from './lib/bookingLogic';
 import { describeOccurrence, notifyMembers } from './lib/notifications';
+import { promoteFromWaitlist } from './lib/waitlist';
+import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
   occurrenceId: z.string().min(1),
@@ -27,11 +29,7 @@ const inputSchema = z.object({
 export const removeMembersFromOccurrence = onCall(async (request) => {
   const caller = requireManagerOrInstructor(request);
 
-  const parsed = inputSchema.safeParse(request.data);
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.message);
-  }
-  const { occurrenceId, memberIds, newCapacity } = parsed.data;
+  const { occurrenceId, memberIds, newCapacity } = parseInput(inputSchema, request.data);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);
@@ -81,5 +79,19 @@ export const removeMembersFromOccurrence = onCall(async (request) => {
     );
   }
 
-  return { removed: result.removed };
+  // Tirar alguém de uma sessão liberta um lugar — e havia quem
+  // estivesse à espera dele. `promoteFromWaitlist` só promove se
+  // houver espaço de facto, por isso é seguro chamar também quando
+  // isto veio de "reduzir vagas" (aí a lotação desceu com as
+  // remoções e não sobra nada para promover).
+  const promotion = await promoteFromWaitlist({
+    tenantRef,
+    occurrenceId,
+    maxPromotions: result.removed.length,
+  });
+
+  return {
+    removed: result.removed,
+    promotedFromWaitlist: promotion.promotedMemberIds.length,
+  };
 });
