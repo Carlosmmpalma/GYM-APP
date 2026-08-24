@@ -13,6 +13,13 @@ import '../../repositories/plan_repository.dart';
 import 'booking_providers.dart';
 import 'firebase_providers.dart';
 import 'tenant_context_providers.dart';
+import '../../infrastructure/firebase/firebase_catalogue_admin_repository.dart';
+import '../../repositories/catalogue_admin_repository.dart';
+
+final catalogueAdminRepositoryProvider =
+    Provider<CatalogueAdminRepository>((ref) {
+  return FirebaseCatalogueAdminRepository(ref.watch(functionsProvider));
+});
 
 final planRepositoryProvider = Provider<PlanRepository>((ref) {
   return FirebasePlanRepository(

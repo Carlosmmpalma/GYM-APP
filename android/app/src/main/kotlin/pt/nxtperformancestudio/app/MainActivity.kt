@@ -1,4 +1,4 @@
-package com.nxtperformancestudio.gym_saas
+package pt.nxtperformancestudio.app
 
 import io.flutter.embedding.android.FlutterActivity
 

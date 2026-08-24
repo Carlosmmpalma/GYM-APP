@@ -140,31 +140,70 @@ class MemberDetailScreen extends ConsumerWidget {
                     ..sort((a, b) => b.startDate.compareTo(a.startDate));
                   final plansById = {for (final p in plans) p.id: p};
                   final servicesById = {for (final s in services) s.id: s};
+
+                  // Cancelar um plano e voltar a atribuir o mesmo é
+                  // rotina — corrigir um preço, retomar depois de uma
+                  // pausa longa. Com tudo numa lista só, o resultado
+                  // era "Aulas de Grupo" três vezes seguidas, e o
+                  // Gestor tinha de ler a etiqueta de estado de cada
+                  // uma para perceber qual conta. As canceladas/
+                  // expiradas não desaparecem (são o histórico
+                  // financeiro do membro), mas saem da frente.
+                  final current = sorted
+                      .where((s) =>
+                          s.status == SubscriptionStatus.active ||
+                          s.status == SubscriptionStatus.paused)
+                      .toList();
+                  final past =
+                      sorted.where((s) => !current.contains(s)).toList();
+
+                  Widget tile(Subscription subscription) => _SubscriptionTile(
+                        // Ver nota em `book_training_screen.dart`.
+                        key: ValueKey(subscription.id),
+                        subscription: subscription,
+                        plan: plansById[subscription.planId],
+                        services: subscription.activeServiceIds
+                            .map((id) => servicesById[id]?.name ?? id)
+                            .toList(),
+                        // Só entram serviços que ainda existem como doc
+                        // `services/{id}` — um serviço eliminado
+                        // (agora possível, quando nada o referencia)
+                        // deixaria aqui um id solto em vez de um nome.
+                        recalculableServices: subscription.activeServiceIds
+                            .where(servicesById.containsKey)
+                            .map((id) => (id: id, name: servicesById[id]!.name))
+                            .toList(),
+                      );
+
                   return Column(
-                    children: sorted
-                        .map(
-                          (subscription) => _SubscriptionTile(
-                            // Ver nota em `book_training_screen.dart`.
-                            key: ValueKey(subscription.id),
-                            subscription: subscription,
-                            plan: plansById[subscription.planId],
-                            services: subscription.activeServiceIds
-                                .map((id) => servicesById[id]?.name ?? id)
-                                .toList(),
-                            // Só entram serviços que ainda existem como
-                            // doc `services/{id}` — no domínio atual
-                            // isso é sempre o caso (nunca se elimina um
-                            // Service, só desativa), mas evita um crash
-                            // hipotético no picker se algum dia deixar
-                            // de ser verdade.
-                            recalculableServices: subscription.activeServiceIds
-                                .where(servicesById.containsKey)
-                                .map((id) =>
-                                    (id: id, name: servicesById[id]!.name))
-                                .toList(),
-                          ),
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (current.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Text('Sem nenhum plano ativo neste momento.'),
                         )
-                        .toList(),
+                      else
+                        ...current.map(tile),
+                      if (past.isNotEmpty)
+                        Theme(
+                          // Sem isto o `ExpansionTile` desenha divisores
+                          // que cortam a secção ao meio.
+                          data: Theme.of(context)
+                              .copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: EdgeInsets.zero,
+                            title: Text(
+                              past.length == 1
+                                  ? 'Histórico (1 plano anterior)'
+                                  : 'Histórico (${past.length} planos anteriores)',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            children: past.map(tile).toList(),
+                          ),
+                        ),
+                    ],
                   );
                 },
               ),

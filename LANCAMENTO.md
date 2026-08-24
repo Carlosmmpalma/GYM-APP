@@ -21,37 +21,62 @@ artigo 9.º do RGPD coloca numa categoria especial.
 > rever em vez de partir do zero. Os pontos de decisão jurídica estão
 > marcados [ADVOGADO].
 
-- [ ] **Política de privacidade revista por alguém que perceba do
+- [X] **Política de privacidade revista por alguém que perceba do
   assunto.** O texto que a app mostra hoje está em
   `lib/presentation/screens/consent_screen.dart` (`_PolicySummary`) e
   descreve fielmente o que o código faz — serve de base, não de versão
   final. Se o texto mudar de forma relevante, sobe
   `kPrivacyPolicyVersion` em `lib/domain/entities/consent.dart`: isso
   volta a pedir aceitação a toda a gente no arranque seguinte.
-- [ ] **Registo de atividades de tratamento** (artigo 30.º). Obrigatório
+- [X] **Registo de atividades de tratamento** (artigo 30.º). Obrigatório
   mesmo para uma empresa pequena quando se tratam dados do artigo 9.º.
-- [ ] **Contrato de subcontratação com a Google** (artigo 28.º). A
+- [X] **Contrato de subcontratação com a Google** (artigo 28.º). A
   Google disponibiliza-o; é aceite na consola quando ativas o projeto.
-- [ ] Decidir o **prazo de conservação** dos dados de um aluno que saia
+- [X] Decidir o **prazo de conservação** dos dados de um aluno que saia
   do ginásio. O código dá-te a ferramenta de apagamento; quando a usar é
   política tua.
-- [ ] Se um dia tiveres alunos menores de idade: o consentimento é dos
+- [X] Se um dia tiveres alunos menores de idade: o consentimento é dos
   pais e o ecrã atual não trata disso.
 
 ---
 
 ## 1. Criar o projeto Firebase de produção
 
-- [ ] Criar o projeto na [Firebase Console](https://console.firebase.google.com).
-- [ ] **Ativar o plano Blaze.** As Cloud Functions v2 exigem-no — sem
+- [X] Criar o projeto na [Firebase Console](https://console.firebase.google.com).
+- [X] **Ativar o plano Blaze.** As Cloud Functions v2 exigem-no — sem
   isto nada funciona. Define já um **orçamento com alertas** (ver §6).
-- [ ] Escolher a região **`europe-west1`** (Bélgica) para Firestore.
+- [x] Escolher a região **`europe-west1`** (Bélgica) para Firestore.
   Duas razões: latência a partir de Portugal, e manter dados pessoais na
   UE evita a conversa toda sobre transferências internacionais. **A
   região do Firestore não se muda depois de criada** — é uma decisão
   definitiva.
-- [ ] Ativar Authentication (Email/Password), Firestore, Storage,
-  Cloud Messaging e Crashlytics.
+- [X] **Authentication** → Sign-in method → ativar **Email/Password**.
+  (O "Email link" fica desligado: os alunos entram com número de sócio,
+  que por baixo é um email sintético sem caixa de correio.)
+
+- [x] **Firestore** → "Criar base de dados". Três escolhas, e duas são
+  definitivas:
+
+  | Campo | Escolher | Porquê |
+  |---|---|---|
+  | Edição | **Standard** (a que vem selecionada) | A Enterprise é o Firestore com compatibilidade MongoDB (API do Mongo, pipelines de agregação). A app não usa nada disso — só custaria mais. |
+  | ID da base de dados | **`(default)`** | A app e as Cloud Functions usam sempre a base de dados por omissão. Uma base com nome próprio não seria vista por ninguém. |
+  | Tipo | **Modo nativo** (Native), nunca Datastore | O SDK do Firestore só fala com este. |
+  | Localização | **`europe-west1` (Bélgica)** — a REGIONAL, não a multi-região `eur3` | Mesma região das Functions, dados na UE, e a regional é mais barata. **Não se muda depois.** |
+  | Regras | **Modo de produção** (começa bloqueado) | O modo de teste deixa a base aberta ao mundo durante 30 dias. As regras verdadeiras entram no passo seguinte, com `firebase deploy --only firestore:rules`. |
+
+  Depois de criada, a app AINDA não funciona — está tudo bloqueado até
+  fazeres o deploy das rules. É o esperado.
+
+- [x] **Storage** → "Começar". A localização deve ser a **mesma**
+  (`europe-west1`) e as regras também em **modo de produção**. Também
+  não se muda depois.
+
+- [X] **Cloud Messaging** não tem nada para "ativar" — vem com o
+  projeto. O que falta são as chaves (APNs/VAPID), e isso é o §5.
+
+- [X] **Crashlytics** só aparece com dados depois de a app registada
+  enviar o primeiro relatório. Não há nada a fazer aqui agora.
 
 > **As Cloud Functions já estão fixadas em `europe-west1`** no código
 > (`setGlobalOptions` em `firebase/functions/src/index.ts`, e
@@ -65,12 +90,12 @@ Depois, no projeto:
 flutterfire configure --project=<id-do-projeto> --out=lib/infrastructure/config/firebase_options_production.dart
 ```
 
-- [ ] Substituir `SUBSTITUIR-pelo-id-real-do-projeto-production` em
+- [x] Substituir `SUBSTITUIR-pelo-id-real-do-projeto-production` em
   `.firebaserc`.
-- [ ] A classe gerada tem de se chamar `ProductionFirebaseOptions` (o
+- [x] A classe gerada tem de se chamar `ProductionFirebaseOptions` (o
   `flutterfire` gera `DefaultFirebaseOptions` — renomeia, é o nome que o
   `bootstrap.dart` importa).
-- [ ] Repetir para staging, se quiseres um ambiente intermédio. Não é
+- [x] Repetir para staging, se quiseres um ambiente intermédio. Não é
   obrigatório para lançar com um único estúdio.
 
 ---
@@ -283,6 +308,19 @@ e são os que os alunos vão notar em primeiro lugar:
   aparecer, a build está a apontar para o sítio errado).
 
 ---
+
+## Manutenção com data marcada
+
+- [ ] **Atualizar o runtime das Cloud Functions para Node 22 até
+  30 de outubro de 2026.** O Node 20 foi descontinuado a 30 de abril e é
+  decomissionado nessa data — a partir daí o `firebase deploy` recusa.
+  A mudança é uma linha (`"node": "22"` em
+  `firebase/functions/package.json`), mas obriga a correr a suite do
+  emulador outra vez e a fazer deploy de todas as funções. Faz isto com
+  tempo, não no dia em que precisares de publicar uma correção.
+
+- [ ] **Ligar o *enforcement* do App Check** depois de uma ou duas
+  semanas em monitorização (ver §3).
 
 ## O que ficou por fazer, e é decisão tua
 

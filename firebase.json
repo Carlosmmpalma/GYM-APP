@@ -82,6 +82,15 @@
         ]
       },
       {
+        "source": "/",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
         "source": "/@(index.html|flutter_bootstrap.js|flutter_service_worker.js|version.json)",
         "headers": [
           {
@@ -91,5 +100,26 @@
         ]
       }
     ]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "gym-sas",
+          "appId": "1:447002052350:android:41543452dfc9f2653dc7af",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/infrastructure/config/firebase_options_production.dart": {
+          "projectId": "gym-sas",
+          "configurations": {
+            "android": "1:447002052350:android:41543452dfc9f2653dc7af",
+            "ios": "1:447002052350:ios:3447643f112c88d03dc7af",
+            "web": "1:447002052350:web:1d443e63d1f028bd3dc7af"
+          }
+        }
+      }
+    }
   }
 }

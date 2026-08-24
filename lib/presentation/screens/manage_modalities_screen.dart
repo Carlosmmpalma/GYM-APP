@@ -7,6 +7,8 @@ import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/modality.dart';
 import '../../domain/entities/service.dart';
 import '../widgets/design_system.dart';
+import '../../repositories/catalogue_admin_repository.dart';
+import '../widgets/catalogue_delete.dart';
 
 /// Fase 6 (Domain Model v1 §8-9) — Ecrã Gestor: criar/ativar/desativar
 /// modalidades e escolher a que serviços cada uma se aplica. Mesmo
@@ -55,7 +57,23 @@ class ManageModalitiesScreen extends ConsumerWidget {
                     '${modality.serviceIds.length} serviço(s)'
                     '${modality.active ? '' : ' · inativa'}',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Eliminar',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => confirmAndDeleteCatalogueEntry(
+                          context,
+                          ref,
+                          kind: CatalogueKind.modality,
+                          id: modality.id,
+                          name: modality.name,
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right),
+                    ],
+                  ),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => ModalityDetailScreen(modality: modality),

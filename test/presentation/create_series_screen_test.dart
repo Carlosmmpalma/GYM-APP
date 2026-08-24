@@ -97,6 +97,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Escolher o dia da semana conta como "o horário já é uma escolha"
+  /// — é o que destranca o aviso de conflito.
+  Future<void> pickDayOfWeek(WidgetTester tester, String day) async {
+    await tester.tap(find.byType(DropdownButtonFormField<int>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(day).last);
+    await tester.pumpAndSettle();
+  }
+
   Future<void> pickInstructor(WidgetTester tester) async {
     await tester.tap(find.byType(DropdownButtonFormField<String?>).first);
     await tester.pumpAndSettle();
@@ -130,15 +139,111 @@ void main() {
     await tester.pumpAndSettle();
 
     // Defaults do ecrã já são "Semanal, fixa" + segunda-feira + 18:00
-    // + 60 minutos — exatamente a série semeada, por isso basta
-    // escolher serviço/instrutor para expor o conflito sem interagir
-    // com os pickers de data/hora.
+    // + 60 minutos — exatamente a série semeada.
     await pickService(tester);
     expect(find.textContaining('Conflito de horário'), findsNothing);
 
     await pickInstructor(tester);
+
+    // ⚠️ Reportado em produção: "aparece sempre que o instrutor já tem
+    // aulas naquele horário, e ele não tem". Tinha. O que estava
+    // errado era o momento — o aviso disparava aqui, a comparar com
+    // segunda às 18:00, que são os valores por omissão do formulário e
+    // não uma escolha de ninguém. Quem tivesse uma aula nesse horário
+    // via o aviso em todas as criações seguintes, e um aviso que
+    // aparece sempre deixa de ser lido.
+    expect(find.textContaining('Conflito de horário'), findsNothing);
+
+    // A partir do momento em que o horário é uma escolha, avisa.
+    await pickDayOfWeek(tester, 'Segunda');
     expect(find.textContaining('Conflito de horário'), findsOneWidget);
     expect(find.textContaining('Segunda 18:00'), findsOneWidget);
+  });
+
+  testWidgets('mexer no horário sem conflito real continua sem avisar',
+      (tester) async {
+    final firestore = await seedBase();
+    await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('sessionSeries')
+        .doc('series_existing')
+        .set({
+      'serviceId': 'service_1',
+      'instructorId': 'instructor_1',
+      'dayOfWeek': DateTime.monday,
+      'startTime': '18:00',
+      'durationMinutes': 60,
+      'capacity': 6,
+      'startDate': Timestamp.fromDate(DateTime(2026, 1, 5)),
+      'preAssignedMemberIds': <String>[],
+      'status': 'active',
+    });
+
+    setLargeSurface(tester);
+    await tester.pumpWidget(buildApp(firestore));
+    await tester.pumpAndSettle();
+
+    await pickService(tester);
+    await pickInstructor(tester);
+    await pickDayOfWeek(tester, 'Quarta');
+
+    expect(find.textContaining('Conflito de horário'), findsNothing);
+  });
+
+  testWidgets(
+      'gravar com conflito pede confirmação em vez de criar em silêncio',
+      (tester) async {
+    // A outra metade do que foi reportado: "e depois cria". O aviso
+    // podia nunca ter sido visto — horário nos valores por omissão, ou
+    // simplesmente fora do ecrã — e a aula sobreposta nascia sem que
+    // ninguém decidisse nada.
+    final firestore = await seedBase();
+    await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('sessionSeries')
+        .doc('series_existing')
+        .set({
+      'serviceId': 'service_1',
+      'instructorId': 'instructor_1',
+      'dayOfWeek': DateTime.monday,
+      'startTime': '18:00',
+      'durationMinutes': 60,
+      'capacity': 6,
+      'startDate': Timestamp.fromDate(DateTime(2026, 1, 5)),
+      'preAssignedMemberIds': <String>[],
+      'status': 'active',
+    });
+
+    setLargeSurface(tester);
+    await tester.pumpWidget(buildApp(firestore));
+    await tester.pumpAndSettle();
+
+    await pickService(tester);
+    await pickInstructor(tester);
+
+    // Sem tocar no horário — fica em segunda/18:00, o slot ocupado.
+    expect(find.textContaining('Conflito de horário'), findsNothing);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Criar'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AlertDialog, 'Conflito de horário'),
+        findsOneWidget);
+    expect(find.text('Criar mesmo assim'), findsOneWidget);
+
+    // "Rever" fecha e não cria nada — o formulário fica como estava.
+    await tester.tap(find.text('Rever'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    final created = await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('sessionSeries')
+        .get();
+    expect(created.docs.length, 1, reason: 'só a série semeada');
   });
 
   testWidgets(

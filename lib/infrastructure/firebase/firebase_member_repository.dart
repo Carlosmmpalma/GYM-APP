@@ -43,6 +43,35 @@ MemberConsent _consentFromMap(Map<String, dynamic>? data) {
   );
 }
 
+/// Compara membros pelo número de sócio, tratando-o como número quando
+/// o é.
+///
+/// Comparar as strings diretamente só funciona enquanto todos os
+/// números tiverem o mesmo comprimento — "1000" vinha antes de "999"
+/// assim que o estúdio passasse dos três dígitos. Os números reais são
+/// preenchidos com zeros ("000001"), mas nada obriga a isso, e um
+/// número escrito à mão sem os zeros bastava para desalinhar a lista
+/// toda.
+///
+/// Sem número (registo por arrumar) vai para o fim, ordenado por nome,
+/// em vez de se misturar com quem tem.
+int compareMembersByNumber(MemberSummary a, MemberSummary b) {
+  final byName = searchNormalize(a.name).compareTo(searchNormalize(b.name));
+
+  final numberA = int.tryParse(a.memberNumber.trim());
+  final numberB = int.tryParse(b.memberNumber.trim());
+
+  if (numberA != null && numberB != null) {
+    final byNumber = numberA.compareTo(numberB);
+    return byNumber != 0 ? byNumber : byName;
+  }
+  if (numberA != null) return -1;
+  if (numberB != null) return 1;
+
+  final byText = a.memberNumber.trim().compareTo(b.memberNumber.trim());
+  return byText != 0 ? byText : byName;
+}
+
 class FirebaseMemberRepository implements MemberRepository {
   FirebaseMemberRepository(this._firestore, this._tenantId);
 
@@ -52,24 +81,24 @@ class FirebaseMemberRepository implements MemberRepository {
   CollectionReference<Map<String, dynamic>> get _members =>
       _firestore.collection('tenants').doc(_tenantId).collection('members');
 
-  /// Ordenado por nome, aqui e não na query.
+  /// Ordenado por NÚMERO DE SÓCIO, aqui e não na query.
   ///
-  /// A lista chegava pela ordem em que o Firestore devolve os documentos
-  /// — para ids automáticos isso é ordem nenhuma, e um gestor a procurar
-  /// alguém numa lista de duzentos nomes por ordem aleatória desiste e
-  /// usa a procura para tudo. Ordenar no cliente (e não com um
-  /// `orderBy('name')`) porque um `orderBy` EXCLUI documentos sem o
-  /// campo: um registo antigo sem `name` desaparecia da gestão em vez de
-  /// aparecer por arrumar.
+  /// Ordenar no cliente (e não com um `orderBy`) porque um `orderBy`
+  /// EXCLUI documentos sem o campo: um registo antigo sem `name` ou sem
+  /// `memberNumber` desaparecia da gestão em vez de aparecer por
+  /// arrumar.
   ///
-  /// `searchNormalize` para os acentos não mandarem "Álvaro" para o fim
-  /// do alfabeto.
+  /// Era por nome. O número de sócio é a identidade que o estúdio usa
+  /// no dia a dia — é por ele que se procura alguém ao balcão — e a
+  /// ordenação alfabética escondia isso. Também tornava óbvio um
+  /// problema que ninguém quer ver numa lista: com nomes que acabam em
+  /// número ("Aluno 10" antes de "Aluno 2"), a ordem alfabética parece
+  /// simplesmente partida.
   @override
   Stream<List<MemberSummary>> watchMembers() {
     return _members.snapshots().map(
           (snapshot) => snapshot.docs.map(_fromDoc).toList()
-            ..sort((a, b) =>
-                searchNormalize(a.name).compareTo(searchNormalize(b.name))),
+            ..sort(compareMembersByNumber),
         );
   }
 

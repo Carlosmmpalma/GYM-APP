@@ -5,6 +5,8 @@ import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/plan_providers.dart';
 import '../widgets/design_system.dart';
 import 'plan_detail_screen.dart';
+import '../../repositories/catalogue_admin_repository.dart';
+import '../widgets/catalogue_delete.dart';
 
 /// UC26 — Ecrã Gestor: criar/editar Plans e Services (Fase 3).
 ///
@@ -65,7 +67,23 @@ class ManagePlansScreen extends ConsumerWidget {
                     '${plan.currentPrice.toStringAsFixed(2)} ${plan.currency}'
                     '${plan.active ? '' : ' · inativo'}',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Eliminar',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => confirmAndDeleteCatalogueEntry(
+                          context,
+                          ref,
+                          kind: CatalogueKind.plan,
+                          id: plan.id,
+                          name: plan.name,
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right),
+                    ],
+                  ),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => PlanDetailScreen(plan: plan),

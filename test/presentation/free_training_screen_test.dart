@@ -102,6 +102,20 @@ class _FakeFreeTrainingRepository implements FreeTrainingRepository {
       throw UnimplementedError();
 
   @override
+  Future<int> retargetSlots({
+    required String weekId,
+    required String serviceId,
+  }) async {
+    retargetedTo = serviceId;
+    return retargetCount;
+  }
+
+  /// Último serviço pedido em [retargetSlots] — `null` se nunca foi
+  /// chamado.
+  String? retargetedTo;
+  int retargetCount = 0;
+
+  @override
   Future<void> bookSlot({
     required String weekId,
     required String slotId,

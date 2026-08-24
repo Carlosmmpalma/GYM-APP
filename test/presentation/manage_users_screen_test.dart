@@ -104,6 +104,29 @@ void main() {
     expect(find.text('Em atraso'), findsOneWidget);
   });
 
+  testWidgets('no separador "Alunos" a ordem é por número de sócio',
+      (tester) async {
+    // Reportado a testar em produção: a lista de alunos vinha por nome.
+    // O número de sócio é a identidade que o estúdio usa ao balcão, e a
+    // ordem alfabética escondia-a — além de fazer "Aluno 10" aparecer
+    // antes de "Aluno 2" quando os nomes acabam em número.
+    //
+    // O seed serve de propósito: por nome é Beatriz (000201) antes de
+    // Rita (000142); por número é ao contrário.
+    await tester.pumpWidget(buildApp(await seed()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Alunos'));
+    await tester.pumpAndSettle();
+
+    final names = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((t) => t.data)
+        .where((d) => d == 'Rita Ferreira' || d == 'Beatriz Sousa')
+        .toList();
+    expect(names, ['Rita Ferreira', 'Beatriz Sousa']);
+  });
+
   testWidgets('separador "Staff" esconde os alunos e vice-versa',
       (tester) async {
     await tester.pumpWidget(buildApp(await seed()));

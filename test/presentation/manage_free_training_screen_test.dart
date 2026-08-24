@@ -156,6 +156,20 @@ class _FakeFreeTrainingRepository implements FreeTrainingRepository {
       throw UnimplementedError();
 
   @override
+  Future<int> retargetSlots({
+    required String weekId,
+    required String serviceId,
+  }) async {
+    retargetedTo = serviceId;
+    return retargetCount;
+  }
+
+  /// Último serviço pedido em [retargetSlots] — `null` se nunca foi
+  /// chamado.
+  String? retargetedTo;
+  int retargetCount = 0;
+
+  @override
   Future<void> bookSlot({
     required String weekId,
     required String slotId,
@@ -270,6 +284,77 @@ void main() {
     expect(
         find.text('Rascunho — ainda não publicada, os alunos não veem isto.'),
         findsOneWidget);
+  });
+
+  testWidgets(
+      'blocos ligados a um serviço antigo são assinalados, com correção',
+      (tester) async {
+    // Aconteceu a sério: o estúdio tinha dois serviços de treino livre
+    // (um antigo, já inativo), mudou a definição para o novo, e os
+    // blocos JÁ publicados ficaram a apontar para o antigo. Do lado do
+    // Aluno isso lê-se como "o teu plano não inclui treino livre" — a
+    // alunos cujo plano incluía. Nada, em lado nenhum, dizia porquê.
+    final firestore = await seedFirestore();
+    final repository = _FakeFreeTrainingRepository()
+      ..retargetCount = 2
+      ..schedule = FreeTrainingSchedule(
+        weekId: 'week_1',
+        weekStart: DateTime.now(),
+        status: FreeTrainingScheduleStatus.published,
+      );
+
+    final now = DateTime.now();
+    for (var i = 0; i < 2; i++) {
+      repository.slots.add(FreeTrainingSlot(
+        id: 'slot_antigo_$i',
+        weekId: 'week_1',
+        // O serviço configurado no seed é 'service_1'.
+        serviceId: 'servico_antigo',
+        startAt: now.add(Duration(days: i)),
+        endAt: now.add(Duration(days: i, hours: 1)),
+        capacity: 4,
+        activeBookingCount: 0,
+      ));
+    }
+
+    await tester.pumpWidget(buildApp(firestore, repository));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('serviço antigo'), findsOneWidget);
+    expect(find.textContaining('2 blocos'), findsOneWidget);
+
+    await tester.tap(find.text('Ligar ao serviço atual'));
+    await tester.pumpAndSettle();
+
+    expect(repository.retargetedTo, 'service_1');
+    expect(find.text('2 blocos ligados ao serviço atual.'), findsOneWidget);
+  });
+
+  testWidgets('sem blocos desalinhados não há aviso nenhum', (tester) async {
+    final firestore = await seedFirestore();
+    final repository = _FakeFreeTrainingRepository()
+      ..schedule = FreeTrainingSchedule(
+        weekId: 'week_1',
+        weekStart: DateTime.now(),
+        status: FreeTrainingScheduleStatus.published,
+      );
+
+    final now = DateTime.now();
+    repository.slots.add(FreeTrainingSlot(
+      id: 'slot_ok',
+      weekId: 'week_1',
+      serviceId: 'service_1',
+      startAt: now,
+      endAt: now.add(const Duration(hours: 1)),
+      capacity: 4,
+      activeBookingCount: 0,
+    ));
+
+    await tester.pumpWidget(buildApp(firestore, repository));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('serviço antigo'), findsNothing);
+    expect(find.text('Ligar ao serviço atual'), findsNothing);
   });
 
   testWidgets('adicionar bloco cria slots e publicar chama publishSchedule',

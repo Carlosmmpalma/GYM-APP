@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'application/providers/firebase_providers.dart';
+import 'application/providers/tenant_context_providers.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/widgets/auth_gate.dart';
 
@@ -11,9 +12,15 @@ class GymSaasApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final environment = ref.watch(environmentConfigProvider).environment;
+    // O nome que o sistema mostra (separador do browser, gestor de
+    // tarefas do Android) sai da configuração do tenant desta build,
+    // como o resto do branding. Estava aqui escrito à mão o nome
+    // INTERNO do produto — no browser, isso substituía o título do
+    // `index.html` e o separador dizia "Gym SaaS" a toda a gente.
+    final tenant = ref.watch(tenantAppConfigProvider);
 
     return MaterialApp(
-      title: 'Gym SaaS',
+      title: tenant.displayName ?? 'Gym',
       debugShowCheckedModeBanner: false,
       // Fita no canto em tudo o que NÃO é produção.
       //

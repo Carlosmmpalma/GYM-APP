@@ -29,3 +29,8 @@ firebase/functions/lib/
 
 # OS
 .DS_Store
+
+# Chaves de conta de serviço (Firebase Console › Contas de serviço).
+# Dão acesso TOTAL ao projeto e não expiram — nunca no repositório.
+*firebase-adminsdk*.json
+service-account*.json

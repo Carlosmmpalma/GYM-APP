@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_saas/app.dart';
 import 'package:gym_saas/application/providers/firebase_providers.dart';
+import 'package:gym_saas/application/providers/tenant_context_providers.dart';
 import 'package:gym_saas/core/config/environment.dart';
+import 'package:gym_saas/core/config/tenant_app_config.dart';
 
 /// `flutter build web` sem `-t` compila `lib/main.dart`, que aponta
 /// para **development**. Publicar esse artefacto por engano dava uma
@@ -15,7 +17,17 @@ import 'package:gym_saas/core/config/environment.dart';
 void main() {
   Widget buildApp(EnvironmentConfig config) {
     return ProviderScope(
-      overrides: [environmentConfigProvider.overrideWithValue(config)],
+      overrides: [
+        environmentConfigProvider.overrideWithValue(config),
+        // O título da app passou a sair da configuração do tenant desta
+        // build (é o nome do ginásio, não o do produto).
+        tenantAppConfigProvider.overrideWithValue(
+          const TenantAppConfig(
+            tenantId: 'tenant_test',
+            displayName: 'NXT Performance Studio',
+          ),
+        ),
+      ],
       child: const GymSaasApp(),
     );
   }

@@ -6,6 +6,8 @@ import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/service.dart';
 import '../widgets/design_system.dart';
+import '../../repositories/catalogue_admin_repository.dart';
+import '../widgets/catalogue_delete.dart';
 
 /// UC26 — Ecrã Gestor: criar e ativar/desativar Services.
 ///
@@ -61,10 +63,26 @@ class ManageServicesScreen extends ConsumerWidget {
                     ].join(' · '),
                   ),
                   onTap: () => _editService(context, ref, service),
-                  trailing: Switch(
-                    value: service.active,
-                    onChanged: (value) =>
-                        _setActive(context, ref, service, value),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Switch(
+                        value: service.active,
+                        onChanged: (value) =>
+                            _setActive(context, ref, service, value),
+                      ),
+                      IconButton(
+                        tooltip: 'Eliminar',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => confirmAndDeleteCatalogueEntry(
+                          context,
+                          ref,
+                          kind: CatalogueKind.service,
+                          id: service.id,
+                          name: service.name,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               );

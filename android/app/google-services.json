@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "447002052350",
+    "project_id": "gym-sas",
+    "storage_bucket": "gym-sas.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:447002052350:android:41543452dfc9f2653dc7af",
+        "android_client_info": {
+          "package_name": "pt.nxtperformancestudio.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBdEtC8oH0Zi_cehn8_Sxrc16IjLNVaEng"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

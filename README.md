@@ -5283,6 +5283,258 @@ de Auth, as claims e o documento de staff. Sem `--yes` diz o que ia
 fazer e não faz nada — a rede contra correr no projeto errado. Testado
 contra o emulador, incluindo correr duas vezes seguidas.
 
+### Reportado a testar em produção (24/08/2026)
+
+**A lista de alunos vinha ordenada por nome.** O número de sócio é a
+identidade que o estúdio usa ao balcão — é por ele que se procura
+alguém — e a ordem alfabética escondia-a. Passou a ordenar por número
+(`compareMembersByNumber`, em `firebase_member_repository.dart`),
+comparando-o como número e não como texto: sem isso, "1000" vinha antes
+de "999" assim que o estúdio passasse dos três dígitos. Quem não tem
+número vai para o fim, por nome, em vez de se misturar.
+
+O separador **"Todos"** mantém a lista fundida e alfabética — era uma
+decisão deliberada da Fase 10 (um Gestor que procura alguém não sabe de
+cor se é aluno ou instrutor) e não havia motivo para a desfazer. A
+ordem por número manda no separador "Alunos", onde só há alunos.
+
+**O aviso de conflito de horário aparecia sempre.** O relato foi "diz
+que o instrutor já tem aulas àquela hora, e não tem". Tinha: os dados
+de produção mostravam uma série às segundas às 18:00 para esse
+instrutor — e o formulário de criação **abre precisamente em
+segunda-feira às 18:00**. O aviso disparava mal se escolhesse o
+instrutor, a comparar com um horário que ninguém tinha indicado ainda.
+
+Não era um falso positivo, era um aviso no momento errado — o que dá no
+mesmo, porque um aviso que aparece sempre deixa de ser lido. Duas
+mudanças:
+
+* O aviso só aparece depois de o horário ser **uma escolha** (dia,
+  data, hora, duração ou o próprio "só esta data / semanal" — qualquer
+  um conta).
+* Ao gravar, o conflito é **reavaliado e passa a pedir confirmação**
+  em vez de criar em silêncio. Isto responde à segunda metade do
+  relato, "e depois cria": o aviso podia nunca ter sido visto — horário
+  nos valores por omissão, ou fora do ecrã — e a aula sobreposta nascia
+  sem ninguém decidir nada.
+
+A deteção passou a viver numa função pura (`findScheduleConflict`)
+usada pelos dois caminhos; duplicá-la era a forma mais certa de os dois
+deixarem de concordar. Na confirmação, as listas são lidas com
+`.future` e não com `valueOrNull`: enquanto o aviso está escondido
+ninguém as observa, e `valueOrNull` devolvia `null` — a verificação
+diria "sem conflito" exatamente quando era mais precisa.
+
+### O Gestor passa a poder eliminar o que ele próprio criou
+
+Duas coisas reportadas a testar, com a mesma raiz.
+
+**Planos cancelados enchiam a lista.** Cancelar um plano e voltar a
+atribuir o mesmo é rotina — corrigir um preço, retomar depois de uma
+pausa. Com tudo numa lista corrida, o detalhe do membro mostrava "Aulas
+de Grupo" três vezes seguidas e era preciso ler a etiqueta de estado de
+cada uma para saber qual conta. As canceladas/expiradas passaram para
+um `Histórico (N planos anteriores)` fechado: continuam lá (são o
+histórico financeiro do membro), mas saem da frente.
+
+**Não havia forma de eliminar serviços, planos ou modalidades.** A
+regra do domínio era "nunca eliminar, só desativar", e a razão é boa: um
+plano eliminado deixa as subscriptions que apontam para ele sem nome nem
+preço, e o histórico do membro passa a mostrar ids em vez de "Aulas de
+Grupo — 44,90 €".
+
+Mas a regra estava a ser aplicada a tudo, incluindo ao caso que acontece
+mais vezes: alguém cria um serviço com o nome errado ou um plano em
+duplicado, dá-se conta no minuto seguinte, e fica com ele para sempre.
+Desativar não resolve — continua nas listas de gestão. A única saída era
+pedir a um programador, que é precisamente o que esta app existe para
+evitar.
+
+`deleteCatalogueEntry` (Cloud Function, Manager-only) conta primeiro as
+referências e só elimina se não houver nenhuma. Se houver, **recusa e
+diz quais**, com números: "3 série(s) de aulas", "12 subscrição(ões) de
+membros". É essa lista que permite ao Gestor decidir sozinho entre
+eliminar e desativar.
+
+Detalhes que valem a pena:
+
+* A contagem usa `count()` (agregação), não `get()` — uma agregação é
+  faturada como uma leitura por cada mil documentos, e nenhuma destas
+  contagens precisa do conteúdo.
+* Para saber que planos incluem um serviço, um
+  `collectionGroup('services')` seria mais curto — mas atravessa
+  **tenants**, e `services` é ao mesmo tempo coleção de topo e
+  subcoleção de `plans`. Fica um `getAll` exato sobre os planos do
+  próprio estúdio.
+* O serviço de **treino livre** não aparece em query nenhuma: vive num
+  campo de configuração. Tem verificação própria — sem ela, eliminá-lo
+  deixava o treino livre a apontar para o vazio (exatamente o problema
+  descrito na secção anterior).
+* Eliminar um plano apaga também a sua subcoleção `services`. Apagar só
+  o documento pai deixava-a órfã — invisível na consola, e a renascer se
+  alguém recriasse um plano com o mesmo id.
+* Uma subscrição **cancelada** continua a bloquear: é precisamente o
+  registo que precisa do nome e do preço do plano.
+
+**Não cobre exercícios da biblioteca.** As referências (`planEntries`,
+`loadHistory`) vivem em subcoleções de cada membro e a contagem exigiria
+índices de grupo de coleção novos. Assinalado, não escondido — e a
+biblioteca já permite editar um exercício, que resolve o caso comum.
+
+Verificado com 11 testes novos contra o Emulator Suite (recusa por cada
+tipo de referência, eliminação da subcoleção do plano, instrutor sem
+permissão, tipo desconhecido, id inexistente) e 2 testes de widget sobre
+o que o Gestor vê quando a eliminação é recusada.
+
+### Mudar o serviço de treino livre deixava os blocos para trás
+
+Reportado como "atribuí o plano de treino livre ao aluno e ele continua
+sem acesso". Os dados de produção contavam a história toda: existiam
+**dois** serviços de treino livre — um criado à mão, entretanto
+desativado, e o `svc_treino_livre` do catálogo. A definição em Gestão ›
+Definições apontava (bem) para o novo; os **onze blocos já publicados
+continuavam a apontar para o antigo**.
+
+Cada bloco guarda o `serviceId` que estava configurado quando nasceu, e
+o Aluno só vê blocos cujo serviço o plano dele inclui. Com o plano a
+dar acesso ao serviço novo e os blocos presos ao antigo, a app
+mostrava-lhe **"o teu plano não inclui treino livre"** — a alguém cujo
+plano incluía mesmo. Um estúdio inteiro podia ficar sem treino livre
+sem nada, em lado nenhum, explicar porquê.
+
+A definição estava correta e o filtro também. O que faltava era alguém
+notar que os dois deixaram de concordar.
+
+`ManageFreeTrainingScreen` passa a assinalar, na semana que está a ser
+vista, quantos blocos apontam para outro serviço — com o efeito
+explicado do lado do Aluno — e traz a correção com o aviso ("Ligar ao
+serviço atual", `FreeTrainingRepository.retargetSlots`). As Security
+Rules já permitiam esta escrita ao Gestor (`update` de um slot, desde
+que `activeBookingCount` fique inalterado), por isso não foi preciso
+Cloud Function nenhuma.
+
+O aviso vive do lado de quem pode resolver. Do lado do Aluno a mensagem
+mantém-se: é o que a app sabe a partir do que vê.
+
+### 🔴 O bug que só aparecia em produção: `_` no email sintético
+
+Encontrado ao criar as primeiras contas de teste no projeto real, e
+teria bloqueado o lançamento.
+
+Os alunos entram com número de sócio, não com email — mas o Firebase
+Auth só sabe autenticar emails, por isso gera-se um email sintético
+determinístico: `member-<numero>@<tenantId>.gymsaas.internal`.
+
+O `tenantId` real é `nxt_performance_studio`. Esse `_` ia parar ao lado
+direito do `@`, onde valem as regras de **nomes de domínio** — e
+underscore não é um carácter válido num hostname. O **emulador de Auth
+aceita; o Firebase Auth real recusa** com `auth/invalid-email`.
+
+Consequência em produção: `createMember` rebentava, e nenhum aluno
+conseguia sequer ser criado, quanto mais entrar. A app parecia inteira
+até se tentar o primeiro sócio.
+
+**Porque é que 619 testes não apanharam isto:** todos os testes de
+`buildSyntheticEmail` usavam o tenant `nxt`, que por acaso já era um
+rótulo de domínio válido. E o resto da suite corre contra o emulador,
+que é permissivo exatamente neste ponto. Era um bug que, por
+construção, só a produção conseguia mostrar.
+
+A correção normaliza o `tenantId` num rótulo válido (só letras, dígitos
+e hífenes, sem hífen nas pontas) nos **quatro** sítios que constroem
+este email — `login_identifier.dart`, `loginIdentifier.ts`, `seed.mjs` e
+`create-test-users.mjs`. Os testes novos usam o `tenantId` a sério e
+validam o formato contra a regra do domínio, em vez de comparar com uma
+string escrita à mão.
+
+⚠️ **Efeito colateral no ambiente de desenvolvimento:** o email mudou,
+por isso as contas de aluno já semeadas no emulador deixam de casar com
+o que o login gera. Volta a correr `npm --prefix firebase/scripts run
+seed` depois de limpar os dados do emulador.
+
+### Catálogo do estúdio (`seed-content.mjs`)
+
+Um estúdio acabado de criar está tecnicamente pronto e praticamente
+inútil: sem exercícios não há planos de treino, sem serviços não há
+aulas, sem planos não há subscrições. Preencher isso à mão pela app são
+horas de formulários antes de se conseguir testar seja o que for.
+
+`firebase/scripts/seed-content.mjs` escreve um catálogo a sério:
+
+* **61 exercícios** com execução descrita — não nomes soltos. A
+  descrição é o que o aluno lê no telemóvel a meio da série, por isso
+  cada uma diz o essencial da execução e o erro mais comum. Cobrem os
+  8 grupos do dropdown da app, incluindo as estações de Hyrox.
+* **5 serviços**, com `exclusiveGroup` já preenchido onde faz sentido
+  (treino livre e treino acompanhado são níveis do mesmo produto, não
+  produtos distintos).
+* **8 modalidades** ligadas aos serviços certos.
+* **6 planos** com preços e regras de utilização por serviço.
+* Opcionalmente, um **plano de treino de 3 dias** num aluno
+  (`--training-plan-for=<nº de sócio>`): 20 exercícios prescritos com
+  séries, repetições, cargas, descansos e notas do instrutor.
+
+Diferenças deliberadas em relação ao `create-test-users.mjs`:
+
+* **Não tem `--delete`.** Isto não é dado descartável — é o catálogo do
+  estúdio, feito para ficar e ser editado pela app. Apagar um exercício
+  já prescrito no plano de alguém deixaria a prescrição a apontar para
+  o vazio.
+* **Ids fixos e legíveis** (`ex_agachamento_barra`,
+  `plan_acompanhado_3x`) com `merge: true` — correr outra vez atualiza,
+  não duplica. Verificado a correr duas vezes seguidas: contagens
+  idênticas.
+* **Não toca no campo `videoPath`.** Se alguém já tiver carregado um
+  vídeo pela app, uma segunda corrida do script não o apaga.
+
+⚠️ **Os preços são inventados** e estão todos juntos no topo do
+ficheiro, na constante `PLANOS`. Revê-os antes de mostrar isto a um
+cliente.
+
+Verificado contra o emulador com um script de referências cruzadas:
+todos os `muscleGroup` dentro do dropdown, todas as modalidades e
+planos a apontar para serviços existentes, todas as prescrições a
+apontar para exercícios e treinos existentes, e a invariante do UC16
+(nenhuma carga sem a entrada de histórico correspondente).
+
+### Contas de teste num projeto real
+
+O `seed.mjs` está preso ao emulador de propósito, e bem — mas depois de
+publicar continua a ser preciso um punhado de alunos para clicar na app
+verdadeira sem inventar sócios reais.
+
+`firebase/scripts/create-test-users.mjs` cria N alunos com números de
+sócio a partir de **900001** (os reais começam em 000001 e sobem; as
+gamas nunca se cruzam) e uma password partilhada. Opcionalmente também
+um instrutor.
+
+Duas decisões que importam, porque isto escreve na base de dados a
+sério:
+
+* **A remoção não se guia pelo número de sócio**, guia-se por um campo
+  `isTestAccount: true` gravado no documento. Uma convenção de nomes
+  apagaria um sócio real que por acaso tivesse um número alto; uma
+  marca explícita não.
+* **Apagar um aluno com marcações ativas está bloqueado.** O
+  `activeBookingCount` da aula é o que decide se há vagas, e nada o
+  recalcula — apagar o membro por baixo deixava a aula com uma vaga
+  ocupada por alguém que já não existe, para sempre. O script conta
+  primeiro e recusa, dizendo para cancelar pela app (que passa pelas
+  Cloud Functions e acerta o contador). O `--force` existe, e diz o que
+  estraga.
+
+Verificado contra o emulador: criação, segunda corrida idempotente,
+remoção bloqueada por marcação ativa, `--force`, e o caso de não haver
+nada para apagar.
+
+```
+node firebase/scripts/create-test-users.mjs --project=<id>   --tenant=<tenant> --count=5 --yes
+node firebase/scripts/create-test-users.mjs --project=<id>   --tenant=<tenant> --delete --yes
+```
+
+⚠️ Estas contas têm password fraca por design. Não devem sobreviver ao
+período de testes — a remoção é um comando, não há desculpa.
+
 ### O que verifiquei e estava bem
 
 * **Rules**: nenhuma coleção fora do `deny` final; `_rateLimits`

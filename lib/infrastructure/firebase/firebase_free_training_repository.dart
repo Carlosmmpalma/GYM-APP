@@ -197,6 +197,27 @@ class FirebaseFreeTrainingRepository implements FreeTrainingRepository {
   }
 
   @override
+  Future<int> retargetSlots({
+    required String weekId,
+    required String serviceId,
+  }) async {
+    final snapshot = await _schedules.doc(weekId).collection('slots').get();
+    final stale = snapshot.docs
+        .where((doc) => doc.data()['serviceId'] != serviceId)
+        .toList();
+    if (stale.isEmpty) return 0;
+
+    final batch = _firestore.batch();
+    for (final doc in stale) {
+      // Só o `serviceId`: `activeBookingCount` tem de ficar igual ou a
+      // Security Rule recusa a escrita inteira.
+      batch.update(doc.reference, {'serviceId': serviceId});
+    }
+    await batch.commit();
+    return stale.length;
+  }
+
+  @override
   Future<void> deleteSlot({
     required String weekId,
     required String slotId,

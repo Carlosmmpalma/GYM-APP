@@ -153,16 +153,6 @@
       ]
     },
     {
-      "collectionGroup": "attendance",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "memberId",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "sessionOccurrences",
       "queryScope": "COLLECTION",
       "fields": [
@@ -224,6 +214,21 @@
     {
       "collectionGroup": "sessionSeries",
       "fieldPath": "status",
+      "ttl": false,
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "attendance",
+      "fieldPath": "memberId",
       "ttl": false,
       "indexes": [
         {

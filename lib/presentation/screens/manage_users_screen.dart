@@ -110,7 +110,20 @@ class _ManageUsersScreenState extends ConsumerState<ManageUsersScreen> {
               MaterialPageRoute(builder: (_) => StaffDetailScreen(staff: s)),
             ),
           ),
-    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    ];
+
+    // Em "Todos", a lista é fundida e ordenada por nome: um Gestor que
+    // procura uma pessoa não sabe de cor se ela é aluna ou instrutora,
+    // e "primeiro os alunos, depois o staff" é só o artefacto de virem
+    // de dois streams.
+    //
+    // Nos separadores de um tipo só, manda a ordem própria de cada um:
+    // os alunos chegam por NÚMERO DE SÓCIO (`compareMembersByNumber`,
+    // no repositório) — é por ele que se procura alguém ao balcão — e o
+    // staff por nome. Ordená-los por nome aqui desfazia isso.
+    if (_filter == _UsersFilter.todos) {
+      rows.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    }
 
     final visible =
         query.isEmpty ? rows : rows.where((r) => r.matches(query)).toList();

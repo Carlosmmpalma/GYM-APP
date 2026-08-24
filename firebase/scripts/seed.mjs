@@ -34,8 +34,20 @@ initializeApp({ projectId: PROJECT_ID });
 const auth = getAuth();
 const firestore = getFirestore();
 
+// Espelho de `toDomainLabel` em lib/core/config/login_identifier.dart.
+// O Firebase Auth real recusa `_` no domínio (`auth/invalid-email`); o
+// emulador aceita. Ver o comentário longo no ficheiro Dart.
+function toDomainLabel(tenantId) {
+  const collapsed = tenantId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return collapsed === '' ? 'tenant' : collapsed;
+}
+
 function buildSyntheticEmail(tenantId, memberNumber) {
-  return `member-${memberNumber}@${tenantId}.gymsaas.internal`.toLowerCase();
+  return `member-${memberNumber}@${toDomainLabel(tenantId)}.gymsaas.internal`;
 }
 
 async function upsertTenant(tenantId, name) {

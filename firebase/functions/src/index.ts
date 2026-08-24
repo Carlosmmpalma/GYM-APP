@@ -53,6 +53,7 @@ export { createStaff } from './createStaff';
 
 // Fase 3 — Planos, serviços e subscriptions.
 export { createSubscription } from './createSubscription';
+export { deleteCatalogueEntry } from './deleteCatalogueEntry';
 
 // Fase 4 — Usage tracking e limite semanal. createBooking/cancelBooking
 // substituem as transações client-side da Fase 2 (ver nota de

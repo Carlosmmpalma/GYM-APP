@@ -19,7 +19,31 @@ String buildSyntheticEmail({
   required String tenantId,
   required String memberNumber,
 }) {
-  final normalizedTenant = tenantId.trim().toLowerCase();
   final normalizedNumber = memberNumber.trim().toLowerCase();
-  return 'member-$normalizedNumber@$normalizedTenant.gymsaas.internal';
+  return 'member-$normalizedNumber@${_toDomainLabel(tenantId)}.gymsaas.internal';
+}
+
+/// Converte o `tenantId` num rótulo de domínio válido.
+///
+/// O `tenantId` é escolhido por nós e segue convenções de identificador
+/// (`nxt_performance_studio`) — mas isto vai parar ao lado direito de um
+/// `@`, e aí valem as regras de nomes de domínio: só letras, dígitos e
+/// hífenes, sem começar nem acabar em hífen.
+///
+/// ⚠️ Isto não é cosmética. O emulador de Auth aceita `_` no domínio; o
+/// Firebase Auth **real recusa** com `auth/invalid-email`. Sem esta
+/// conversão, num projeto a sério nenhum aluno com um `tenantId` assim
+/// conseguia ser criado nem entrar — e os testes não apanhavam, porque
+/// usavam o tenant `nxt`, que por acaso já era um rótulo válido.
+///
+/// Nota: dois `tenantId` diferentes podem colapsar no mesmo rótulo
+/// (`a_b` e `a-b`). Como os ids são escolhidos por nós, evita-se ao
+/// nomear; não vale a pena complicar o esquema por isso.
+String _toDomainLabel(String tenantId) {
+  final collapsed = tenantId
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+  return collapsed.isEmpty ? 'tenant' : collapsed;
 }

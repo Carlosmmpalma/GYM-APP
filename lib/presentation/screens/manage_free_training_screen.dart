@@ -213,6 +213,7 @@ class _ScheduleView extends ConsumerWidget {
             ),
           ),
         const SizedBox(height: 12),
+        _StaleServiceBanner(weekId: weekId),
         slotsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, stack) => ErrorState(error: error, compact: true),
@@ -660,5 +661,117 @@ class _AddSlotBlockDialogState extends ConsumerState<_AddSlotBlockDialog> {
         capacity: int.parse(_capacityController.text.trim()),
       ),
     );
+  }
+}
+
+/// Avisa quando os blocos desta semana apontam para um serviço que já
+/// não é o de treino livre configurado.
+///
+/// Cada bloco guarda o `serviceId` que estava configurado quando
+/// nasceu. Mudar o serviço nas Definições não mexia nos blocos já
+/// criados — e o Aluno, do outro lado, só vê os blocos cujo serviço o
+/// plano dele inclui. Resultado: alunos com o plano certo a ver "o teu
+/// plano não inclui treino livre", e nada, em lado nenhum, a explicar
+/// porquê. Aconteceu a sério, com um estúdio a ficar sem treino livre
+/// por causa de um serviço antigo deixado para trás.
+///
+/// O aviso vive aqui, do lado de quem pode resolver, e traz a correção
+/// com ele.
+class _StaleServiceBanner extends ConsumerStatefulWidget {
+  const _StaleServiceBanner({required this.weekId});
+
+  final String weekId;
+
+  @override
+  ConsumerState<_StaleServiceBanner> createState() =>
+      _StaleServiceBannerState();
+}
+
+class _StaleServiceBannerState extends ConsumerState<_StaleServiceBanner> {
+  bool _fixing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final configured = ref.watch(freeTrainingServiceIdProvider).valueOrNull;
+    final slots =
+        ref.watch(freeTrainingSlotsProvider(widget.weekId)).valueOrNull;
+    if (configured == null || slots == null) return const SizedBox.shrink();
+
+    final stale = slots.where((s) => s.serviceId != configured).length;
+    if (stale == 0) return const SizedBox.shrink();
+
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.warning_amber_outlined,
+                    color: scheme.onErrorContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$stale ${stale == 1 ? 'bloco desta semana está ligado' : 'blocos desta semana estão ligados'} '
+                    'a um serviço antigo, diferente do que está nas '
+                    'Definições. Os alunos com plano de treino livre não '
+                    'os veem — a app diz-lhes que o plano não inclui '
+                    'treino livre.',
+                    style: TextStyle(color: scheme.onErrorContainer),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: _fixing ? null : () => _fix(configured),
+                child: _fixing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Ligar ao serviço atual'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _fix(String serviceId) async {
+    setState(() => _fixing = true);
+    try {
+      final fixed =
+          await ref.read(freeTrainingRepositoryProvider).retargetSlots(
+                weekId: widget.weekId,
+                serviceId: serviceId,
+              );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(fixed == 1
+              ? '1 bloco ligado ao serviço atual.'
+              : '$fixed blocos ligados ao serviço atual.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userFacingError(e,
+              fallback: 'Não foi possível corrigir os blocos.')),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _fixing = false);
+    }
   }
 }

@@ -58,6 +58,20 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
   int _dayOfWeek = DateTime.monday;
   DateTime _date = DateTime.now();
   TimeOfDay _time = const TimeOfDay(hour: 18, minute: 0);
+
+  /// O formulário abre com segunda-feira às 18:00 — valores plausíveis
+  /// para começar, mas que o Gestor ainda não escolheu.
+  ///
+  /// Sem isto, o aviso de conflito disparava mal se escolhesse o
+  /// instrutor, a comparar com um horário que ninguém tinha indicado.
+  /// Quem já tem uma aula às segundas às 18:00 via o aviso em TODAS as
+  /// criações seguintes, antes sequer de dizer quando queria a aula —
+  /// e um aviso que aparece sempre deixa de ser lido. O aviso só faz
+  /// sentido depois de o horário ser uma escolha.
+  ///
+  /// O que não muda: ao gravar, o conflito é reavaliado de qualquer
+  /// forma (ver `_submit`), tenha o horário sido mexido ou não.
+  bool _scheduleTouched = false;
   final Set<String> _preAssignedMemberIds = {};
 
   bool _submitting = false;
@@ -91,7 +105,10 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                   ButtonSegment(value: true, label: Text('Semanal, fixa')),
                 ],
                 selected: {_recurring},
-                onSelectionChanged: (s) => setState(() => _recurring = s.first),
+                onSelectionChanged: (s) => setState(() {
+                  _recurring = s.first;
+                  _scheduleTouched = true;
+                }),
               ),
               const SizedBox(height: 16),
               servicesAsync.when(
@@ -216,19 +233,28 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                     for (var d = DateTime.monday; d <= DateTime.sunday; d++)
                       DropdownMenuItem(value: d, child: Text(weekdayName(d))),
                   ],
-                  onChanged: (v) => setState(() => _dayOfWeek = v!),
+                  onChanged: (v) => setState(() {
+                    _dayOfWeek = v!;
+                    _scheduleTouched = true;
+                  }),
                 ),
                 const SizedBox(height: 16),
               ],
               _DatePickerTile(
                 label: _recurring ? 'A partir de' : 'Data',
                 date: _date,
-                onPick: (picked) => setState(() => _date = picked),
+                onPick: (picked) => setState(() {
+                  _date = picked;
+                  _scheduleTouched = true;
+                }),
               ),
               const SizedBox(height: 8),
               _TimePickerTile(
                 time: _time,
-                onPick: (picked) => setState(() => _time = picked),
+                onPick: (picked) => setState(() {
+                  _time = picked;
+                  _scheduleTouched = true;
+                }),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -236,7 +262,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                 decoration: InputDecoration(
                     labelText: requiredLabel('Duração (minutos)')),
                 keyboardType: TextInputType.number,
-                onChanged: (_) => setState(() {}),
+                onChanged: (_) => setState(() => _scheduleTouched = true),
                 validator: (v) {
                   final parsed = int.tryParse((v ?? '').trim());
                   return (parsed == null || parsed <= 0)
@@ -244,7 +270,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                       : null;
                 },
               ),
-              if (_instructorId != null)
+              if (_instructorId != null && _scheduleTouched)
                 _TimeConflictBanner(
                   recurring: _recurring,
                   instructorId: _instructorId!,
@@ -336,9 +362,82 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
     );
   }
 
+  /// `true` = pode seguir. Ou não há conflito, ou o Gestor confirmou.
+  ///
+  /// O aviso no formulário pode nunca ter sido visto — o horário pode
+  /// ter ficado nos valores por omissão, ou o aviso pode estar fora do
+  /// ecrã no momento de gravar. Criar uma aula sobreposta em silêncio é
+  /// o pior dos resultados: ninguém dá por isso até a sala ter duas
+  /// turmas e um instrutor.
+  ///
+  /// As listas são lidas com `.future`, não com `valueOrNull`: se
+  /// nenhum widget as estiver a observar neste momento (é o caso
+  /// enquanto o aviso está escondido), `valueOrNull` devolve `null` e a
+  /// verificação passava a dizer sempre "sem conflito" — exatamente
+  /// quando era mais precisa.
+  Future<bool> _confirmScheduleConflict() async {
+    final instructorId = _instructorId;
+    if (instructorId == null) return true;
+
+    final duration = int.tryParse(_durationController.text.trim()) ?? 0;
+    final startMinutes = _time.hour * 60 + _time.minute;
+
+    final String? conflict;
+    try {
+      conflict = findScheduleConflict(
+        recurring: _recurring,
+        instructorId: instructorId,
+        dayOfWeek: _recurring ? _dayOfWeek : _date.weekday,
+        date: _date,
+        startMinutes: startMinutes,
+        endMinutes: startMinutes + duration,
+        series: _recurring
+            ? await ref.read(seriesProvider.future)
+            : const <SessionSeries>[],
+        occurrences: _recurring
+            ? const <SessionOccurrence>[]
+            : await ref.read(allUpcomingOccurrencesProvider.future),
+        servicesById: {
+          for (final service in await ref.read(servicesProvider.future))
+            service.id: service,
+        },
+      );
+    } catch (_) {
+      // Isto é um aviso, não uma invariante do domínio — se as listas
+      // não vierem (rede em baixo), o Gestor não fica impedido de
+      // criar a aula por causa de uma verificação de cortesia.
+      return true;
+    }
+
+    if (conflict == null || !mounted) return true;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Conflito de horário'),
+        content: Text(
+          'Este instrutor já tem "$conflict" à mesma hora.\n\n'
+          'Queres criar esta aula na mesma?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Rever'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Criar mesmo assim'),
+          ),
+        ],
+      ),
+    );
+    return proceed ?? false;
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_service == null) return;
+    if (!await _confirmScheduleConflict()) return;
 
     setState(() {
       _submitting = true;
@@ -498,6 +597,62 @@ class _TimePickerTile extends StatelessWidget {
   }
 }
 
+/// Devolve a descrição da aula em conflito, ou `null` se não houver.
+///
+/// Vive fora do widget porque é usada em dois sítios com exigências
+/// diferentes: o aviso enquanto se preenche o formulário, e a
+/// confirmação ao gravar. Ter isto duplicado seria a forma mais certa
+/// de os dois deixarem de concordar.
+@visibleForTesting
+String? findScheduleConflict({
+  required bool recurring,
+  required String instructorId,
+  required int dayOfWeek,
+  required DateTime date,
+  required int startMinutes,
+  required int endMinutes,
+  required List<SessionSeries> series,
+  required List<SessionOccurrence> occurrences,
+  required Map<String, Service> servicesById,
+}) {
+  if (endMinutes <= startMinutes) return null;
+
+  if (recurring) {
+    // Séries recorrentes com o mesmo instrutor, no mesmo dia da
+    // semana — a série em si nunca é reservável (só as ocorrências que
+    // gera), mas o padrão semanal já basta para detetar o conflito sem
+    // precisar de olhar para ocorrências concretas.
+    for (final s in series) {
+      if (!s.isActive || s.instructorId != instructorId) continue;
+      if (s.dayOfWeek != dayOfWeek) continue;
+      final parts = s.startTime.split(':');
+      final otherStart = int.parse(parts[0]) * 60 + int.parse(parts[1]);
+      final otherEnd = otherStart + s.durationMinutes;
+      if (startMinutes < otherEnd && otherStart < endMinutes) {
+        return '${servicesById[s.serviceId]?.name ?? s.serviceId} '
+            '· ${weekdayName(s.dayOfWeek)} ${s.startTime}';
+      }
+    }
+    return null;
+  }
+
+  // "Só esta data" — compara contra ocorrências JÁ MATERIALIZADAS
+  // (ad-hoc ou geradas por série, `allUpcomingOccurrencesProvider`
+  // cobre ambas) no mesmo dia concreto.
+  for (final o in occurrences) {
+    if (o.status != SessionOccurrenceStatus.scheduled) continue;
+    if (o.instructorId != instructorId) continue;
+    if (!_isSameDay(o.startAt, date)) continue;
+    final otherStart = o.startAt.hour * 60 + o.startAt.minute;
+    final otherEnd = o.endAt.hour * 60 + o.endAt.minute;
+    if (startMinutes < otherEnd && otherStart < endMinutes) {
+      return '${servicesById[o.serviceId]?.name ?? o.serviceId} '
+          '· ${_conflictTimeFormat.format(o.startAt)}';
+    }
+  }
+  return null;
+}
+
 /// Fase 8 (auditoria funcional) — aviso de conflito de horário. O
 /// mockup ("Criar aula — recorrente") descreve "conflito de horário
 /// com outra aula da MESMA SALA é sinalizado antes de guardar" — mas
@@ -538,47 +693,25 @@ class _TimeConflictBanner extends ConsumerWidget {
         s.id: s,
     };
 
-    String? conflictLabel;
-
-    if (recurring) {
-      // Séries recorrentes com o mesmo instrutor, no mesmo dia da
-      // semana — a série em si nunca é reservável (só as ocorrências
-      // que gera), mas o padrão semanal já basta para detetar o
-      // conflito sem precisar de olhar para ocorrências concretas.
-      final series =
-          ref.watch(seriesProvider).valueOrNull ?? const <SessionSeries>[];
-      for (final s in series) {
-        if (!s.isActive || s.instructorId != instructorId) continue;
-        if (s.dayOfWeek != dayOfWeek) continue;
-        final parts = s.startTime.split(':');
-        final otherStart = int.parse(parts[0]) * 60 + int.parse(parts[1]);
-        final otherEnd = otherStart + s.durationMinutes;
-        if (startMinutes < otherEnd && otherStart < endMinutes) {
-          conflictLabel = '${servicesById[s.serviceId]?.name ?? s.serviceId} '
-              '· ${weekdayName(s.dayOfWeek)} ${s.startTime}';
-          break;
-        }
-      }
-    } else {
-      // "Só esta data" — compara contra ocorrências JÁ MATERIALIZADAS
-      // (ad-hoc ou geradas por série, `allUpcomingOccurrencesProvider`
-      // cobre ambas) no mesmo dia concreto.
-      final occurrences =
-          ref.watch(allUpcomingOccurrencesProvider).valueOrNull ??
-              const <SessionOccurrence>[];
-      for (final o in occurrences) {
-        if (o.status != SessionOccurrenceStatus.scheduled) continue;
-        if (o.instructorId != instructorId) continue;
-        if (!_isSameDay(o.startAt, date)) continue;
-        final otherStart = o.startAt.hour * 60 + o.startAt.minute;
-        final otherEnd = o.endAt.hour * 60 + o.endAt.minute;
-        if (startMinutes < otherEnd && otherStart < endMinutes) {
-          conflictLabel = '${servicesById[o.serviceId]?.name ?? o.serviceId} '
-              '· ${_conflictTimeFormat.format(o.startAt)}';
-          break;
-        }
-      }
-    }
+    // Só o lado que interessa é observado: subscrever as duas listas
+    // seria um listener de Firestore a mais, aberto durante todo o
+    // preenchimento do formulário.
+    final conflictLabel = findScheduleConflict(
+      recurring: recurring,
+      instructorId: instructorId,
+      dayOfWeek: dayOfWeek,
+      date: date,
+      startMinutes: startMinutes,
+      endMinutes: endMinutes,
+      series: recurring
+          ? ref.watch(seriesProvider).valueOrNull ?? const <SessionSeries>[]
+          : const <SessionSeries>[],
+      occurrences: recurring
+          ? const <SessionOccurrence>[]
+          : ref.watch(allUpcomingOccurrencesProvider).valueOrNull ??
+              const <SessionOccurrence>[],
+      servicesById: servicesById,
+    );
 
     if (conflictLabel == null) return const SizedBox.shrink();
 
@@ -608,10 +741,10 @@ class _TimeConflictBanner extends ConsumerWidget {
       ),
     );
   }
-
-  bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
 }
+
+bool _isSameDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
 
 /// UC08-A (fechado) — só mostra membros que já têm o serviço
 /// contratado, nunca deixa sequer tentar escolher outro. Bloqueia

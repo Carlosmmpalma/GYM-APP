@@ -75,6 +75,25 @@ abstract class FreeTrainingRepository {
     required int capacity,
   });
 
+  /// Reaponta para [serviceId] os blocos desta semana que apontam para
+  /// outro serviço. Devolve quantos foram corrigidos.
+  ///
+  /// Existe porque mudar o serviço de treino livre nas Definições não
+  /// mexia nos blocos JÁ criados: eles guardam o `serviceId` que estava
+  /// configurado no momento em que nasceram. Depois da mudança, o
+  /// filtro de elegibilidade do Aluno comparava o serviço do plano com
+  /// o serviço (antigo) do bloco, não encontrava nada, e mostrava-lhe
+  /// "o teu plano não inclui treino livre" — a alunos cujo plano
+  /// incluía mesmo. Um estúdio inteiro podia ficar sem treino livre
+  /// sem nada, em lado nenhum, dizer porquê.
+  ///
+  /// Não toca em `activeBookingCount` (as Security Rules exigem que
+  /// fique inalterado nesta escrita, mesmo padrão de [updateSlot]).
+  Future<int> retargetSlots({
+    required String weekId,
+    required String serviceId,
+  });
+
   /// Fase 8 (auditoria funcional, UC17-A fechado) — remover um bloco
   /// só é permitido ANTES de a semana ser publicada (Security Rules).
   /// Depois de publicada, um bloco só pode ser esvaziado (reduzir a
