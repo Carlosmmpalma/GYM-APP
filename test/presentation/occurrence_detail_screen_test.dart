@@ -15,6 +15,8 @@ import 'package:gym_saas/presentation/screens/occurrence_detail_screen.dart';
 import 'package:gym_saas/repositories/session_occurrence_repository.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:gym_saas/application/providers/plan_providers.dart';
+import 'package:gym_saas/repositories/catalogue_admin_repository.dart';
 
 const _tenantId = 'tenant_test';
 const _occurrenceId = 'occ_1';
@@ -54,8 +56,22 @@ SessionOccurrence _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
 /// bookings escolhidos, decrementa `activeBookingCount`, atualiza
 /// `capacity`. O ecrã só precisa de reagir a sucesso/erro, não de
 /// validar a lógica de negócio da função em si.
+class _FakeCatalogueAdminRepository implements CatalogueAdminRepository {
+  ({CatalogueKind kind, String id})? lastDelete;
+
+  @override
+  Future<void> delete({
+    required CatalogueKind kind,
+    required String id,
+  }) async {
+    lastDelete = (kind: kind, id: id);
+  }
+}
+
 class _FakeSessionOccurrenceRepository implements SessionOccurrenceRepository {
   _FakeSessionOccurrenceRepository(this._firestore, this._tenantId);
+
+  FakeFirebaseFirestore get firestoreForTest => _firestore;
 
   final FakeFirebaseFirestore _firestore;
   final String _tenantId;
@@ -111,8 +127,9 @@ class _FakeSessionOccurrenceRepository implements SessionOccurrenceRepository {
 
   @override
   Stream<List<SessionOccurrence>> watchUpcomingOccurrencesForServices(
-    Set<String> serviceIds,
-  ) =>
+    Set<String> serviceIds, {
+    int? weeksAhead,
+  }) =>
       const Stream.empty();
 
   @override
@@ -230,7 +247,34 @@ void main() {
     return firestore;
   }
 
-  Widget buildApp(FakeFirebaseFirestore firestore) {
+  /// A mesma aula, mas sem ninguém marcado — o caso "criei por
+  /// engano".
+  Future<FakeFirebaseFirestore> seedEmptyOccurrence({String? seriesId}) async {
+    final firestore = FakeFirebaseFirestore();
+    await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('sessionOccurrences')
+        .doc(_occurrenceId)
+        .set({
+      'serviceId': 'service_1',
+      'seriesId': seriesId,
+      'startAt':
+          Timestamp.fromDate(DateTime.now().add(const Duration(days: 1))),
+      'endAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(days: 1, hours: 1))),
+      'capacity': 6,
+      'status': 'scheduled',
+      'activeBookingCount': 0,
+    });
+    return firestore;
+  }
+
+  Widget buildAppInternal(
+    FakeFirebaseFirestore firestore,
+    _FakeSessionOccurrenceRepository repository, {
+    CatalogueAdminRepository? catalogueAdmin,
+  }) {
     return ProviderScope(
       overrides: [
         tenantAppConfigProvider.overrideWithValue(
@@ -238,9 +282,9 @@ void main() {
         ),
         firestoreProvider.overrideWithValue(firestore),
         functionsProvider.overrideWithValue(_MockFirebaseFunctions()),
-        sessionOccurrenceRepositoryProvider.overrideWithValue(
-          _FakeSessionOccurrenceRepository(firestore, _tenantId),
-        ),
+        sessionOccurrenceRepositoryProvider.overrideWithValue(repository),
+        if (catalogueAdmin != null)
+          catalogueAdminRepositoryProvider.overrideWithValue(catalogueAdmin),
         currentAppUserProvider.overrideWith(
           (ref) => Stream.value(
             const AppUser(
@@ -266,6 +310,18 @@ void main() {
       ),
     );
   }
+
+  /// Variante que recebe o repositório já construído, para os testes
+  /// que precisam de inspecionar o que ele registou.
+  Widget buildAppWith(
+    _FakeSessionOccurrenceRepository repository, {
+    CatalogueAdminRepository? catalogueAdmin,
+  }) =>
+      buildAppInternal(repository.firestoreForTest, repository,
+          catalogueAdmin: catalogueAdmin);
+
+  Widget buildApp(FakeFirebaseFirestore firestore) => buildAppInternal(
+      firestore, _FakeSessionOccurrenceRepository(firestore, _tenantId));
 
   testWidgets('mostra os inscritos e regista presença', (tester) async {
     final firestore = await seedFirestore(capacity: 3);
@@ -382,5 +438,63 @@ void main() {
         .get();
     expect(occurrenceDoc.data()?['capacity'], 1);
     expect(occurrenceDoc.data()?['activeBookingCount'], 1);
+  });
+  testWidgets('com inscritos, a única saída é cancelar', (tester) async {
+    await tester.pumpWidget(buildApp(await seedFirestore(capacity: 6)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cancelar sessão'), findsOneWidget);
+    // Eliminar deixaria marcações por libertar e utilizações por
+    // devolver — a cascata que só o cancelamento faz.
+    expect(find.text('Eliminar sessão'), findsNothing);
+  });
+
+  testWidgets('aula avulsa e vazia oferece eliminar em vez de cancelar',
+      (tester) async {
+    // Cancelar uma aula que nunca chegou a existir deixava-a no
+    // calendário para sempre a dizer "cancelada" — ruído permanente por
+    // causa de um engano de dois minutos.
+    final catalogue = _FakeCatalogueAdminRepository();
+    final repository = _FakeSessionOccurrenceRepository(
+      await seedEmptyOccurrence(),
+      _tenantId,
+    );
+    await tester.pumpWidget(
+      buildAppWith(repository, catalogueAdmin: catalogue),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Eliminar sessão'), findsOneWidget);
+    expect(find.text('Cancelar sessão'), findsNothing);
+
+    await tester.tap(find.text('Eliminar sessão'));
+    await tester.pumpAndSettle();
+
+    // Confirmação primeiro, sempre.
+    expect(find.textContaining('Eliminar'), findsWidgets);
+    expect(catalogue.lastDelete, isNull);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
+    await tester.pumpAndSettle();
+
+    expect(catalogue.lastDelete?.kind, CatalogueKind.occurrence);
+    expect(catalogue.lastDelete?.id, _occurrenceId);
+  });
+
+  testWidgets('aula gerada por série NÃO oferece eliminar, mesmo vazia',
+      (tester) async {
+    // As aulas de série têm id determinístico (`{seriesId}_{data}`) e o
+    // cron da noite recria-as com o mesmo id. Um botão "eliminar" ali
+    // seria um botão que se desfaz sozinho — e que faria reaparecer as
+    // marcações antigas agarradas à aula nova.
+    final repository = _FakeSessionOccurrenceRepository(
+      await seedEmptyOccurrence(seriesId: 'series_1'),
+      _tenantId,
+    );
+    await tester.pumpWidget(buildAppWith(repository));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Eliminar sessão'), findsNothing);
+    expect(find.text('Cancelar sessão'), findsOneWidget);
   });
 }

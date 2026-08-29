@@ -129,7 +129,11 @@ void main() {
         ),
         workoutSessionRepositoryProvider
             .overrideWithValue(_FakeWorkoutSessionRepository()),
-        exercisesProvider.overrideWith((ref) => Stream.value(exercises)),
+        // O ecrã deixou de carregar a biblioteca inteira: pede só os
+        // exercícios que o plano/histórico deste aluno referencia.
+        exercisesByIdsProvider.overrideWith(
+          (ref, key) async => {for (final e in exercises) e.id: e},
+        ),
         currentAppUserProvider.overrideWith(
           (ref) => Stream.value(
             const AppUser(

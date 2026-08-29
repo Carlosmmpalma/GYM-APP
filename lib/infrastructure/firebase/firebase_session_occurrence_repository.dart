@@ -85,8 +85,9 @@ class FirebaseSessionOccurrenceRepository
 
   @override
   Stream<List<SessionOccurrence>> watchUpcomingOccurrencesForServices(
-    Set<String> serviceIds,
-  ) {
+    Set<String> serviceIds, {
+    int? weeksAhead,
+  }) {
     // Sem direito a nada: nem vale a pena perguntar ao servidor.
     if (serviceIds.isEmpty) {
       return Stream.value(const <SessionOccurrence>[]);
@@ -95,10 +96,23 @@ class FirebaseSessionOccurrenceRepository
       return watchUpcomingOccurrencesAllServices();
     }
 
-    final now = Timestamp.now();
-    return _occurrences
+    final now = DateTime.now();
+    var query = _occurrences
         .where('serviceId', whereIn: serviceIds.toList())
-        .where('startAt', isGreaterThanOrEqualTo: now)
+        .where('startAt', isGreaterThanOrEqualTo: Timestamp.fromDate(now));
+
+    // O limite por DATA substitui o limite por contagem quando existe:
+    // o que interessa é "as próximas duas semanas", não "os próximos
+    // 200 documentos, sejam eles de quando forem".
+    if (weeksAhead != null) {
+      query = query.where(
+        'startAt',
+        isLessThanOrEqualTo:
+            Timestamp.fromDate(now.add(Duration(days: weeksAhead * 7))),
+      );
+    }
+
+    return query
         .orderBy('startAt')
         .limit(_upcomingLimit)
         .snapshots()

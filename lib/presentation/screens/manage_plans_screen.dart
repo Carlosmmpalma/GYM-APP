@@ -70,16 +70,10 @@ class ManagePlansScreen extends ConsumerWidget {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        tooltip: 'Eliminar',
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => confirmAndDeleteCatalogueEntry(
-                          context,
-                          ref,
-                          kind: CatalogueKind.plan,
-                          id: plan.id,
-                          name: plan.name,
-                        ),
+                      CatalogueRowMenu(
+                        kind: CatalogueKind.plan,
+                        id: plan.id,
+                        name: plan.name,
                       ),
                       const Icon(Icons.chevron_right),
                     ],

@@ -2,7 +2,11 @@
 enum CatalogueKind {
   service('service'),
   plan('plan'),
-  modality('modality');
+  modality('modality'),
+  exercise('exercise'),
+  series('series'),
+  staff('staff'),
+  occurrence('occurrence');
 
   const CatalogueKind(this.wireName);
 

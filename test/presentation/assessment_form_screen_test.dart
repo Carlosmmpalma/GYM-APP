@@ -68,6 +68,16 @@ class _FakeAssessmentRepository implements AssessmentRepository {
   }
 
   @override
+  Future<void> deleteAssessment({
+    required String memberId,
+    required String assessmentId,
+  }) async {
+    deletedAssessmentId = assessmentId;
+  }
+
+  String? deletedAssessmentId;
+
+  @override
   Future<void> updateAssessment({
     required String memberId,
     required String assessmentId,

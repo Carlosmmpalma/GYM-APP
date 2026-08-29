@@ -12,6 +12,7 @@ import '../widgets/design_system.dart';
 import 'assessment_list_screen.dart';
 import 'load_evolution_screen.dart';
 import 'workout_history_screen.dart';
+import '../../domain/entities/workout_session.dart';
 
 final _dayFormat = DateFormat('d MMM yyyy', 'pt_PT');
 final _shortDayFormat = DateFormat('d/M', 'pt_PT');
@@ -43,7 +44,16 @@ class MemberStatsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sessionsAsync = ref.watch(workoutSessionsProvider(member.uid));
-    final exercisesAsync = ref.watch(exercisesProvider);
+    // Só os exercícios que aparecem nos treinos deste aluno. Ver a nota
+    // em `ExerciseRepository.getExercisesByIds`.
+    final exercisesAsync = ref.watch(
+      exercisesByIdsProvider(
+        exerciseKeyFor(
+          (sessionsAsync.valueOrNull ?? const <WorkoutSession>[])
+              .expand((s) => s.sets.map((set) => set.exerciseId)),
+        ),
+      ),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -67,10 +77,8 @@ class MemberStatsScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) => ErrorState(error: error),
         data: (sessions) {
-          final exercisesById = <String, Exercise>{
-            for (final e in exercisesAsync.valueOrNull ?? const <Exercise>[])
-              e.id: e,
-          };
+          final exercisesById =
+              exercisesAsync.valueOrNull ?? const <String, Exercise>{};
           final stats = computeMemberStats(
             sessions: sessions,
             exercisesById: exercisesById,

@@ -152,6 +152,14 @@ class FirebaseAssessmentRepository implements AssessmentRepository {
   }
 
   @override
+  Future<void> deleteAssessment({
+    required String memberId,
+    required String assessmentId,
+  }) async {
+    await _assessments(memberId).doc(assessmentId).delete();
+  }
+
+  @override
   Future<void> updateAssessment({
     required String memberId,
     required String assessmentId,

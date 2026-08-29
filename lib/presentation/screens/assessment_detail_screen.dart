@@ -5,8 +5,11 @@ import 'package:intl/intl.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../domain/entities/assessment.dart';
 import '../../domain/entities/member_summary.dart';
+import '../../application/providers/training_providers.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/firebase_error_text.dart';
 import 'assessment_form_screen.dart';
+import '../widgets/catalogue_delete.dart';
 
 final _dateFormat = DateFormat('d MMM yyyy', 'pt_PT');
 
@@ -41,6 +44,12 @@ class AssessmentDetailScreen extends ConsumerWidget {
                       member: member, assessment: assessment),
                 ),
               ),
+            ),
+          if (canEdit)
+            IconButton(
+              tooltip: 'Eliminar',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _delete(context, ref),
             ),
         ],
       ),
@@ -115,5 +124,37 @@ class AssessmentDetailScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Uma avaliação lançada no aluno errado não é histórico de nada — é
+  /// um engano, e nenhum outro documento aponta para ela.
+  Future<void> _delete(BuildContext context, WidgetRef ref) async {
+    final confirmed = await confirmDestructiveAction(
+      context,
+      title: 'Eliminar esta avaliação?',
+      consequence: 'As medidas desta data desaparecem do histórico de '
+          '${member.name} e dos gráficos de evolução.',
+    );
+    if (!confirmed || !context.mounted) return;
+
+    try {
+      await ref.read(assessmentRepositoryProvider).deleteAssessment(
+            memberId: member.uid,
+            assessmentId: assessment.id,
+          );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Avaliação eliminada.')),
+      );
+      Navigator.of(context).maybePop();
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userFacingError(e,
+              fallback: 'Não foi possível eliminar. Tenta outra vez.')),
+        ),
+      );
+    }
   }
 }

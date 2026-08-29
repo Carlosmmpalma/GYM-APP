@@ -119,8 +119,11 @@ void main() {
           ),
         ),
         membersProvider.overrideWith((ref) => Stream.value(_members)),
-        exercisesProvider
-            .overrideWith((ref) => Stream.value(const [_exercise])),
+        // O ecrã pede só os exercícios do plano do aluno, não a
+        // biblioteca inteira.
+        exercisesByIdsProvider.overrideWith(
+          (ref, key) async => {_exercise.id: _exercise},
+        ),
         trainingPlanProvider.overrideWith(
           (ref, memberId) => Stream.value(plan),
         ),

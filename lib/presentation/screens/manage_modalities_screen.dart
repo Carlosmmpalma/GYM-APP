@@ -60,16 +60,10 @@ class ManageModalitiesScreen extends ConsumerWidget {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        tooltip: 'Eliminar',
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => confirmAndDeleteCatalogueEntry(
-                          context,
-                          ref,
-                          kind: CatalogueKind.modality,
-                          id: modality.id,
-                          name: modality.name,
-                        ),
+                      CatalogueRowMenu(
+                        kind: CatalogueKind.modality,
+                        id: modality.id,
+                        name: modality.name,
                       ),
                       const Icon(Icons.chevron_right),
                     ],

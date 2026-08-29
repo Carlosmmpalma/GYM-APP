@@ -109,6 +109,8 @@ beforeEach(async () => {
     'subscriptions',
     'sessionSeries',
     'sessionOccurrences',
+    'exercises',
+    'members',
   ]) {
     const snap = await db.collection(`tenants/${TENANT_ID}/${collection}`).get();
     await Promise.all(snap.docs.map((doc) => db.recursiveDelete(doc.ref)));
@@ -287,6 +289,198 @@ describe('deleteCatalogueEntry', () => {
     } catch (error) {
       const details = (error as { details?: { blockers?: string[] } }).details;
       expect(details?.blockers).toContain('1 instrutor(es) com esta modalidade atribuída');
+    }
+  });
+
+  it('elimina um exercício que ninguém tem prescrito', async () => {
+    await db.doc(`tenants/${TENANT_ID}/exercises/ex_livre`).set({
+      name: 'Exercício a mais',
+      description: '',
+      muscleGroup: 'Core',
+    });
+
+    await del(managerFunctions, 'exercise', 'ex_livre');
+
+    expect((await db.doc(`tenants/${TENANT_ID}/exercises/ex_livre`).get()).exists).toBe(false);
+  });
+
+  it('recusa um exercício prescrito no plano de um aluno', async () => {
+    await db.doc(`tenants/${TENANT_ID}/exercises/ex_usado`).set({
+      name: 'Agachamento',
+      description: '',
+      muscleGroup: 'Pernas',
+    });
+    await db.doc(`tenants/${TENANT_ID}/members/aluno_x`).set({
+      name: 'Aluno X',
+      memberNumber: '000900',
+      status: 'active',
+    });
+    await db.doc(`tenants/${TENANT_ID}/members/aluno_x/planEntries/entry_1`).set({
+      exerciseId: 'ex_usado',
+      sets: 3,
+      reps: '10',
+    });
+
+    try {
+      await del(managerFunctions, 'exercise', 'ex_usado');
+      expect.unreachable('devia ter recusado');
+    } catch (error) {
+      const details = (error as { details?: { blockers?: string[] } }).details;
+      expect(details?.blockers).toContain('1 prescrição(ões) em planos de alunos');
+    }
+  });
+
+  it('a biblioteca de exercícios também é do instrutor', async () => {
+    // Instrutores já criam e editam exercícios (`firestore.rules`);
+    // poderem eliminar da mesma é coerente. Tudo o resto continua
+    // exclusivo do Gestor — ver o teste do serviço mais abaixo.
+    await db.doc(`tenants/${TENANT_ID}/exercises/ex_do_instrutor`).set({
+      name: 'Criado pelo instrutor',
+      description: '',
+      muscleGroup: 'Peito',
+    });
+
+    await del(instructorFunctions, 'exercise', 'ex_do_instrutor');
+
+    expect(
+      (await db.doc(`tenants/${TENANT_ID}/exercises/ex_do_instrutor`).get()).exists,
+    ).toBe(false);
+  });
+
+  it('recusa uma série que já gerou aulas', async () => {
+    await db.doc(`tenants/${TENANT_ID}/sessionSeries/serie_com_aulas`).set({
+      serviceId: 'qualquer',
+      dayOfWeek: 1,
+      startTime: '18:00',
+      durationMinutes: 60,
+      capacity: 6,
+      status: 'active',
+    });
+    await db.doc(`tenants/${TENANT_ID}/sessionOccurrences/occ_1`).set({
+      seriesId: 'serie_com_aulas',
+      serviceId: 'qualquer',
+      status: 'scheduled',
+      capacity: 6,
+      activeBookingCount: 0,
+    });
+
+    try {
+      await del(managerFunctions, 'series', 'serie_com_aulas');
+      expect.unreachable('devia ter recusado');
+    } catch (error) {
+      const details = (error as { details?: { blockers?: string[] } }).details;
+      expect(details?.blockers).toContain('1 aula(s) já geradas por esta série');
+    }
+  });
+
+  it('elimina staff sem aulas, e a conta de autenticação com ele', async () => {
+    const uid = 'delcat_staff_orfao';
+    await adminAuth
+      .createUser({ uid, email: `${uid}@example.test`, password: 'TestPass123!' })
+      .catch(() => undefined);
+    await db.doc(`tenants/${TENANT_ID}/staff/${uid}`).set({
+      name: 'Instrutor criado por engano',
+      email: `${uid}@example.test`,
+      roles: ['instructor'],
+      status: 'active',
+    });
+    await db
+      .doc(`tenants/${TENANT_ID}/staff/${uid}/private/profile`)
+      .set({ phone: '910000000' });
+
+    await del(managerFunctions, 'staff', uid);
+
+    expect((await db.doc(`tenants/${TENANT_ID}/staff/${uid}`).get()).exists).toBe(false);
+    // Os dados pessoais vivem numa subcoleção: apagar só o pai
+    // deixava-a órfã e legível por quem soubesse o caminho.
+    const priv = await db.collection(`tenants/${TENANT_ID}/staff/${uid}/private`).get();
+    expect(priv.empty).toBe(true);
+    // E a conta deixa de conseguir autenticar-se.
+    await expect(adminAuth.getUser(uid)).rejects.toThrow();
+  });
+
+  it('um Gestor não se elimina a si próprio', async () => {
+    // Ficaria trancado fora, a precisar exatamente do programador que
+    // isto existe para dispensar.
+    await expect(del(managerFunctions, 'staff', MANAGER_ID)).rejects.toMatchObject({
+      code: 'functions/failed-precondition',
+    });
+    expect((await db.doc(`tenants/${TENANT_ID}/staff/${MANAGER_ID}`).get()).exists).toBe(true);
+  });
+
+  it('elimina uma aula avulsa vazia E as subcoleções dela', async () => {
+    // `activeBookingCount == 0` NÃO quer dizer "sem marcações":
+    // cancelar põe `status: 'cancelled'` e deixa o documento. Apagar só
+    // o pai deixava-o órfão — e como as aulas de série têm id
+    // determinístico, voltava a aparecer agarrado à aula recriada.
+    await db.doc(`tenants/${TENANT_ID}/sessionOccurrences/occ_avulsa`).set({
+      serviceId: 'svc',
+      seriesId: null,
+      status: 'scheduled',
+      capacity: 6,
+      activeBookingCount: 0,
+    });
+    await db
+      .doc(`tenants/${TENANT_ID}/sessionOccurrences/occ_avulsa/bookings/aluno_1`)
+      .set({ memberId: 'aluno_1', status: 'cancelled' });
+    await db
+      .doc(`tenants/${TENANT_ID}/sessionOccurrences/occ_avulsa/waitlist/aluno_2`)
+      .set({ memberId: 'aluno_2', position: 1 });
+
+    await del(managerFunctions, 'occurrence', 'occ_avulsa');
+
+    expect(
+      (await db.doc(`tenants/${TENANT_ID}/sessionOccurrences/occ_avulsa`).get()).exists,
+    ).toBe(false);
+    const bookings = await db
+      .collection(`tenants/${TENANT_ID}/sessionOccurrences/occ_avulsa/bookings`)
+      .get();
+    const waitlist = await db
+      .collection(`tenants/${TENANT_ID}/sessionOccurrences/occ_avulsa/waitlist`)
+      .get();
+    expect(bookings.empty).toBe(true);
+    expect(waitlist.empty).toBe(true);
+  });
+
+  it('recusa uma aula com alunos inscritos', async () => {
+    await db.doc(`tenants/${TENANT_ID}/sessionOccurrences/occ_cheia`).set({
+      serviceId: 'svc',
+      seriesId: null,
+      status: 'scheduled',
+      capacity: 6,
+      activeBookingCount: 2,
+    });
+
+    try {
+      await del(managerFunctions, 'occurrence', 'occ_cheia');
+      expect.unreachable('devia ter recusado');
+    } catch (error) {
+      const details = (error as { details?: { blockers?: string[] } }).details;
+      expect(details?.blockers).toContain('2 aluno(s) inscritos');
+    }
+  });
+
+  it('recusa uma aula gerada por série, mesmo vazia', async () => {
+    // O id é determinístico (`{seriesId}_{data}`) e o cron da noite
+    // recria-a. Apagar era trabalho que se desfaz sozinho.
+    await db
+      .doc(`tenants/${TENANT_ID}/sessionOccurrences/serie_x_2026-09-01`)
+      .set({
+        serviceId: 'svc',
+        seriesId: 'serie_x',
+        status: 'scheduled',
+        capacity: 6,
+        activeBookingCount: 0,
+      });
+
+    try {
+      await del(managerFunctions, 'occurrence', 'serie_x_2026-09-01');
+      expect.unreachable('devia ter recusado');
+    } catch (error) {
+      const details = (error as { details?: { blockers?: string[] } }).details;
+      expect(details?.blockers).toContain(
+        'a série que a gera (voltaria a ser criada esta noite)',
+      );
     }
   });
 

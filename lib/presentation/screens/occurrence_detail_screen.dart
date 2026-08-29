@@ -22,6 +22,8 @@ import '../widgets/occurrence_dialogs.dart';
 import 'manage_series_screen.dart';
 import 'group_workout_screen.dart';
 import 'send_notification_screen.dart';
+import '../widgets/catalogue_delete.dart';
+import '../../repositories/catalogue_admin_repository.dart';
 
 /// Fase 6 — "detalhe da aula" (mockup: inscritos + presença/UC10-A +
 /// sessão extra/UC08-A + remarcar/UC10-B + editar/cancelar/UC18).
@@ -122,14 +124,38 @@ class OccurrenceDetailScreen extends ConsumerWidget {
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Theme.of(context).colorScheme.error,
-                        ),
-                        onPressed: () =>
-                            _cancelSession(context, ref, activeBookings.length),
-                        child: const Text('Cancelar sessão'),
-                      ),
+                      // Com ninguém inscrito, "cancelar" deixava no
+                      // calendário uma aula cancelada que nunca chegou
+                      // a existir — ruído permanente por causa de um
+                      // engano de dois minutos. Aí a ação certa é
+                      // eliminar, e é a única que aparece.
+                      //
+                      // Só para aulas AVULSAS: as geradas por série têm
+                      // id determinístico e o cron da noite recria-as
+                      // com o mesmo id. Oferecer "eliminar" aí seria
+                      // oferecer um botão que se desfaz sozinho — para
+                      // essas, cancelar é a operação certa, e acabar
+                      // com elas de vez faz-se na série.
+                      child: activeBookings.isEmpty &&
+                              occurrence.seriesId == null
+                          ? OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor:
+                                    Theme.of(context).colorScheme.error,
+                              ),
+                              onPressed: () =>
+                                  _deleteSession(context, ref, occurrenceId),
+                              child: const Text('Eliminar sessão'),
+                            )
+                          : OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor:
+                                    Theme.of(context).colorScheme.error,
+                              ),
+                              onPressed: () => _cancelSession(
+                                  context, ref, activeBookings.length),
+                              child: const Text('Cancelar sessão'),
+                            ),
                     ),
                   ],
                 ),
@@ -340,6 +366,25 @@ class OccurrenceDetailScreen extends ConsumerWidget {
                 fallback: 'Não foi possível cancelar. Tenta outra vez.'))),
       );
     }
+  }
+
+  Future<void> _deleteSession(
+    BuildContext context,
+    WidgetRef ref,
+    String occurrenceId,
+  ) async {
+    // Passa pela Cloud Function e não por escrita direta: as
+    // subcoleções da aula (`bookings` com marcações já canceladas,
+    // `waitlist`) são `write: false` para o cliente, e apagar só o
+    // documento pai deixava-as órfãs. Ver `deleteCatalogueEntry`.
+    final deleted = await confirmAndDeleteCatalogueEntry(
+      context,
+      ref,
+      kind: CatalogueKind.occurrence,
+      id: occurrenceId,
+      name: 'esta aula',
+    );
+    if (deleted && context.mounted) Navigator.of(context).maybePop();
   }
 
   Future<void> _editOccurrence(
@@ -736,14 +781,23 @@ class _MemberTile extends ConsumerWidget {
   }
 
   Future<void> _reschedule(BuildContext context, WidgetRef ref) async {
-    final allUpcoming =
-        ref.read(allUpcomingOccurrencesProvider).valueOrNull ?? const [];
+    // `.future` e não `valueOrNull`: NADA neste ecrã observa
+    // `allUpcomingOccurrencesProvider`, por isso quando se chega aqui
+    // vindo do calendário do instrutor o provider nunca foi ligado —
+    // `valueOrNull` devolvia `null`, o `?? const []` tapava, e o
+    // picker de destinos abria VAZIO. O Gestor concluía que não havia
+    // outra aula para onde remarcar, quando havia.
+    final allUpcoming = await ref.read(allUpcomingOccurrencesProvider.future);
     final candidates = allUpcoming
         .where((o) =>
             o.id != occurrence.id &&
             o.serviceId == occurrence.serviceId &&
             o.status == SessionOccurrenceStatus.scheduled)
         .toList();
+
+    // A leitura acima passou a ser assíncrona; sem esta guarda o ecrã
+    // podia já ter sido fechado quando o diálogo tentasse abrir.
+    if (!context.mounted) return;
 
     final destination = await showDialog<SessionOccurrence>(
       context: context,
@@ -872,6 +926,42 @@ class _RescheduleDialog extends StatelessWidget {
   }
 }
 
+Future<void> _removeFromWaitlist(
+  BuildContext context,
+  WidgetRef ref, {
+  required String occurrenceId,
+  required String memberId,
+  required String name,
+}) async {
+  final confirmed = await confirmDestructiveAction(
+    context,
+    title: 'Tirar $name da lista de espera?',
+    consequence: 'Deixa de ficar com a vaga se alguém cancelar. Pode '
+        'voltar a inscrever-se pela app, e entra no fim da fila.',
+    confirmLabel: 'Tirar da lista',
+  );
+  if (!confirmed || !context.mounted) return;
+
+  try {
+    await ref.read(waitlistRepositoryProvider).leave(
+          occurrenceId: occurrenceId,
+          memberId: memberId,
+        );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$name saiu da lista de espera.')),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(userFacingError(e,
+            fallback: 'Não foi possível tirar da lista. Tenta outra vez.')),
+      ),
+    );
+  }
+}
+
 /// Fase 11 — a lista de espera vista pelo estúdio.
 ///
 /// O aluno vê apenas a sua posição (as Rules não lhe deixam listar a
@@ -927,6 +1017,23 @@ class _WaitlistSection extends ConsumerWidget {
                           membersByUid[indexed.value.memberId]?.name ??
                               indexed.value.memberId,
                           style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
+                      // `leaveWaitlist` já aceitava staff desde que
+                      // existe — só nunca houve por onde carregar. Um
+                      // aluno que pediu para sair por telefone ficava
+                      // na fila a apanhar a vaga seguinte.
+                      IconButton(
+                        tooltip: 'Tirar da lista de espera',
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => _removeFromWaitlist(
+                          context,
+                          ref,
+                          occurrenceId: occurrenceId,
+                          memberId: indexed.value.memberId,
+                          name: membersByUid[indexed.value.memberId]?.name ??
+                              indexed.value.memberId,
                         ),
                       ),
                     ],

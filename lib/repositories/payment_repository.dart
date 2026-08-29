@@ -20,6 +20,39 @@ abstract class PaymentRepository {
   /// no mesmo `WriteBatch` — nunca para um mês passado, que sobrescreveria
   /// silenciosamente o estado do mês atual com o de uma correção
   /// histórica.
+  /// Elimina o registo de mensalidade de um mês.
+  ///
+  /// ⚠️ Isto NÃO é o mesmo que marcar "não pago": é fazer o mês
+  /// desaparecer do histórico, para quando foi lançado no membro
+  /// errado ou em duplicado.
+  ///
+  /// O fluxo de RGPD anonimiza registos de pagamento em vez de os
+  /// apagar, por causa da retenção fiscal — mas isso vale para o
+  /// apagamento de uma PESSOA, onde a alternativa era perder a
+  /// contabilidade de um cliente real. Aqui é o Gestor a corrigir um
+  /// lançamento seu, e a app não é o sistema de faturação do estúdio.
+  /// Assumido explicitamente; se um dia passar a ser, isto tem de
+  /// voltar a fechar.
+  /// O registo de um MÊS concreto para vários membros de uma vez.
+  ///
+  /// O ecrã de mensalidades vivia só no mês corrente, porque o estado
+  /// desse mês está denormalizado em `members/{id}` e sai de graça com a
+  /// lista. Para qualquer outro mês não havia por onde: ver quem pagou
+  /// em Junho obrigava a abrir o histórico de cada membro, um a um.
+  ///
+  /// Isto é uma leitura por membro, e é por isso que só acontece quando
+  /// alguém navega para fora do mês corrente — o caso comum continua a
+  /// não custar nada.
+  Future<Map<String, PaymentRecord>> getRecordsForPeriod({
+    required Iterable<String> memberIds,
+    required String period,
+  });
+
+  Future<void> deletePaymentRecord({
+    required String memberId,
+    required String period,
+  });
+
   Future<void> setPaymentStatus({
     required String memberId,
     required int year,

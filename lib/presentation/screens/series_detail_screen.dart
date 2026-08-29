@@ -10,6 +10,8 @@ import '../widgets/design_system.dart';
 import '../widgets/occurrence_dialogs.dart';
 import 'manage_series_screen.dart';
 import 'occurrence_detail_screen.dart';
+import '../../repositories/catalogue_admin_repository.dart';
+import '../widgets/catalogue_delete.dart';
 
 /// Fase 5 — "ajustar uma semana da série": resumo da [SessionSeries] +
 /// lista das ocorrências já materializadas (`seriesOccurrencesProvider`),
@@ -33,7 +35,21 @@ class SeriesDetailScreen extends ConsumerWidget {
         servicesById[series.serviceId]?.name ?? series.serviceId;
 
     return Scaffold(
-      appBar: AppBar(title: Text(serviceName)),
+      appBar: AppBar(
+        title: Text(serviceName),
+        actions: [
+          // A ação destrutiva vive no detalhe, não na lista: é aqui que
+          // se está a olhar para o que se vai eliminar, e é aqui que um
+          // toque errado custa menos.
+          CatalogueRowMenu(
+            kind: CatalogueKind.series,
+            id: series.id,
+            name: '$serviceName · ${series.startTime}',
+            // Eliminado o que este ecrã mostra, não há ecrã.
+            onDeleted: () => Navigator.of(context).maybePop(),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

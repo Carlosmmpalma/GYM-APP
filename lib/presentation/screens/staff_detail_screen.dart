@@ -13,6 +13,8 @@ import '../../core/theme/app_colors.dart';
 import '../widgets/design_system.dart';
 import '../widgets/personal_data_fields.dart';
 import '../widgets/manager_account_actions.dart';
+import '../../repositories/catalogue_admin_repository.dart';
+import '../widgets/catalogue_delete.dart';
 
 /// Detalhe de staff (Instrutor/Gestor): dados + toggle ativo/inativo.
 /// Mesmo raciocínio de `MemberDetailScreen` (desativar, nunca eliminar
@@ -35,7 +37,21 @@ class StaffDetailScreen extends ConsumerWidget {
         staff;
 
     return Scaffold(
-      appBar: AppBar(title: Text(currentStaff.name)),
+      appBar: AppBar(
+        title: Text(currentStaff.name),
+        actions: [
+          // A ação destrutiva vive no detalhe, não na lista: é aqui que
+          // se está a olhar para o que se vai eliminar, e é aqui que um
+          // toque errado custa menos.
+          CatalogueRowMenu(
+            kind: CatalogueKind.staff,
+            id: currentStaff.uid,
+            name: currentStaff.name,
+            // Eliminado o que este ecrã mostra, não há ecrã.
+            onDeleted: () => Navigator.of(context).maybePop(),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

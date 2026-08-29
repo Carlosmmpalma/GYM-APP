@@ -62,6 +62,40 @@ final exercisesProvider = StreamProvider<List<Exercise>>((ref) {
   return ref.watch(exerciseRepositoryProvider).watchExercises();
 });
 
+/// Chave estável para [exercisesByIdsProvider].
+///
+/// As famílias do Riverpod comparam a chave por `==`, e nem `Set` nem
+/// `List` têm igualdade por valor em Dart: passar a coleção diretamente
+/// criaria um provider novo (e uma leitura nova) a cada reconstrução do
+/// ecrã. Ordenar e juntar numa string dá uma chave que compara bem e é
+/// a mesma para o mesmo conjunto de exercícios, seja qual for a ordem
+/// por que chegaram.
+String exerciseKeyFor(Iterable<String> ids) {
+  final unique = ids.where((id) => id.isNotEmpty).toSet().toList()..sort();
+  return unique.join(',');
+}
+
+/// Só os exercícios de que o ecrã precisa, indexados por id.
+///
+/// A alternativa era [exercisesProvider], que traz a biblioteca INTEIRA
+/// — e é o que os ecrãs do aluno faziam para resolver o nome de meia
+/// dúzia de exercícios. Ver a nota em
+/// `ExerciseRepository.getExercisesByIds`.
+///
+/// `autoDispose` porque o conjunto muda de ecrã para ecrã: manter vivos
+/// os pedidos de todos os planos já abertos não pouparia leitura
+/// nenhuma e só ocuparia memória.
+final exercisesByIdsProvider =
+    FutureProvider.autoDispose.family<Map<String, Exercise>, String>(
+  (ref, key) async {
+    final ids = key.isEmpty ? <String>{} : key.split(',').toSet();
+    if (ids.isEmpty) return const {};
+    final exercises =
+        await ref.watch(exerciseRepositoryProvider).getExercisesByIds(ids);
+    return {for (final exercise in exercises) exercise.id: exercise};
+  },
+);
+
 final trainingPlanRepositoryProvider = Provider<TrainingPlanRepository>((ref) {
   return FirebaseTrainingPlanRepository(
     ref.watch(firestoreProvider),

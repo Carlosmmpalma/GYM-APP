@@ -73,6 +73,19 @@ abstract class WorkoutSessionRepository {
 
   /// Apaga uma série concreta (não necessariamente a última), e com ela
   /// o registo de carga que criou.
+  /// Elimina uma sessão de treino registada, e as cargas que ela
+  /// gerou.
+  ///
+  /// Um treino registado por engano não fica só no histórico — entra
+  /// nas estatísticas do aluno (frequência, evolução de carga, 1RM
+  /// estimado) e distorce-as para sempre. As entradas de `loadHistory`
+  /// desta sessão vão com ela; é exatamente para isso que as Security
+  /// Rules só permitem apagar histórico de carga que tenha `sessionId`.
+  Future<void> deleteSession({
+    required String memberId,
+    required String sessionId,
+  });
+
   Future<void> deleteSet({
     required String memberId,
     required String sessionId,

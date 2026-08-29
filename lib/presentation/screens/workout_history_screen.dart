@@ -8,6 +8,9 @@ import '../../core/theme/app_theme.dart';
 import '../../domain/entities/exercise.dart';
 import '../../domain/entities/workout_session.dart';
 import '../widgets/design_system.dart';
+import '../widgets/catalogue_delete.dart';
+import '../../application/providers/tenant_context_providers.dart';
+import '../../core/utils/firebase_error_text.dart';
 
 final _dateFormat = DateFormat("d 'de' MMMM", 'pt_PT');
 final _timeFormat = DateFormat('HH:mm', 'pt_PT');
@@ -72,6 +75,17 @@ class _WorkoutHistoryScreenState extends ConsumerState<WorkoutHistoryScreen> {
           // marcada, para não se confundir com um treino terminado.
           final finished = sessions.where((s) => !s.isActive).toList();
 
+          // Resolvido UMA vez para o histórico todo, e não por cartão:
+          // um pedido por sessão seria trocar uma leitura grande por
+          // dez pequenas. E só os exercícios que aparecem aqui — a
+          // biblioteca inteira era o que se lia antes.
+          final exercisesById = ref
+                  .watch(exercisesByIdsProvider(exerciseKeyFor(
+                    sessions.expand((s) => s.sets.map((set) => set.exerciseId)),
+                  )))
+                  .valueOrNull ??
+              const <String, Exercise>{};
+
           final counts = <String, int>{};
           for (final session in sessions) {
             counts[session.workoutName] =
@@ -121,6 +135,7 @@ class _WorkoutHistoryScreenState extends ConsumerState<WorkoutHistoryScreen> {
                       session: session,
                       isLatestFinished: finished.isNotEmpty &&
                           finished.first.id == session.id,
+                      exercisesById: exercisesById,
                     ),
                   ),
                 const SizedBox(height: 12),
@@ -218,19 +233,21 @@ class _SessionCard extends ConsumerWidget {
     required this.memberId,
     required this.session,
     required this.isLatestFinished,
+    required this.exercisesById,
   });
 
   final String memberId;
   final WorkoutSession session;
   final bool isLatestFinished;
 
+  /// Resolvido pelo ecrã para o histórico todo — ver a nota lá.
+  final Map<String, Exercise> exercisesById;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final exercisesById = <String, Exercise>{
-      for (final e
-          in ref.watch(exercisesProvider).valueOrNull ?? const <Exercise>[])
-        e.id: e,
-    };
+    final appUser = ref.watch(currentAppUserProvider).valueOrNull;
+    final canManage =
+        (appUser?.isManager ?? false) || (appUser?.isInstructor ?? false);
 
     final duration = session.duration;
     final summary = [
@@ -256,6 +273,16 @@ class _SessionCard extends ConsumerWidget {
                 const Pill('Em curso', tone: PillTone.warn)
               else if (isLatestFinished)
                 const Pill('Mais recente', tone: PillTone.ok),
+              // Só o estúdio elimina treinos: são a base das
+              // estatísticas do aluno, e um aluno a apagar os treinos
+              // maus falseava a própria evolução sem dar por isso.
+              if (canManage)
+                IconButton(
+                  tooltip: 'Eliminar treino',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  onPressed: () => _delete(context, ref),
+                ),
             ],
           ),
           const SizedBox(height: 2),
@@ -323,5 +350,41 @@ class _SessionCard extends ConsumerWidget {
       if (!seen.contains(set.exerciseId)) seen.add(set.exerciseId);
     }
     return seen;
+  }
+
+  /// Um treino registado por engano não fica só no histórico: entra na
+  /// frequência semanal, na evolução de carga e no 1RM estimado, e
+  /// distorce-os para sempre. As cargas registadas nesta sessão vão com
+  /// ela.
+  Future<void> _delete(BuildContext context, WidgetRef ref) async {
+    final confirmed = await confirmDestructiveAction(
+      context,
+      title: 'Eliminar este treino?',
+      consequence: '${session.sets.length} série(s) registadas '
+          'desaparecem, e com elas as cargas que este treino acrescentou '
+          'ao histórico. As estatísticas do aluno passam a contar sem '
+          'ele.',
+      confirmLabel: 'Eliminar treino',
+    );
+    if (!confirmed || !context.mounted) return;
+
+    try {
+      await ref.read(workoutSessionRepositoryProvider).deleteSession(
+            memberId: memberId,
+            sessionId: session.id,
+          );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Treino eliminado.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userFacingError(e,
+              fallback: 'Não foi possível eliminar. Tenta outra vez.')),
+        ),
+      );
+    }
   }
 }

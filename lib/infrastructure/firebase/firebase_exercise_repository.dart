@@ -32,6 +32,24 @@ class FirebaseExerciseRepository implements ExerciseRepository {
   }
 
   @override
+  Future<List<Exercise>> getExercisesByIds(Set<String> ids) async {
+    if (ids.isEmpty) return const [];
+
+    final ordered = ids.toList();
+    final results = <Exercise>[];
+    for (var i = 0; i < ordered.length; i += 30) {
+      final chunk = ordered.sublist(
+        i,
+        i + 30 > ordered.length ? ordered.length : i + 30,
+      );
+      final snapshot =
+          await _exercises.where(FieldPath.documentId, whereIn: chunk).get();
+      results.addAll(snapshot.docs.map(_fromDoc));
+    }
+    return results;
+  }
+
+  @override
   Future<String> createExercise({
     required String name,
     required String description,

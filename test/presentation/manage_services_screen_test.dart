@@ -62,14 +62,23 @@ void main() {
     return firestore;
   }
 
+  /// O caixote do lixo solto na linha virou menu `⋮`: em telemóvel, o
+  /// dedo tapa a linha toda e um toque acidental numa ação sem retorno
+  /// é caro. Dois gestos deliberados antes de sequer ver a confirmação.
+  Future<void> openRowMenu(WidgetTester tester) async {
+    await tester.tap(find.byType(PopupMenuButton<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eliminar'));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('eliminar um serviço pede confirmação primeiro', (tester) async {
     final repository = _FakeCatalogueAdminRepository();
     await tester
         .pumpWidget(buildApp(await seedService(), catalogueAdmin: repository));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.delete_outline));
-    await tester.pumpAndSettle();
+    await openRowMenu(tester);
 
     expect(find.text('Eliminar Aulas de grupo?'), findsOneWidget);
 
@@ -78,8 +87,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.lastDelete, isNull);
 
-    await tester.tap(find.byIcon(Icons.delete_outline));
-    await tester.pumpAndSettle();
+    await openRowMenu(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
     await tester.pumpAndSettle();
 
@@ -97,8 +105,7 @@ void main() {
         .pumpWidget(buildApp(await seedService(), catalogueAdmin: repository));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.delete_outline));
-    await tester.pumpAndSettle();
+    await openRowMenu(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
     await tester.pumpAndSettle();
 

@@ -8,10 +8,11 @@
 //   2. `slots` — mesma visibilidade da semana-mãe (via `get()` ao
 //      documento pai). Manager escreve diretamente (montar a
 //      grelha); `activeBookingCount` continua exclusivo das Cloud
-//      Functions. `delete` (Fase 8, auditoria funcional, UC17-A
-//      fechado) passou a ser permitido só ANTES de a semana ser
-//      publicada e só sem ninguém marcado — depois de publicada
-//      continua sempre `false`, mesmo para o Manager.
+//      Functions. `delete` é permitido ao Manager sempre que o bloco
+//      não tiver ninguém marcado — publicado ou não. A condição
+//      "só antes de publicar" saiu: deixava blocos vazios presos na
+//      grelha depois de publicada, sem proteger nada que
+//      `activeBookingCount == 0` já não proteja.
 //   3. `bookings` — um Aluno só consegue `get` a PRÓPRIA marcação,
 //      nunca `list` nem `get` a de outro membro (é assim que "só vê
 //      contagem, nunca nomes" é garantido do lado do servidor).
@@ -102,6 +103,20 @@ beforeEach(async () => {
         endAt: new Date('2026-08-31T08:00:00Z'),
         capacity: 10,
         activeBookingCount: 2,
+      });
+
+    // Um bloco publicado e VAZIO: existe para o caso que a regra
+    // antiga não sabia distinguir de um bloco cheio.
+    await db
+      .doc(
+        `tenants/${TENANT_A}/freeTrainingSchedules/week_published/slots/slot_published_empty`,
+      )
+      .set({
+        serviceId: 'service_free',
+        startAt: new Date('2026-01-08T08:00:00Z'),
+        endAt: new Date('2026-01-08T09:00:00Z'),
+        capacity: 4,
+        activeBookingCount: 0,
       });
     await db
       .doc(
@@ -313,12 +328,28 @@ describe('Security Rules — slots (Fase 7)', () => {
     );
   });
 
-  it('ninguém consegue apagar um slot de uma semana JÁ PUBLICADA, nem o Manager', async () => {
+  it('um Manager NÃO consegue apagar um slot com alguém marcado', async () => {
     const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
     await assertFails(
       db
         .doc(
           `tenants/${TENANT_A}/freeTrainingSchedules/week_published/slots/slot_published`,
+        )
+        .delete(),
+    );
+  });
+
+  it('um Manager CONSEGUE apagar um slot publicado mas VAZIO', async () => {
+    // A regra exigia também que a semana não estivesse publicada. Isso
+    // apanhava o caso errado: depois de publicar, um bloco sem ninguém
+    // inscrito só podia ir a capacidade 0 e ficava na grelha a dizer
+    // "0/0" — visível aos alunos, sem servir para nada. O que protege
+    // continua a proteger (ver o teste acima); o que era ruído saiu.
+    const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertSucceeds(
+      db
+        .doc(
+          `tenants/${TENANT_A}/freeTrainingSchedules/week_published/slots/slot_published_empty`,
         )
         .delete(),
     );

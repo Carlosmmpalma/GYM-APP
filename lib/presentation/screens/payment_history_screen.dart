@@ -9,6 +9,7 @@ import '../../domain/entities/payment_record.dart';
 import '../widgets/design_system.dart';
 import '../widgets/status_pills.dart';
 import 'manage_payments_screen.dart' show showPaymentStatusDialog;
+import '../widgets/catalogue_delete.dart';
 
 /// Fase 9 (UC27 fechado) — "um registo por mês, nunca só o estado
 /// atual" (mockup: "Histórico de mensalidades"). Acessível ao Gestor
@@ -79,7 +80,20 @@ class PaymentHistoryScreen extends ConsumerWidget {
                         subtitle: record.amount != null
                             ? Text('€ ${record.amount!.toStringAsFixed(2)}')
                             : null,
-                        trailing: PaymentStatusPill(record.status),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            PaymentStatusPill(record.status),
+                            if (canEdit)
+                              IconButton(
+                                tooltip: 'Eliminar registo',
+                                visualDensity: VisualDensity.compact,
+                                icon:
+                                    const Icon(Icons.delete_outline, size: 20),
+                                onPressed: () => _delete(context, ref, record),
+                              ),
+                          ],
+                        ),
                         onTap:
                             canEdit ? () => _edit(context, ref, record) : null,
                       ),
@@ -92,6 +106,46 @@ class PaymentHistoryScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  /// Eliminar NÃO é o mesmo que marcar "não pago": é fazer o mês
+  /// desaparecer do histórico, para quando foi lançado no membro
+  /// errado ou em duplicado. Para corrigir o estado de um mês que
+  /// existe, edita-se — daí as duas ações estarem separadas.
+  Future<void> _delete(
+    BuildContext context,
+    WidgetRef ref,
+    PaymentRecord record,
+  ) async {
+    final label = paymentMonthLabel(record.month, record.year);
+    final confirmed = await confirmDestructiveAction(
+      context,
+      title: 'Eliminar o registo de $label?',
+      consequence: 'O mês desaparece do histórico de ${member.name}, como '
+          'se nunca tivesse sido lançado. Para marcar como não pago, '
+          'toca no registo e muda o estado — isso mantém-no visível.',
+      confirmLabel: 'Eliminar registo',
+    );
+    if (!confirmed || !context.mounted) return;
+
+    try {
+      await ref.read(paymentRepositoryProvider).deletePaymentRecord(
+            memberId: member.uid,
+            period: paymentPeriodKey(DateTime(record.year, record.month)),
+          );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Registo de $label eliminado.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userFacingError(e,
+              fallback: 'Não foi possível eliminar. Tenta outra vez.')),
+        ),
+      );
+    }
   }
 
   Future<void> _edit(
@@ -107,8 +161,15 @@ class PaymentHistoryScreen extends ConsumerWidget {
     );
     if (result == null) return;
 
-    final changedBy = ref.read(currentAppUserProvider).valueOrNull?.uid;
-    if (changedBy == null) return;
+    // `.future` e não `valueOrNull`: se o provider ainda não
+    // tivesse emitido, o `return` seguinte fazia o botão não
+    // fazer NADA — sem erro, sem aviso. É o sintoma mais caro
+    // que uma app pode ter, e já foi reportado duas vezes aqui.
+    final currentUser = await ref.read(currentAppUserProvider.future);
+    // `null` aqui só acontece com a sessão terminada — aí o ecrã
+    // já não devia estar aberto e não há nada a fazer.
+    if (currentUser == null) return;
+    final changedBy = currentUser.uid;
 
     try {
       await ref.read(paymentRepositoryProvider).setPaymentStatus(

@@ -66,12 +66,32 @@ async function clientFor(name: string, uid: string, claims: object) {
   return fns;
 }
 
+/// Espelho de `toDomainLabel` em
+/// `functions/src/lib/loginIdentifier.ts` e
+/// `lib/core/config/login_identifier.dart`.
+function toDomainLabel(tenantId: string): string {
+  const collapsed = tenantId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return collapsed === '' ? 'tenant' : collapsed;
+}
+
 beforeAll(async () => {
   const users = await adminAuth(admin).listUsers(50);
   const leo = users.users.find((u) => u.email === 'leo@nxtperformancestudio.pt');
-  const rita = users.users.find((u) =>
-    u.email?.startsWith('member-000001@nxt_performance_studio'),
-  );
+  // O domínio do email sintético é derivado do `tenantId` e já mudou
+  // uma vez: `nxt_performance_studio` virou `nxt-performance-studio`
+  // quando se descobriu que o Firebase Auth real recusa `_` num
+  // domínio. Este teste tinha o formato antigo escrito à mão.
+  //
+  // Filtrar só por `member-000001@` também não serve: o seed cria um
+  // sócio nº 000001 em DOIS tenants (o real e o fantasma dos testes de
+  // isolamento), e apanhava-se o que viesse primeiro. Deriva-se o
+  // domínio pela mesma regra da app.
+  const ritaEmail = `member-000001@${toDomainLabel('nxt_performance_studio')}.gymsaas.internal`;
+  const rita = users.users.find((u) => u.email === ritaEmail);
 
   if (!leo || !rita) {
     throw new Error(

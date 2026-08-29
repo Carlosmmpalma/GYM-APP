@@ -51,6 +51,53 @@ class FirebasePaymentRepository implements PaymentRepository {
   }
 
   @override
+  Future<Map<String, PaymentRecord>> getRecordsForPeriod({
+    required Iterable<String> memberIds,
+    required String period,
+  }) async {
+    final ids = memberIds.toList();
+    if (ids.isEmpty) return const {};
+
+    // Uma leitura por membro, em paralelo. A alternativa seria um
+    // `collectionGroup('paymentRecords')` filtrado por ano/mês, mas
+    // isso atravessa tenants e exigia um índice de grupo de coleção
+    // novo para poupar pouco: o número de membros de um estúdio é o
+    // número de leituras, e é conhecido.
+    final snapshots = await Future.wait(
+      ids.map((id) => _records(id).doc(period).get()),
+    );
+
+    final result = <String, PaymentRecord>{};
+    for (var i = 0; i < ids.length; i++) {
+      final snapshot = snapshots[i];
+      if (snapshot.exists) result[ids[i]] = _fromDoc(ids[i], snapshot);
+    }
+    return result;
+  }
+
+  @override
+  Future<void> deletePaymentRecord({
+    required String memberId,
+    required String period,
+  }) async {
+    final batch = _firestore.batch();
+    batch.delete(_records(memberId).doc(period));
+
+    // A cópia denormalizada em `members/{id}` existe para a lista de
+    // mensalidades e para o bloqueio de login não custarem uma query
+    // por membro. Apagar o registo sem a limpar deixava o membro a
+    // aparecer "em atraso" (ou "pago") por um mês que já não existe.
+    if (period == paymentPeriodKey(DateTime.now())) {
+      batch.update(_memberDoc(memberId), {
+        'currentPaymentStatus': FieldValue.delete(),
+        'currentPaymentPeriod': FieldValue.delete(),
+      });
+    }
+
+    await batch.commit();
+  }
+
+  @override
   Future<void> setPaymentStatus({
     required String memberId,
     required int year,

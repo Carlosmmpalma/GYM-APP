@@ -41,6 +41,19 @@ class _ManagePaymentsScreenState extends ConsumerState<ManagePaymentsScreen> {
   String _query = '';
   _PaymentFilter? _statusFilter;
 
+  /// O mês que está a ser visto. Começa no corrente.
+  ///
+  /// O ecrã vivia preso a `DateTime.now()`: para saber quem pagou em
+  /// Junho era preciso abrir o histórico de cada membro, um a um. Com
+  /// 50 sócios isso é meia hora de cliques para responder a uma
+  /// pergunta de contabilidade banal.
+  late DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+
+  bool get _isCurrentMonth {
+    final now = DateTime.now();
+    return _month.year == now.year && _month.month == now.month;
+  }
+
   @override
   Widget build(BuildContext context) {
     final membersAsync = ref.watch(membersProvider);
@@ -69,12 +82,31 @@ class _ManagePaymentsScreenState extends ConsumerState<ManagePaymentsScreen> {
           // mentir.
           final relevant = members.where((m) => m.active).toList();
 
+          // No mês corrente, o estado sai do campo denormalizado em
+          // `members/{id}` e não custa leitura nenhuma. Noutro mês,
+          // vai-se buscar os registos — uma leitura por membro, só
+          // quando alguém navega para lá.
+          final periodKey = paymentPeriodKey(_month);
+          final pastRecords = _isCurrentMonth
+              ? const <String, PaymentRecord>{}
+              : ref
+                      .watch(paymentsForPeriodProvider(paymentsPeriodKey(
+                        periodKey,
+                        relevant.map((m) => m.uid),
+                      )))
+                      .valueOrNull ??
+                  const <String, PaymentRecord>{};
+
+          PaymentStatus? statusOf(MemberSummary member) => _isCurrentMonth
+              ? member.currentMonthStatus(now)
+              : pastRecords[member.uid]?.status;
+
           int countOf(_PaymentFilter filter) =>
-              relevant.where((m) => _matchesFilter(m, filter, now)).length;
+              relevant.where((m) => _matches(statusOf(m), filter)).length;
 
           final visible = relevant.where((member) {
             if (_statusFilter != null &&
-                !_matchesFilter(member, _statusFilter!, now)) {
+                !_matches(statusOf(member), _statusFilter!)) {
               return false;
             }
             return searchMatchesAny(
@@ -86,10 +118,46 @@ class _ManagePaymentsScreenState extends ConsumerState<ManagePaymentsScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(
-                paymentMonthLabel(now.month, now.year),
-                style: Theme.of(context).textTheme.titleMedium,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    tooltip: 'Mês anterior',
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: () => setState(
+                        () => _month = DateTime(_month.year, _month.month - 1)),
+                  ),
+                  Text(
+                    paymentMonthLabel(_month.month, _month.year),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  IconButton(
+                    tooltip: 'Mês seguinte',
+                    // Não há mensalidades do futuro para marcar: deixar
+                    // avançar seria oferecer meses vazios para sempre.
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: _isCurrentMonth
+                        ? null
+                        : () => setState(() =>
+                            _month = DateTime(_month.year, _month.month + 1)),
+                  ),
+                ],
               ),
+              if (!_isCurrentMonth)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => setState(() => _month = DateTime(
+                            DateTime.now().year, DateTime.now().month)),
+                        icon: const Icon(Icons.today_outlined, size: 16),
+                        label: const Text('Voltar ao mês atual'),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 4),
               const Text(
                 'Registo manual, sem gateway de pagamento — histórico '
@@ -142,7 +210,11 @@ class _ManagePaymentsScreenState extends ConsumerState<ManagePaymentsScreen> {
                 )
               else
                 for (final member in visible) ...[
-                  _PaymentRow(member: member, now: now),
+                  _PaymentRow(
+                    member: member,
+                    month: _month,
+                    status: statusOf(member),
+                  ),
                   const SizedBox(height: 8),
                 ],
             ],
@@ -153,12 +225,12 @@ class _ManagePaymentsScreenState extends ConsumerState<ManagePaymentsScreen> {
   }
 }
 
-bool _matchesFilter(
-  MemberSummary member,
-  _PaymentFilter filter,
-  DateTime now,
-) {
-  final status = member.currentMonthStatus(now);
+/// Recebe o estado já resolvido, em vez de o ir buscar ao membro.
+///
+/// Antes lia sempre `member.currentMonthStatus(now)` — o campo
+/// denormalizado, que só sabe do mês corrente. Era isso que prendia o
+/// ecrã a um único mês.
+bool _matches(PaymentStatus? status, _PaymentFilter filter) {
   return switch (filter) {
     _PaymentFilter.paid => status == PaymentStatus.paid,
     _PaymentFilter.paidLate => status == PaymentStatus.paidLate,
@@ -172,16 +244,21 @@ bool _matchesFilter(
 class _PaymentRow extends ConsumerWidget {
   const _PaymentRow({
     required this.member,
-    required this.now,
+    required this.month,
+    required this.status,
   });
 
   final MemberSummary member;
-  final DateTime now;
+
+  /// O mês que o ecrã está a mostrar — não necessariamente o corrente.
+  final DateTime month;
+
+  /// Já resolvido pelo ecrã: do campo denormalizado no mês atual, do
+  /// registo lido no Firestore em qualquer outro.
+  final PaymentStatus? status;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status = member.currentMonthStatus(now);
-
     return Card(
       child: ListTile(
         title: Text(member.name),
@@ -210,19 +287,28 @@ class _PaymentRow extends ConsumerWidget {
     final result = await showPaymentStatusDialog(
       context: context,
       title: member.name,
-      periodLabel: paymentMonthLabel(now.month, now.year),
-      initialStatus: member.currentMonthStatus(now),
+      periodLabel: paymentMonthLabel(month.month, month.year),
+      initialStatus: status,
     );
     if (result == null) return;
 
-    final changedBy = ref.read(currentAppUserProvider).valueOrNull?.uid;
-    if (changedBy == null) return;
+    // `.future` e não `valueOrNull`: se o provider ainda não
+    // tivesse emitido, o `return` seguinte fazia o botão não
+    // fazer NADA — sem erro, sem aviso. É o sintoma mais caro
+    // que uma app pode ter, e já foi reportado duas vezes aqui.
+    final currentUser = await ref.read(currentAppUserProvider.future);
+    // `null` aqui só acontece com a sessão terminada — aí o ecrã
+    // já não devia estar aberto e não há nada a fazer.
+    if (currentUser == null) return;
+    final changedBy = currentUser.uid;
 
     try {
       await ref.read(paymentRepositoryProvider).setPaymentStatus(
             memberId: member.uid,
-            year: now.year,
-            month: now.month,
+            // O mês que está no ecrã, não o de hoje: sem isto, corrigir
+            // Junho gravava em Agosto sem ninguém dar por nada.
+            year: month.year,
+            month: month.month,
             status: result.status,
             changedBy: changedBy,
             amount: result.amount,

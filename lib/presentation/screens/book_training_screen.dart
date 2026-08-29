@@ -45,6 +45,14 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
   /// outra modalidade sem ninguém tocar em nada. `null` = "Todas".
   String? _modalityId;
 
+  /// Quantas semanas de horário o ecrã está a mostrar.
+  ///
+  /// Começa em duas — a decisão real de um aluno é "esta semana ou a
+  /// próxima". O horizonte completo (8 semanas, que é o que as séries
+  /// geram) vem a pedido, com o botão no fim da lista. Assim a abertura
+  /// da app lê o que interessa e não o horário inteiro do ginásio.
+  int _weeksAhead = defaultBookingWeeksAhead;
+
   @override
   Widget build(BuildContext context) {
     // Watch (não read) o currentAppUserProvider aqui, no build principal —
@@ -69,7 +77,9 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
     final eligible = eligibleAsync.valueOrNull;
     final occurrencesAsync = eligible == null
         ? const AsyncValue<List<SessionOccurrence>>.loading()
-        : ref.watch(occurrencesForServicesProvider(serviceIdsKey(eligible)));
+        : ref.watch(occurrencesForServicesProvider(
+            (serviceIdsKey: serviceIdsKey(eligible), weeksAhead: _weeksAhead),
+          ));
     final servicesAsync = ref.watch(servicesProvider);
     final staffAsync = ref.watch(staffProvider);
     final modalitiesAsync = ref.watch(modalitiesProvider);
@@ -183,10 +193,19 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
                         )
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
-                          itemCount: rows.length,
+                          // +1 pelo rodapé que alarga o horizonte.
+                          itemCount: rows.length +
+                              (_weeksAhead < maxBookingWeeksAhead ? 1 : 0),
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 8),
                           itemBuilder: (context, index) {
+                            if (index == rows.length) {
+                              return _MoreWeeksFooter(
+                                weeksShown: _weeksAhead,
+                                onExpand: () => setState(
+                                    () => _weeksAhead = maxBookingWeeksAhead),
+                              );
+                            }
                             final row = rows[index];
                             // Cabeçalho de dia. Agrupar não é
                             // decoração: uma lista corrida de 40 aulas
@@ -651,6 +670,39 @@ class _WeeklyUsageLine extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Rodapé que alarga o horário das duas semanas iniciais para as oito
+/// que as séries geram.
+///
+/// Existe para que a abertura da app leia só o que interessa. Um botão
+/// discreto no fim da lista, e não um seletor no topo: quem procura a
+/// aula de amanhã não devia ter de decidir nada primeiro.
+class _MoreWeeksFooter extends StatelessWidget {
+  const _MoreWeeksFooter({required this.weeksShown, required this.onExpand});
+
+  final int weeksShown;
+  final VoidCallback onExpand;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 8),
+      child: Column(
+        children: [
+          Text(
+            'A mostrar as próximas $weeksShown semanas.',
+            style: const TextStyle(color: AppColors.mute, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: onExpand,
+            child: const Text('Ver horário completo'),
+          ),
+        ],
+      ),
     );
   }
 }

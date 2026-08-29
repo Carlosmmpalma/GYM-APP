@@ -14,6 +14,7 @@ import '../../domain/entities/member_summary.dart';
 import '../../domain/entities/workout_session.dart';
 import '../widgets/design_system.dart';
 import '../widgets/exercise_logger.dart';
+import '../../domain/entities/training_plan_entry.dart';
 
 /// Treinar com a turma toda — o instrutor a dar uma aula de grupo.
 ///
@@ -423,11 +424,17 @@ class _AthletePane extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sessionAsync = ref.watch(activeWorkoutSessionProvider(memberId));
     final planAsync = ref.watch(trainingPlanProvider(memberId));
-    final exercisesById = <String, Exercise>{
-      for (final e
-          in ref.watch(exercisesProvider).valueOrNull ?? const <Exercise>[])
-        e.id: e,
-    };
+    // Só os exercícios do plano deste aluno. Numa aula de grupo isto é
+    // por aluno, mas cada pedido traz meia dúzia de documentos em vez
+    // da biblioteca toda — e o cache do Firestore trata das repetições
+    // entre alunos com o mesmo plano.
+    final exercisesById = ref
+            .watch(exercisesByIdsProvider(exerciseKeyFor(
+              (planAsync.valueOrNull ?? const <TrainingPlanEntry>[])
+                  .map((entry) => entry.exerciseId),
+            )))
+            .valueOrNull ??
+        const <String, Exercise>{};
 
     final session = sessionAsync.valueOrNull;
     if (session == null) {

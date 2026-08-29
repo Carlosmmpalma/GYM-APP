@@ -191,13 +191,29 @@ final myBookingsProvider = StreamProvider<List<Booking>>((ref) {
 /// (e um listener Firestore) novo a cada rebuild do ecrã. String vazia
 /// = sem direito a nada, e nesse caso não se faz query nenhuma.
 final occurrencesForServicesProvider = StreamProvider.autoDispose
-    .family<List<SessionOccurrence>, String>((ref, serviceIdsKey) {
-  final serviceIds =
-      serviceIdsKey.isEmpty ? <String>{} : serviceIdsKey.split(',').toSet();
+    .family<List<SessionOccurrence>, ({String serviceIdsKey, int weeksAhead})>(
+        (ref, args) {
+  final serviceIds = args.serviceIdsKey.isEmpty
+      ? <String>{}
+      : args.serviceIdsKey.split(',').toSet();
   return ref
       .watch(sessionOccurrenceRepositoryProvider)
-      .watchUpcomingOccurrencesForServices(serviceIds);
+      .watchUpcomingOccurrencesForServices(
+        serviceIds,
+        weeksAhead: args.weeksAhead,
+      );
 });
+
+/// Quantas semanas o ecrã "Marcar" mostra de início.
+///
+/// As séries geram ocorrências com 8 semanas de antecedência, e o ecrã
+/// trazia-as todas — até 200 documentos a cada abertura da app, para
+/// mostrar as poucas que alguém vai mesmo marcar. Duas semanas cobrem a
+/// decisão real ("esta semana e a próxima"); o resto vem a pedido.
+const defaultBookingWeeksAhead = 2;
+
+/// O horizonte completo que a geração de ocorrências produz.
+const maxBookingWeeksAhead = 8;
 
 /// A chave estável para [occurrencesForServicesProvider].
 String serviceIdsKey(Set<String> serviceIds) =>

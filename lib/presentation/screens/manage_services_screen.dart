@@ -71,16 +71,10 @@ class ManageServicesScreen extends ConsumerWidget {
                         onChanged: (value) =>
                             _setActive(context, ref, service, value),
                       ),
-                      IconButton(
-                        tooltip: 'Eliminar',
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => confirmAndDeleteCatalogueEntry(
-                          context,
-                          ref,
-                          kind: CatalogueKind.service,
-                          id: service.id,
-                          name: service.name,
-                        ),
+                      CatalogueRowMenu(
+                        kind: CatalogueKind.service,
+                        id: service.id,
+                        name: service.name,
                       ),
                     ],
                   ),

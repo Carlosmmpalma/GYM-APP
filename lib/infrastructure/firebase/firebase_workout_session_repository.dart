@@ -251,6 +251,28 @@ class FirebaseWorkoutSessionRepository implements WorkoutSessionRepository {
   }
 
   @override
+  Future<void> deleteSession({
+    required String memberId,
+    required String sessionId,
+  }) async {
+    // As cargas registadas durante a sessão apontam para ela por
+    // `sessionId` — e é essa marca que as Security Rules exigem para
+    // permitir apagar histórico de carga. Uma carga escrita à mão pelo
+    // instrutor não a tem, e continua protegida.
+    final history = await _memberDoc(memberId)
+        .collection('loadHistory')
+        .where('sessionId', isEqualTo: sessionId)
+        .get();
+
+    final batch = _firestore.batch();
+    for (final doc in history.docs) {
+      batch.delete(doc.reference);
+    }
+    batch.delete(_sessions(memberId).doc(sessionId));
+    await batch.commit();
+  }
+
+  @override
   Future<void> deleteSet({
     required String memberId,
     required String sessionId,

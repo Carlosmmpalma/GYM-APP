@@ -5325,6 +5325,341 @@ deixarem de concordar. Na confirmação, as listas são lidas com
 ninguém as observa, e `valueOrNull` devolvia `null` — a verificação
 diria "sem conflito" exatamente quando era mais precisa.
 
+### Mensalidades presas ao mês corrente
+
+O ecrã tinha procura por nome/nº e filtros por estado, mas o mês era
+sempre `DateTime.now()`. Para saber quem pagou em Junho era preciso
+abrir o histórico de cada sócio, um a um — com 50 sócios, meia hora de
+cliques para responder a uma pergunta de contabilidade banal.
+
+Ganhou navegação por mês (‹ Agosto 2026 ›) com "Voltar ao mês atual". O
+botão de avançar está desativado no mês corrente: não há mensalidades do
+futuro para marcar, e deixar avançar seria oferecer meses vazios para
+sempre.
+
+A parte interessante é **porque é que isto não existia**: o estado do
+mês corrente está denormalizado em `members/{id}`, e sai de graça com a
+lista que o ecrã já carrega. Qualquer outro mês obriga a ler
+`paymentRecords/{período}` de cada membro — uma leitura por sócio. Foi
+por isso que se manteve o caminho barato para o mês atual e só se paga
+quando alguém navega para fora dele.
+
+Uma armadilha que valeu a pena evitar: a edição gravava com
+`year: now.year, month: now.month`. Sem a mudar, corrigir Junho
+escreveria em Agosto sem ninguém dar por nada.
+
+### Blocos de treino livre das 08:10 às 08:00
+
+Encontrado nos dados de produção durante a investigação do botão
+"Remover": dois blocos com `endAt` **antes** de `startAt`.
+
+Nenhum dos dois diálogos — criar e editar — verificava que o fim é
+depois do início. Um seletor de hora não impede ninguém de escolher ao
+contrário, e a app mostrava o resultado tal e qual: "08:10–08:00".
+
+Os dois botões passam a estar desativados nesse caso, com a razão
+escrita por baixo ("A hora de fim tem de ser depois da de início") —
+mesmo princípio do menu "Remover": um controlo desativado tem de dizer
+porquê.
+
+A decisão vive numa função pura (`endsAfterStart`) com testes próprios.
+A ligação aos botões não dá para cobrir num teste de widget sem
+reimplementar o `showTimePicker` do sistema — assinalado, não escondido.
+
+### Varredura geral — o que a leitura do código encontrou
+
+Pedida uma passagem por tudo à procura de bugs. Quatro achados, e o
+segundo era meu, de ontem.
+
+#### 🔴 "Remarcar" abria sempre sem destinos nenhuns
+
+`OccurrenceDetailScreen._reschedule` lia
+`allUpcomingOccurrencesProvider` com `valueOrNull` — e **nada naquele
+ecrã observa esse provider**. Quando se chega à aula pelo calendário do
+instrutor, o provider nunca foi ligado, `valueOrNull` devolve `null`, o
+`?? const []` tapa, e o seletor de destinos abre **vazio**.
+
+O Gestor concluía que não havia outra aula para onde remarcar o aluno,
+quando havia. Sem erro, sem aviso — o pior tipo de falha.
+
+É a terceira vez que esta classe de bug aparece nesta app (o botão
+"Iniciar" do treino de grupo e o registo de presenças foram as outras
+duas). A correção é sempre a mesma: `await ref.read(provider.future)`.
+
+#### 🔴 Eliminar uma aula deixava marcações órfãs — e as de série voltavam
+
+Isto foi introduzido por mim na ronda das eliminações, e a Rule que
+escrevi parecia suficiente. Não era, por duas razões:
+
+1. **`activeBookingCount == 0` não quer dizer "sem marcações".**
+   Cancelar põe `status: 'cancelled'` e **deixa o documento**. Apagar a
+   aula deixava esses documentos órfãos — e o cliente não lhes pode
+   tocar, porque `bookings` e `waitlist` são `write: false`.
+2. **As aulas geradas por série têm id determinístico**
+   (`{seriesId}_{data}`). O cron das 03:00 recriava-as com o MESMO id, e
+   as órfãs voltavam a aparecer agarradas à aula nova. Além de o próprio
+   botão ser trabalho que se desfaz sozinho.
+
+A Rule voltou a `false` e a operação passou para `deleteCatalogueEntry`,
+que apaga recursivamente e recusa aulas de série — para essas, cancelar
+é a operação certa, e acabar com elas de vez faz-se na série. O ecrã só
+oferece "Eliminar sessão" a aulas **avulsas e vazias**.
+
+#### 🟠 Quatro botões que não faziam nada se o utilizador não estivesse resolvido
+
+`manage_payments`, `payment_history`, `training_plan_editor` e
+`free_training_slot_detail` liam `currentAppUserProvider.valueOrNull` e
+faziam `if (x == null) return;` — um no-op silencioso. Estão hoje
+mascarados por `HomeScreen` observar o provider, mas é uma dependência
+invisível: qualquer mudança de navegação partia-os sem um único teste a
+queixar-se. Passaram todos a `.future`, com o `null` a significar só o
+que significa mesmo (sessão terminada).
+
+#### 🟠 Índice em falta: `subscriptions (planId, status)`
+
+`syncPlanSubscriptions` procura as subscrições ativas de um plano, e o
+par irmão (`memberId + status`) está declarado desde a Fase 3 — este
+não. O Firestore consegue muitas vezes servir queries só de igualdade
+juntando índices de campo único, por isso pode nunca ter falhado; mas o
+emulador **nunca valida índices**, que é exatamente como o bug do `_` no
+email chegou a produção. Declarado.
+
+#### O que verifiquei e estava bem
+
+Todas as outras queries (13 compostas no cliente, 8 nas funções) têm
+índice; os `catch` silenciosos são todos deliberados e documentados; não
+há TODOs por resolver; `workoutSessions.sets` é um array no documento,
+por isso apagar a sessão não deixa nada para trás; os ids dos blocos de
+treino livre são gerados pelo Firestore, por isso não há o problema de
+reaparecimento que as aulas de série têm.
+
+Verificado: **344 testes Flutter** · **324 contra o Emulator Suite**.
+
+### O botão "Remover" que ficou cinzento
+
+Reportado logo a seguir, e é o tipo de falha que uma mudança de regras
+deixa para trás: as Security Rules passaram a permitir eliminar um bloco
+de treino livre vazio **mesmo depois de a semana ser publicada**, mas o
+ecrã continuava a desativar a opção pela condição antiga (`status !=
+published`). A regra dizia sim, a interface dizia não.
+
+Duas correções, e a segunda importa mais do que a primeira:
+
+1. A condição no ecrã passou a ser a mesma da Rule — `activeBookingCount
+   == 0`, e nada mais.
+2. Quando o item **está** desativado (porque há inscritos), o rótulo
+   passa a dizer porquê: **"Remover — tem inscritos"**. Um item cinzento
+   sem explicação é exatamente o que faz alguém perguntar "porque não
+   consigo tocar aqui?" — e a resposta tem de estar onde a pergunta
+   nasce, não numa mensagem que só aparece depois de tocar.
+
+O texto da confirmação também mentia ("só é possível remover blocos
+antes de a semana ser publicada") e passou a dizer o que acontece de
+facto — incluindo o aviso de que, numa semana publicada, o horário
+desaparece já da app dos alunos.
+
+Varri o resto da app à procura do mesmo padrão. Os outros controlos
+desativados são todos "enquanto guarda", que se explicam sozinhos.
+
+Nos testes, `.first`/`.last` sobre `PopupMenuButton` não servia: o
+`Scaffold` pinta o body antes do `AppBar`, por isso a ordem no widget
+tree é o contrário da ordem no ecrã, e o teste abria o menu errado sem
+se queixar. Passaram a usar `find.descendant` do `AppBar` e do `Card`.
+
+### Varredura de custo — ler menos
+
+Feita a pedido, depois de aparecer 1 cêntimo de custo em produção. O
+cêntimo não era uso: eram as imagens de contentor dos deploys (33
+funções, várias publicações). O uso estava em **0% da quota de
+invocações** e **0,1% da de escritas**.
+
+Mas a varredura encontrou duas leituras desproporcionadas, ambas no
+caminho mais frequente que existe — um aluno a abrir a app.
+
+#### A biblioteca de exercícios inteira, por aluno
+
+`exercisesProvider` traz TODOS os exercícios, e cinco ecrãs do aluno
+dependiam dele (o plano, o treino em curso, o histórico, as
+estatísticas, o treino de grupo) para resolver o nome de meia dúzia de
+exercícios.
+
+O problema não era o número de hoje — era a métrica: **o custo crescia
+com o tamanho da biblioteca, não com o que o aluno treina.**
+
+| Biblioteca | 50 alunos/dia | quota diária |
+|---|---|---|
+| 61 exercícios | ~3 050 leituras/dia | ~6% |
+| 300 exercícios | ~15 000 leituras/dia | ~30% |
+
+`ExerciseRepository.getExercisesByIds` traz só os referenciados
+(`whereIn`, em blocos de 30 porque é o limite do Firestore), e
+`exercisesByIdsProvider` indexa-os por id. Passa de 61 para ~8, e deixa
+de crescer com a biblioteca.
+
+Dois detalhes que a implementação obrigou a resolver:
+
+* **A chave da família** é uma string ordenada, não um `Set`. Em Dart
+  dois `Set` com o mesmo conteúdo não são iguais, por isso passar a
+  coleção diretamente criaria um provider — e uma leitura — nova a cada
+  reconstrução do ecrã. O mesmo raciocínio que `serviceIdsKey` já usava
+  para as ocorrências.
+* **No histórico de treinos, a resolução é feita uma vez para a lista
+  toda**, não por cartão: um pedido por sessão seria trocar uma leitura
+  grande por dez pequenas.
+
+Os dois ecrãs que precisam mesmo da biblioteca completa — a própria
+biblioteca e o seletor do instrutor — continuam com `exercisesProvider`.
+
+#### As 8 semanas de horário, para marcar a aula de amanhã
+
+`_upcomingLimit = 200` limitava por CONTAGEM. As séries geram
+ocorrências com 8 semanas de antecedência, portanto o ecrã "Marcar"
+descarregava o calendário inteiro do ginásio a cada abertura, para
+mostrar as poucas aulas que alguém vai mesmo marcar.
+
+`watchUpcomingOccurrencesForServices` ganhou `weeksAhead`, e o ecrã
+começa em **duas semanas** com um "Ver horário completo" no fim da
+lista. A decisão real de um aluno é "esta semana ou a próxima"; o resto
+vem a pedido.
+
+O botão fica no fim da lista e não num seletor no topo de propósito:
+quem procura a aula de amanhã não devia ter de decidir o horizonte
+antes de ver seja o que for.
+
+#### O que já estava bem
+
+Vale a pena registar, porque foi verificado e não presumido:
+
+* Os **lembretes de hora a hora** saltam as sessões já avisadas sem ler
+  as marcações delas, e marcam até as sessões vazias para não as reler.
+  ~300 leituras/dia.
+* O **calendário do instrutor** não abre listener para aulas canceladas
+  ou vazias.
+* A **lista de espera** no ecrã de marcar só é observada nos cartões
+  cheios.
+* **Vídeos** têm limite de 100 MB e aviso ao instrutor quando são
+  grandes.
+* Só **2 das 34 funções** correm sozinhas (~760 invocações/mês contra 2
+  milhões grátis).
+
+#### O que continua a ser o custo real, mais tarde
+
+Não é o Firestore — é a **largura de banda do Storage**. Um vídeo de
+30 MB visto por 40 alunos são 1,2 GB; o nível gratuito dá 1 GB/dia.
+Nada a corrigir hoje, mas é aqui que aparece a fatura quando a
+biblioteca tiver vídeos a sério. O remédio é comprimir na origem: uma
+demonstração de 30 s a 720p ocupa 3-5 MB, não 30.
+
+E as **imagens dos deploys** acumulam se nada as limpar —
+`firebase functions:artifacts:setpolicy --days=3`.
+
+Verificado: **341 testes Flutter** (7 novos em
+`test/infrastructure/cost_queries_test.dart`, que é onde estas duas
+correções ficam presas — nenhuma delas é visível na interface) e **323
+contra o Emulator Suite**.
+
+### Eliminações — a varredura completa
+
+Levantamento cruzando três camadas (o que as Security Rules permitem, o
+que os repositórios expõem, o que a interface oferece). Onze lacunas, e
+o resto desta secção é o que se fez com cada uma.
+
+**Passaram pela Cloud Function** (`deleteCatalogueEntry`, que conta
+referências e recusa dizendo quais): serviços, planos, modalidades,
+**exercícios da biblioteca**, **séries de aulas** e **contas de staff**.
+
+* **Exercícios** — as referências (`planEntries`, `loadHistory`) vivem
+  em subcoleções de cada membro, por isso a contagem é por grupo de
+  coleção; daí os `fieldOverrides` novos em `firestore.indexes.json`. Um
+  grupo de coleção atravessa tenants, e aqui isso importa: os ids do
+  seed são fixos (`ex_agachamento_barra`) e portanto **iguais em todos
+  os estúdios** — sem o filtro por caminho, um exercício noutro ginásio
+  bloqueava a eliminação neste. É a única desta lista que o Instrutor
+  também pode fazer, porque já cria e edita a biblioteca.
+* **Staff** — apaga também a subcoleção `private` (dados pessoais) e a
+  conta de autenticação, por esta ordem: uma falha a meio não pode
+  deixar uma conta capaz de entrar numa app onde já não existe perfil.
+  Um Gestor não se elimina a si próprio — ficaria trancado fora, a
+  precisar exatamente do programador que isto dispensa.
+
+**Passaram a ser decididas pelas Security Rules**, sem gastar uma
+chamada de função, porque a condição é uma só e o `activeBookingCount`
+é escrito exclusivamente pelas funções de marcação — o cliente nunca lhe
+toca, logo não o pode falsear:
+
+* **Aulas** (`sessionOccurrences`) — `allow delete` era sempre `false`,
+  para proteger marcações e histórico. Isso apanhava também a aula
+  criada por engano há dois minutos: só se podia CANCELAR, e ela ficava
+  no calendário para sempre a dizer "cancelada". Sem ninguém inscrito
+  não há marcação para libertar nem utilização para devolver — não há
+  cascata nenhuma a saltar, que era a razão original do `false`. O ecrã
+  reflete isto: com inscritos aparece "Cancelar sessão", sem inscritos
+  aparece "Eliminar sessão". Nunca os dois.
+* **Blocos de treino livre** — a condição "só antes de publicar" saiu.
+  Depois de publicada, um bloco vazio só podia ir a capacidade 0 e
+  ficava na grelha a dizer "0/0", visível aos alunos e a não servir para
+  nada.
+
+**Escrita direta, sem referências a verificar:**
+
+* **Avaliações físicas** — uma avaliação no aluno errado não é histórico
+  de nada, é um engano, e nenhum documento aponta para ela.
+* **Sessões de treino registadas** — as cargas dessa sessão vão com ela.
+  É para isso que as Rules só permitem apagar `loadHistory` que tenha
+  `sessionId`: uma carga escrita à mão pelo instrutor não a tem e
+  continua protegida. Só o estúdio elimina treinos — um aluno a apagar
+  os treinos maus falseava a própria evolução sem dar por isso.
+* **Grelha semanal de treino livre** — conta os inscritos ANTES de
+  apagar o que quer que seja. Sem isso, ia apagando blocos até a Rule
+  recusar um a meio, e ficava uma grelha meio apagada — pior do que
+  qualquer um dos dois estados inteiros.
+* **Lista de espera** — `leaveWaitlist` já aceitava staff desde que
+  existe; nunca houve por onde carregar. Um aluno que pediu para sair
+  por telefone ficava na fila a apanhar a vaga seguinte.
+* **Registos de mensalidade** — ⚠️ **assumido explicitamente**: o fluxo
+  de RGPD *anonimiza* registos de pagamento em vez de os apagar, por
+  retenção fiscal, mas isso vale para o apagamento de uma PESSOA, onde a
+  alternativa era perder a contabilidade de um cliente real. Aqui é o
+  Gestor a corrigir um lançamento seu, e a app não é o sistema de
+  faturação do estúdio. Se um dia passar a ser, isto tem de voltar a
+  fechar. Eliminar e "marcar não pago" são ações separadas de propósito,
+  e a confirmação diz qual é qual.
+
+**Continuam fechadas, e bem:** membros (têm caminho próprio em
+`deleteMemberData` — exportação, anonimização e confirmação pelo número
+de sócio), marcações, presenças e subscrições (passam por Cloud
+Functions com cascata: cancelar, não apagar — são o histórico do
+aluno), e `usage` (é recalculável, não é dado de origem).
+
+#### UX
+
+O caixote do lixo solto na linha passou a menu `⋮`. Em telemóvel o dedo
+tapa a linha toda, e uma ação sem retorno a um toque de distância é um
+acidente à espera de acontecer; o menu exige dois gestos deliberados
+antes de sequer chegar à confirmação. Nos ecrãs de detalhe (série,
+staff) a ação vive na barra do topo — é aí que se está a olhar para o
+que se vai eliminar.
+
+Todas as confirmações passam por `confirmDestructiveAction`, para se
+parecerem umas com as outras: título em forma de pergunta, uma frase que
+diz **o que se perde** (não o que se clica), e o botão perigoso sempre à
+direita, na cor de erro, a dizer o que faz — nunca "OK".
+
+Apanhado ao escrever os testes: os itens do menu rebentavam a linha em
+ecrãs estreitos (`RenderFlex overflowed by 58 pixels`). Um `Flexible` a
+menos num menu que é estreito por natureza.
+
+Verificado: **334 testes Flutter** · **323 contra o Emulator Suite**,
+incluindo 17 da função de eliminação e as Rules novas de aulas e blocos
+vazios (Gestor sim, Instrutor não, Aluno não, com inscritos não).
+
+Um efeito colateral apanhado pela suite: `smoke-fluxo-completo.test.ts`
+tinha o email sintético antigo escrito à mão e deixou de encontrar as
+contas do seed. Filtrar só por `member-000001@` também não servia — o
+seed cria um sócio nº 000001 em DOIS tenants (o real e o fantasma dos
+testes de isolamento). O domínio passa a ser derivado pela mesma regra
+da app.
+
 ### O Gestor passa a poder eliminar o que ele próprio criou
 
 Duas coisas reportadas a testar, com a mesma raiz.

@@ -9,6 +9,7 @@ import '../../domain/entities/exercise.dart';
 import '../../domain/entities/workout_session.dart';
 import '../widgets/design_system.dart';
 import '../widgets/exercise_logger.dart';
+import '../../domain/entities/training_plan_entry.dart';
 
 /// Fase 11 — o registo de treino ao vivo.
 ///
@@ -41,7 +42,16 @@ class ActiveWorkoutScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final planAsync = ref.watch(trainingPlanProvider(memberId));
-    final exercisesAsync = ref.watch(exercisesProvider);
+    // Só os exercícios deste plano. Ver a nota em
+    // `ExerciseRepository.getExercisesByIds`.
+    final exercisesAsync = ref.watch(
+      exercisesByIdsProvider(
+        exerciseKeyFor(
+          (planAsync.valueOrNull ?? const <TrainingPlanEntry>[])
+              .map((entry) => entry.exerciseId),
+        ),
+      ),
+    );
     // A sessão ao vivo: `session` é a fotografia de quando o ecrã abriu,
     // e ficaria desatualizada a cada série confirmada.
     final liveSession =
@@ -62,10 +72,8 @@ class ActiveWorkoutScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) => ErrorState(error: error),
         data: (entries) {
-          final exercisesById = <String, Exercise>{
-            for (final e in exercisesAsync.valueOrNull ?? const <Exercise>[])
-              e.id: e,
-          };
+          final exercisesById =
+              exercisesAsync.valueOrNull ?? const <String, Exercise>{};
 
           final planned = liveSession.workoutId == null
               ? entries

@@ -36,6 +36,15 @@ abstract class AssessmentRepository {
   /// registada". Nunca cria um documento novo (isso é
   /// [createAssessment], para uma avaliação NOVA histórica) — atualiza
   /// os campos deste id e marca `updatedAt`/`updatedBy`.
+  /// Uma avaliação lançada no aluno errado, ou com a data errada, não
+  /// tem nada que sobreviver: não é histórico de nada, é um engano.
+  /// Não há referências a verificar — nenhum outro documento aponta
+  /// para uma avaliação.
+  Future<void> deleteAssessment({
+    required String memberId,
+    required String assessmentId,
+  });
+
   Future<void> updateAssessment({
     required String memberId,
     required String assessmentId,

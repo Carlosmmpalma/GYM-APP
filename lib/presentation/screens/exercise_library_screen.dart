@@ -6,6 +6,8 @@ import '../../core/utils/search_text.dart';
 import '../../domain/entities/exercise.dart';
 import '../widgets/design_system.dart';
 import 'exercise_form_screen.dart';
+import '../../repositories/catalogue_admin_repository.dart';
+import '../widgets/catalogue_delete.dart';
 
 /// Fase 8 (UC15 fechado) — "lista partilhada por todos os
 /// instrutores". Sem filtro por instrutor de propósito — a biblioteca
@@ -133,9 +135,19 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
           child: ListTile(
             title: Text(exercise.name),
             subtitle: Text('Grupo muscular: ${exercise.muscleGroup}'),
-            trailing: Chip(
-              label: Text(exercise.hasVideo ? 'Com vídeo' : 'Sem vídeo'),
-              visualDensity: VisualDensity.compact,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Chip(
+                  label: Text(exercise.hasVideo ? 'Com vídeo' : 'Sem vídeo'),
+                  visualDensity: VisualDensity.compact,
+                ),
+                CatalogueRowMenu(
+                  kind: CatalogueKind.exercise,
+                  id: exercise.id,
+                  name: exercise.name,
+                ),
+              ],
             ),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(

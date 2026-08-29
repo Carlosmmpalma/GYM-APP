@@ -86,6 +86,16 @@ beforeEach(async () => {
       status: 'scheduled',
       activeBookingCount: 2,
     });
+    // Uma aula sem ninguém inscrito — o caso "criei por engano".
+    await db.doc(`tenants/${TENANT_A}/sessionOccurrences/occ_vazia`).set({
+      serviceId: 'service_1',
+      seriesId: null,
+      startAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      endAt: new Date(Date.now() + 25 * 60 * 60 * 1000),
+      capacity: 6,
+      status: 'scheduled',
+      activeBookingCount: 0,
+    });
     await db.doc(`tenants/${TENANT_A}/members/member_a1`).set({
       memberNumber: '000001',
       name: 'Rita Ferreira',
@@ -316,6 +326,29 @@ describe('Security Rules — members: auto-atualização de contacto (Fase 5, UC
     const db = contextFor('manager_b', TENANT_B, ['manager']).firestore();
     await assertFails(
       db.doc(`tenants/${TENANT_A}/members/member_a1`).update({ status: 'inactive' }),
+    );
+  });
+});
+
+describe('Security Rules — eliminar aulas continua fechado ao cliente', () => {
+  // Chegou a abrir-se `delete` para aulas vazias, e foi um erro:
+  // `activeBookingCount == 0` não quer dizer "sem marcações" (cancelar
+  // deixa o documento com `status: 'cancelled'`), e o cliente não pode
+  // limpar as subcoleções — `bookings` e `waitlist` são `write: false`.
+  // A operação passou para `deleteCatalogueEntry`, que apaga tudo e
+  // recusa aulas de série. Ver `delete-catalogue-entry.test.ts`.
+
+  it('nem o Manager elimina uma aula por escrita direta', async () => {
+    const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/sessionOccurrences/occ_vazia`).delete(),
+    );
+  });
+
+  it('nem sequer uma sem inscritos', async () => {
+    const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/sessionOccurrences/occ_1`).delete(),
     );
   });
 });

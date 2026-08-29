@@ -25,9 +25,16 @@ abstract class SessionOccurrenceRepository {
   /// acesso a nada.
   ///
   /// Conjunto vazio devolve uma lista vazia **sem fazer query nenhuma**.
+  /// [weeksAhead] limita o horizonte. Sem ele, a query trazia até 200
+  /// ocorrências — as 8 semanas inteiras — para um ecrã onde o aluno
+  /// marca, na prática, para a semana ou duas seguintes. Ler 200
+  /// documentos a cada abertura da app para mostrar os 15 que
+  /// interessam é caro e, mais importante, é uma lista que ninguém
+  /// percorre.
   Stream<List<SessionOccurrence>> watchUpcomingOccurrencesForServices(
-    Set<String> serviceIds,
-  );
+    Set<String> serviceIds, {
+    int? weeksAhead,
+  });
 
   Future<SessionOccurrence?> getOccurrence(String occurrenceId);
 

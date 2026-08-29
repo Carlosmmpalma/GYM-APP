@@ -10,6 +10,18 @@ import '../../domain/entities/free_training_slot.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../widgets/design_system.dart';
 import 'free_training_slot_detail_screen.dart';
+import '../../repositories/free_training_repository.dart';
+import '../widgets/catalogue_delete.dart';
+
+/// Um bloco tem de acabar depois de começar.
+///
+/// Parece óbvio e não estava a ser verificado em lado nenhum: em
+/// produção apareceram blocos das 08:10 às 08:00. Um seletor de hora
+/// não impede ninguém de escolher ao contrário, e o resultado é um
+/// horário com duração negativa que a app mostra tal e qual.
+@visibleForTesting
+bool endsAfterStart(TimeOfDay start, TimeOfDay end) =>
+    end.hour * 60 + end.minute > start.hour * 60 + start.minute;
 
 final _dayFormat = DateFormat('EEE, d MMM', 'pt_PT');
 final _timeFormat = DateFormat('HH:mm', 'pt_PT');
@@ -49,7 +61,33 @@ class _ManageFreeTrainingScreenState
     final scheduleAsync = ref.watch(freeTrainingScheduleProvider(weekId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Treino livre')),
+      appBar: AppBar(
+        title: const Text('Treino livre'),
+        actions: [
+          if (scheduleAsync.valueOrNull != null)
+            PopupMenuButton<String>(
+              tooltip: 'Mais opções',
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline,
+                          size: 20, color: Theme.of(context).colorScheme.error),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Text('Eliminar esta semana',
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.error)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              onSelected: (_) => _deleteWeek(weekId),
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Row(
@@ -93,6 +131,53 @@ class _ManageFreeTrainingScreenState
         ],
       ),
     );
+  }
+
+  /// A sugestão automática copia a semana anterior. Quando copia mal —
+  /// ou quando se gerou a semana errada — a única saída era apagar
+  /// bloco a bloco, e depois de publicada nem isso.
+  Future<void> _deleteWeek(String weekId) async {
+    final confirmed = await confirmDestructiveAction(
+      context,
+      title: 'Eliminar a grelha desta semana?',
+      consequence: 'Todos os blocos desta semana desaparecem. Se já '
+          'estiver publicada, os alunos deixam de ver treino livre nesta '
+          'semana. Podes voltar a gerá-la a partir da semana anterior.',
+      confirmLabel: 'Eliminar semana',
+    );
+    if (!confirmed || !mounted) return;
+
+    try {
+      await ref.read(freeTrainingRepositoryProvider).deleteSchedule(weekId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Grelha eliminada.')),
+      );
+    } on ScheduleHasBookingsException catch (e) {
+      // Nada foi apagado — a verificação corre antes da escrita, de
+      // propósito: uma grelha meio apagada é pior do que qualquer um
+      // dos dois estados inteiros.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.slotsWithBookings == 1
+                ? 'Não dá: 1 bloco tem alunos inscritos. Avisa-os e '
+                    'cancela as reservas primeiro.'
+                : 'Não dá: ${e.slotsWithBookings} blocos têm alunos '
+                    'inscritos. Avisa-os e cancela as reservas primeiro.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userFacingError(e,
+              fallback: 'Não foi possível eliminar a grelha.')),
+        ),
+      );
+    }
   }
 
   Future<void> _suggest() async {
@@ -267,13 +352,26 @@ class _ScheduleView extends ConsumerWidget {
                               itemBuilder: (_) => [
                                 const PopupMenuItem(
                                     value: 'edit', child: Text('Editar')),
+                                // A condição "só antes de publicar" saiu
+                                // com a Security Rule que a impunha —
+                                // um bloco vazio pode desaparecer de uma
+                                // semana publicada, e ficava lá a dizer
+                                // "0/10" sem servir para nada.
+                                //
+                                // Quando ESTÁ desativado, o rótulo diz
+                                // porquê. Um item cinzento sem
+                                // explicação é a razão pela qual alguém
+                                // pergunta "porque não consigo tocar
+                                // aqui?" — e a resposta tem de estar no
+                                // sítio onde a pergunta nasce.
                                 PopupMenuItem(
                                   value: 'delete',
-                                  enabled: schedule.status !=
-                                          FreeTrainingScheduleStatus
-                                              .published &&
-                                      slot.activeBookingCount == 0,
-                                  child: const Text('Remover'),
+                                  enabled: slot.activeBookingCount == 0,
+                                  child: Text(
+                                    slot.activeBookingCount == 0
+                                        ? 'Remover'
+                                        : 'Remover — tem inscritos',
+                                  ),
                                 ),
                               ],
                             ),
@@ -424,9 +522,13 @@ class _ScheduleView extends ConsumerWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Remover este bloco?'),
-        content: const Text(
-          'Só é possível remover blocos antes de a semana ser publicada, e '
-          'sem ninguém marcado.',
+        content: Text(
+          schedule.status == FreeTrainingScheduleStatus.published
+              ? 'A semana está publicada, por isso este horário desaparece '
+                  'já da app dos alunos. Ninguém está inscrito, portanto não '
+                  'há reservas a cancelar.'
+              : 'O bloco desaparece da grelha. Ninguém está inscrito, '
+                  'portanto não há reservas a cancelar.',
         ),
         actions: [
           TextButton(
@@ -514,6 +616,16 @@ class _EditSlotDialogState extends State<_EditSlotDialog> {
             decoration: const InputDecoration(labelText: 'Capacidade'),
             keyboardType: TextInputType.number,
           ),
+          if (!endsAfterStart(_start, _end)) ...[
+            const SizedBox(height: 8),
+            // Botão desativado sem dizer porquê é o que faz alguém
+            // perguntar "porque não consigo gravar?".
+            Text(
+              'A hora de fim tem de ser depois da de início.',
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.error, fontSize: 12),
+            ),
+          ],
         ],
       ),
       actions: [
@@ -522,12 +634,15 @@ class _EditSlotDialogState extends State<_EditSlotDialog> {
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          onPressed: () {
-            final capacity = int.tryParse(_capacityController.text.trim());
-            if (capacity == null || capacity <= 0) return;
-            Navigator.of(context)
-                .pop((start: _start, end: _end, capacity: capacity));
-          },
+          onPressed: endsAfterStart(_start, _end)
+              ? () {
+                  final capacity =
+                      int.tryParse(_capacityController.text.trim());
+                  if (capacity == null || capacity <= 0) return;
+                  Navigator.of(context)
+                      .pop((start: _start, end: _end, capacity: capacity));
+                }
+              : null,
           child: const Text('Guardar'),
         ),
       ],
@@ -631,6 +746,14 @@ class _AddSlotBlockDialogState extends ConsumerState<_AddSlotBlockDialog> {
             // semana. Um bloco de treino livre é sempre do serviço de
             // treino livre do estúdio; não há escolha nenhuma para
             // fazer, e oferecê-la só criava a hipótese de a errar.
+            if (!endsAfterStart(_start, _end)) ...[
+              const SizedBox(height: 8),
+              Text(
+                'A hora de fim tem de ser depois da de início.',
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.error, fontSize: 12),
+              ),
+            ],
           ],
         ),
       ),
@@ -649,7 +772,10 @@ class _AddSlotBlockDialogState extends ConsumerState<_AddSlotBlockDialog> {
 
   bool _canSubmit() {
     final capacity = int.tryParse(_capacityController.text.trim());
-    return _weekdays.isNotEmpty && capacity != null && capacity > 0;
+    return _weekdays.isNotEmpty &&
+        capacity != null &&
+        capacity > 0 &&
+        endsAfterStart(_start, _end);
   }
 
   void _submit() {

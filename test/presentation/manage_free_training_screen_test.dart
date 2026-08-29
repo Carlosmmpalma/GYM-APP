@@ -156,6 +156,21 @@ class _FakeFreeTrainingRepository implements FreeTrainingRepository {
       throw UnimplementedError();
 
   @override
+  Future<void> deleteSchedule(String weekId) async {
+    if (scheduleDeletionBlockedBy != null) {
+      throw ScheduleHasBookingsException(scheduleDeletionBlockedBy!);
+    }
+    deletedScheduleWeekId = weekId;
+    slots.clear();
+    _emitSlots();
+    // O setter já emite para o stream.
+    schedule = null;
+  }
+
+  String? deletedScheduleWeekId;
+  int? scheduleDeletionBlockedBy;
+
+  @override
   Future<int> retargetSlots({
     required String weekId,
     required String serviceId,
@@ -243,6 +258,23 @@ void main() {
       child: const MaterialApp(home: ManageFreeTrainingScreen()),
     );
   }
+
+  /// O menu da BARRA DO TOPO (ações da semana).
+  Finder weekMenu() => find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byType(PopupMenuButton<String>),
+      );
+
+  /// O menu de um BLOCO da grelha.
+  ///
+  /// `.first`/`.last` não servem: o `Scaffold` pinta o body antes do
+  /// `AppBar`, por isso a ordem no widget tree é o contrário da ordem
+  /// no ecrã — e um teste que dependa disso parte assim que se
+  /// acrescenta um menu a qualquer um dos dois.
+  Finder slotMenu() => find.descendant(
+        of: find.byType(Card),
+        matching: find.byType(PopupMenuButton<String>),
+      );
 
   testWidgets('sem serviço de treino livre configurado, diz o que falta',
       (tester) async {
@@ -355,6 +387,139 @@ void main() {
 
     expect(find.textContaining('serviço antigo'), findsNothing);
     expect(find.text('Ligar ao serviço atual'), findsNothing);
+  });
+
+  testWidgets('eliminar a semana pede confirmação e chama o repositório',
+      (tester) async {
+    final firestore = await seedFirestore();
+    final repository = _FakeFreeTrainingRepository()
+      ..schedule = FreeTrainingSchedule(
+        weekId: 'week_1',
+        weekStart: DateTime.now(),
+        status: FreeTrainingScheduleStatus.draft,
+      );
+
+    await tester.pumpWidget(buildApp(firestore, repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(weekMenu());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eliminar esta semana'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Eliminar a grelha desta semana?'), findsOneWidget);
+    expect(repository.deletedScheduleWeekId, isNull);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Eliminar semana'));
+    await tester.pumpAndSettle();
+
+    expect(repository.deletedScheduleWeekId, isNotNull);
+  });
+
+  testWidgets('com alunos inscritos, recusa e diz quantos blocos',
+      (tester) async {
+    // A verificação corre ANTES de apagar seja o que for: uma grelha
+    // meio apagada é pior do que qualquer um dos dois estados inteiros.
+    final firestore = await seedFirestore();
+    final repository = _FakeFreeTrainingRepository()
+      ..scheduleDeletionBlockedBy = 3
+      ..schedule = FreeTrainingSchedule(
+        weekId: 'week_1',
+        weekStart: DateTime.now(),
+        status: FreeTrainingScheduleStatus.published,
+      );
+
+    await tester.pumpWidget(buildApp(firestore, repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(weekMenu());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eliminar esta semana'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Eliminar semana'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('3 blocos têm alunos'), findsOneWidget);
+    expect(repository.deletedScheduleWeekId, isNull);
+  });
+
+  testWidgets('numa semana publicada, um bloco VAZIO pode ser removido',
+      (tester) async {
+    // Reportado a testar: "porque não consigo tocar no botão Remover?".
+    // A Security Rule passou a permitir apagar blocos vazios mesmo
+    // depois de publicar, mas o ecrã continuava a desativar a opção
+    // pela condição antiga ("só antes de publicar").
+    final firestore = await seedFirestore();
+    final repository = _FakeFreeTrainingRepository()
+      ..schedule = FreeTrainingSchedule(
+        weekId: 'week_1',
+        weekStart: DateTime.now(),
+        status: FreeTrainingScheduleStatus.published,
+      );
+    final now = DateTime.now();
+    repository.slots.add(FreeTrainingSlot(
+      id: 'slot_vazio',
+      weekId: 'week_1',
+      serviceId: 'service_1',
+      startAt: now,
+      endAt: now.add(const Duration(hours: 1)),
+      capacity: 10,
+      activeBookingCount: 0,
+    ));
+
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(buildApp(firestore, repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(slotMenu().first);
+    await tester.pumpAndSettle();
+
+    final item = tester.widget<PopupMenuItem<String>>(
+      find.widgetWithText(PopupMenuItem<String>, 'Remover'),
+    );
+    expect(item.enabled, isTrue);
+  });
+
+  testWidgets('com inscritos, o Remover diz porque está desativado',
+      (tester) async {
+    // Desativar está certo — apagar deixaria reservas por libertar. O
+    // que estava errado era não dizer nada: um item cinzento sem
+    // explicação é exatamente o que faz alguém perguntar porquê.
+    final firestore = await seedFirestore();
+    final repository = _FakeFreeTrainingRepository()
+      ..schedule = FreeTrainingSchedule(
+        weekId: 'week_1',
+        weekStart: DateTime.now(),
+        status: FreeTrainingScheduleStatus.published,
+      );
+    final now = DateTime.now();
+    repository.slots.add(FreeTrainingSlot(
+      id: 'slot_cheio',
+      weekId: 'week_1',
+      serviceId: 'service_1',
+      startAt: now,
+      endAt: now.add(const Duration(hours: 1)),
+      capacity: 10,
+      activeBookingCount: 3,
+    ));
+
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(buildApp(firestore, repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(slotMenu().first);
+    await tester.pumpAndSettle();
+
+    final item = tester.widget<PopupMenuItem<String>>(
+      find.widgetWithText(PopupMenuItem<String>, 'Remover — tem inscritos'),
+    );
+    expect(item.enabled, isFalse);
   });
 
   testWidgets('adicionar bloco cria slots e publicar chama publishSchedule',

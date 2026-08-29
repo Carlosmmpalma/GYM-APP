@@ -34,7 +34,17 @@ class MyTrainingPlanScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final planAsync = ref.watch(trainingPlanProvider(memberId));
     final workoutsAsync = ref.watch(memberWorkoutsProvider(memberId));
-    final exercisesAsync = ref.watch(exercisesProvider);
+    // Só os exercícios deste plano, não a biblioteca inteira: um aluno
+    // precisa de meia dúzia de nomes e estava a ler 61 documentos (e a
+    // crescer com a biblioteca, que é a métrica errada).
+    final exercisesAsync = ref.watch(
+      exercisesByIdsProvider(
+        exerciseKeyFor(
+          (planAsync.valueOrNull ?? const <TrainingPlanEntry>[])
+              .map((entry) => entry.exerciseId),
+        ),
+      ),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -65,10 +75,8 @@ class MyTrainingPlanScreen extends ConsumerWidget {
             );
           }
 
-          final exercisesById = <String, Exercise>{
-            for (final e in exercisesAsync.valueOrNull ?? const <Exercise>[])
-              e.id: e,
-          };
+          final exercisesById =
+              exercisesAsync.valueOrNull ?? const <String, Exercise>{};
           final workouts =
               (workoutsAsync.valueOrNull ?? const <TrainingWorkout>[])
                   .where((w) => w.active)

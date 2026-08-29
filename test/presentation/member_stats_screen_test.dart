@@ -64,7 +64,11 @@ void main() {
             .overrideWith((ref, memberId) => Stream.value(sessions)),
         assessmentsProvider
             .overrideWith((ref, memberId) => Stream.value(assessments)),
-        exercisesProvider.overrideWith((ref) => Stream.value(_exercises)),
+        // O ecrã deixou de carregar a biblioteca inteira: pede só os
+        // exercícios que o plano/histórico deste aluno referencia.
+        exercisesByIdsProvider.overrideWith(
+          (ref, key) async => {for (final e in _exercises) e.id: e},
+        ),
       ],
       child: const MaterialApp(home: MemberStatsScreen(member: _member)),
     );

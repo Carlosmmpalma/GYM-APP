@@ -439,6 +439,26 @@ service cloud.firestore {
               && instructorOwnsSession(tenantId, request.resource.data)))
         && request.resource.data.activeBookingCount == resource.data.activeBookingCount
         && request.resource.data.status == resource.data.status;
+      // Continua `false`, e a tentativa de o abrir foi um erro que
+      // vale a pena deixar escrito.
+      //
+      // A ideia era deixar o Gestor eliminar uma aula vazia — criada
+      // por engano — em vez de a cancelar e a deixar no calendário para
+      // sempre. O objetivo era bom; o sítio estava errado, por duas
+      // razões que as Rules não conseguem cobrir:
+      //
+      //   1. `activeBookingCount == 0` NÃO significa que não há
+      //      marcações: cancelar uma marcação põe `status: 'cancelled'`
+      //      e deixa o documento. Apagar a aula deixava essas
+      //      marcações órfãs, e o cliente não lhes pode tocar
+      //      (`bookings` e `waitlist` são `write: false`).
+      //   2. As aulas geradas por série têm id determinístico
+      //      (`{seriesId}_{data}`). O cron da noite recriava-as com o
+      //      MESMO id, e as órfãs voltavam a aparecer agarradas a elas.
+      //
+      // Passou para `deleteCatalogueEntry`, que apaga as subcoleções e
+      // recusa aulas de série — para essas, cancelar é a única
+      // operação que faz sentido.
       allow delete: if false;
 
       // Bookings continuam SEMPRE fora do alcance do cliente, mesmo
@@ -673,9 +693,13 @@ service cloud.firestore {
         allow create: if isManager(tenantId) && request.resource.data.activeBookingCount == 0;
         allow update: if isManager(tenantId)
           && request.resource.data.activeBookingCount == resource.data.activeBookingCount;
+        // A condição `!freeTrainingWeekPublished` saiu: depois de
+        // publicar, um bloco vazio só podia ir a capacidade 0 e ficava
+        // na grelha a dizer "0/0" — visível aos alunos, sem servir para
+        // nada. O que protege continua a proteger: sem ninguém
+        // inscrito, apagar não liberta marcação nenhuma.
         allow delete: if isManager(tenantId)
-          && resource.data.activeBookingCount == 0
-          && !freeTrainingWeekPublished(tenantId, weekId);
+          && resource.data.activeBookingCount == 0;
 
         // UC09/UC17 fechado — "Aluno vê só contagem; Gestor e
         // Instrutor veem nomes". A contagem já vive em

@@ -55,3 +55,31 @@ final isBlockedForOverduePaymentProvider =
   final member = await ref.watch(memberProfileProvider(appUser.uid).future);
   return member?.isOverdueFor(DateTime.now()) ?? false;
 });
+
+/// Os registos de mensalidade de UM mês, para os membros indicados.
+///
+/// Só é usado quando o Gestor navega para fora do mês corrente: o mês
+/// atual sai de graça do campo denormalizado em `members/{id}`, e pagar
+/// N leituras por ele seria pagar por nada.
+///
+/// A chave junta o período e os membros numa string porque as famílias
+/// do Riverpod comparam por `==`, e listas não têm igualdade por valor
+/// — mesmo motivo de `serviceIdsKey` e `exerciseKeyFor`.
+final paymentsForPeriodProvider =
+    FutureProvider.autoDispose.family<Map<String, PaymentRecord>, String>(
+  (ref, key) async {
+    final parts = key.split('|');
+    final period = parts[0];
+    final memberIds =
+        parts.length < 2 || parts[1].isEmpty ? <String>[] : parts[1].split(',');
+    if (memberIds.isEmpty) return const {};
+    return ref.watch(paymentRepositoryProvider).getRecordsForPeriod(
+          memberIds: memberIds,
+          period: period,
+        );
+  },
+);
+
+/// A chave estável para [paymentsForPeriodProvider].
+String paymentsPeriodKey(String period, Iterable<String> memberIds) =>
+    '$period|${(memberIds.toList()..sort()).join(',')}';

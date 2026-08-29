@@ -102,6 +102,13 @@ class _FakeFreeTrainingRepository implements FreeTrainingRepository {
       throw UnimplementedError();
 
   @override
+  Future<void> deleteSchedule(String weekId) async {
+    deletedScheduleWeekId = weekId;
+  }
+
+  String? deletedScheduleWeekId;
+
+  @override
   Future<int> retargetSlots({
     required String weekId,
     required String serviceId,

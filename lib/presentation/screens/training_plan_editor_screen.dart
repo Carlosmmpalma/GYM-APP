@@ -454,8 +454,15 @@ class _PlanEntryTile extends ConsumerWidget {
     );
     if (result == null) return;
 
-    final recordedBy = ref.read(currentAppUserProvider).valueOrNull?.uid;
-    if (recordedBy == null) return;
+    // `.future` e não `valueOrNull`: se o provider ainda não
+    // tivesse emitido, o `return` seguinte fazia o botão não
+    // fazer NADA — sem erro, sem aviso. É o sintoma mais caro
+    // que uma app pode ter, e já foi reportado duas vezes aqui.
+    final currentUser = await ref.read(currentAppUserProvider.future);
+    // `null` aqui só acontece com a sessão terminada — aí o ecrã
+    // já não devia estar aberto e não há nada a fazer.
+    if (currentUser == null) return;
+    final recordedBy = currentUser.uid;
     try {
       await ref.read(trainingPlanRepositoryProvider).updateLoad(
             memberId: member.uid,
