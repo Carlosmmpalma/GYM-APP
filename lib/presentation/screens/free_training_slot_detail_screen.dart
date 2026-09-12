@@ -169,23 +169,26 @@ class _AssignMembersDialogState extends State<_AssignMembersDialog> {
       title: const Text('Atribuir membros'),
       content: SizedBox(
         width: double.maxFinite,
-        child: ListView(
+        // `builder` e não `children`: `shrinkWrap` com uma lista pronta
+        // constrói TODAS as linhas — e cada toque numa caixa faz
+        // `setState`, portanto reconstruía as cinquenta para mudar uma.
+        child: ListView.builder(
           shrinkWrap: true,
-          children: widget.eligible
-              .map(
-                (member) => CheckboxListTile(
-                  title: Text(member.name),
-                  value: _selected.contains(member.uid),
-                  onChanged: (checked) => setState(() {
-                    if (checked ?? false) {
-                      _selected.add(member.uid);
-                    } else {
-                      _selected.remove(member.uid);
-                    }
-                  }),
-                ),
-              )
-              .toList(),
+          itemCount: widget.eligible.length,
+          itemBuilder: (context, index) {
+            final member = widget.eligible[index];
+            return CheckboxListTile(
+              title: Text(member.name),
+              value: _selected.contains(member.uid),
+              onChanged: (checked) => setState(() {
+                if (checked ?? false) {
+                  _selected.add(member.uid);
+                } else {
+                  _selected.remove(member.uid);
+                }
+              }),
+            );
+          },
         ),
       ),
       actions: [

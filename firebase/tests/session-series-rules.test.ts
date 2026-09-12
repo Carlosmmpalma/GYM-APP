@@ -224,11 +224,30 @@ describe('Security Rules — sessionOccurrences escritas por Manager (Fase 5)', 
     );
   });
 
-  it('um Manager CONSEGUE editar capacidade/hora de uma ocorrência sem tocar em activeBookingCount', async () => {
+  it('um Manager CONSEGUE editar a lotação de uma ocorrência', async () => {
     const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
     await assertSucceeds(
       db.doc(`tenants/${TENANT_A}/sessionOccurrences/occ_1`).update({
         capacity: 8,
+      }),
+    );
+  });
+
+  it('mas já NÃO consegue mudar a HORA por escrita direta', async () => {
+    // Mudou na varredura de funcionalidades, e este teste afirmava o
+    // contrário. Cada marcação guarda uma cópia da data e a semana ISO
+    // em que foi contada para o limite semanal; mover uma aula de uma
+    // semana para outra por escrita direta deixava a utilização na
+    // semana antiga e devolvia ao aluno a semana de destino inteira —
+    // com um plano de 1x por semana, ficava com duas aulas nessa
+    // semana.
+    //
+    // Passou pela Cloud Function `updateOccurrenceSchedule`, que
+    // arrasta as marcações consigo. Mesmo raciocínio do `status`, que
+    // já estava fechado pela mesma razão.
+    const db = contextFor('manager_a', TENANT_A, ['manager']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/sessionOccurrences/occ_1`).update({
         startAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
       }),
     );

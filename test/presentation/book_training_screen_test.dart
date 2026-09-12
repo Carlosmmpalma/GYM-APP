@@ -554,4 +554,20 @@ void main() {
       expect(find.text('Sem aulas para marcar'), findsOneWidget);
     });
   });
+
+  // NOTA — fica aqui um buraco de teste, assumido.
+  //
+  // O bug de a contagem semanal ser sempre a da semana CORRENTE (e não
+  // a da semana da aula) foi encontrado a usar a app a sério e
+  // corrigido em `_WeeklyUsageLine`. Tentei prendê-lo com um teste aqui
+  // e não consegui: neste fixture a linha de utilização nem chega a ser
+  // desenhada — o `applicableUsageRuleProvider` não resolve contra o
+  // `fake_cloud_firestore`, e forçá-lo dava um teste que prova mais
+  // sobre o fixture do que sobre o ecrã.
+  //
+  // Preferi deixar o buraco escrito a deixar um teste que não testa o
+  // que diz. Quem lhe mexer: o caminho é dar ao fixture uma regra de
+  // utilização que o provider reconheça, e depois semear uma aula a
+  // mais de sete dias — aí a etiqueta tem de dizer "Nessa semana" e o
+  // aviso de limite não pode aparecer.
 }

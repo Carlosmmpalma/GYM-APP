@@ -60,19 +60,19 @@ void main() {
       id: 'ex_remada',
       name: 'Remada curvada',
       description: '',
-      muscleGroup: 'Costas',
+      category: 'Costas',
     ),
     Exercise(
       id: 'ex_supino',
       name: 'Supino plano',
       description: '',
-      muscleGroup: 'Peito',
+      category: 'Peito',
     ),
     Exercise(
       id: 'ex_abdominal',
       name: 'Abdominal',
       description: '',
-      muscleGroup: 'Core',
+      category: 'Core',
     ),
   ];
 
@@ -121,6 +121,7 @@ void main() {
   Widget buildApp({
     List<TrainingWorkout> workoutList = workouts,
     List<TrainingPlanEntry> entryList = entries,
+    List<Exercise>? exerciseList,
   }) {
     return ProviderScope(
       overrides: [
@@ -132,7 +133,8 @@ void main() {
         // O ecrã deixou de carregar a biblioteca inteira: pede só os
         // exercícios que o plano/histórico deste aluno referencia.
         exercisesByIdsProvider.overrideWith(
-          (ref, key) async => {for (final e in exercises) e.id: e},
+          (ref, key) async =>
+              {for (final e in exerciseList ?? exercises) e.id: e},
         ),
         currentAppUserProvider.overrideWith(
           (ref) => Stream.value(
@@ -193,5 +195,41 @@ void main() {
 
     expect(find.text('O TEU PLANO'), findsOneWidget);
     expect(find.text('Abdominal'), findsOneWidget);
+  });
+
+  group('vídeo demonstrativo', () {
+    // O ▶ à esquerda da linha era decoração: aparecia em TODOS os
+    // exercícios, tivessem vídeo ou não, e tocar nele abria o mesmo
+    // menu que tocar em qualquer outro sítio. Um aluno que via um play
+    // e não chegava a vídeo nenhum concluía, com razão, que a app
+    // estava partida.
+    const comVideo = Exercise(
+      id: 'ex_remada',
+      name: 'Remada curvada',
+      description: '',
+      category: 'Costas',
+      videoPath: 'tenants/t/exercises/ex_remada/video',
+    );
+
+    testWidgets('sem vídeo, não há ▶ nenhum', (tester) async {
+      await tester.pumpWidget(buildApp());
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+      expect(find.byIcon(Icons.fitness_center_outlined), findsWidgets);
+    });
+
+    testWidgets('com vídeo, o ▶ aparece e é tocável', (tester) async {
+      await tester.pumpWidget(buildApp(exerciseList: const [comVideo]));
+      await tester.pumpAndSettle();
+
+      final play = find.byIcon(Icons.play_arrow_rounded);
+      expect(play, findsOneWidget);
+
+      // E leva ao vídeo, em vez de abrir o menu de ações.
+      await tester.tap(play);
+      await tester.pumpAndSettle();
+      expect(find.text('Ver evolução da carga'), findsNothing);
+    });
   });
 }

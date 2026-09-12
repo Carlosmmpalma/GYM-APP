@@ -20,6 +20,9 @@ import '../../infrastructure/firebase/firebase_workout_session_repository.dart';
 import '../../repositories/workout_session_repository.dart';
 import 'firebase_providers.dart';
 import 'tenant_context_providers.dart';
+import '../../domain/entities/exercise_category.dart';
+import '../../infrastructure/firebase/firebase_exercise_category_repository.dart';
+import '../../repositories/exercise_category_repository.dart';
 
 /// Fase 8 — avaliações, histórico de carga, biblioteca de exercícios,
 /// plano de treino.
@@ -56,6 +59,32 @@ final exerciseRepositoryProvider = Provider<ExerciseRepository>((ref) {
     ref.watch(firestoreProvider),
     ref.watch(tenantAppConfigProvider).tenantId,
   );
+});
+
+final exerciseCategoryRepositoryProvider =
+    Provider<ExerciseCategoryRepository>((ref) {
+  return FirebaseExerciseCategoryRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(tenantAppConfigProvider).tenantId,
+  );
+});
+
+/// As categorias definidas pelo estúdio.
+///
+/// Pequena e estável (uma dúzia de documentos, mudam raramente), por
+/// isso um listener aberto durante a sessão não é caro — ao contrário
+/// da biblioteca de exercícios, que é grande e por isso passou a ser
+/// pedida à peça (`exercisesByIdsProvider`).
+final exerciseCategoriesProvider =
+    StreamProvider<List<ExerciseCategory>>((ref) {
+  return ref.watch(exerciseCategoryRepositoryProvider).watchCategories();
+});
+
+/// As categorias que os exercícios já usam mas que ainda não existem
+/// como documento — o que ficou de quando a lista estava no código.
+final exerciseCategoryNamesInUseProvider =
+    FutureProvider.autoDispose<Set<String>>((ref) {
+  return ref.watch(exerciseCategoryRepositoryProvider).namesInUse();
 });
 
 final exercisesProvider = StreamProvider<List<Exercise>>((ref) {
@@ -137,6 +166,14 @@ final trainingPlanProvider = StreamProvider.autoDispose
     .family<List<TrainingPlanEntry>, String>((ref, memberId) {
   return ref.watch(trainingPlanRepositoryProvider).watchPlan(memberId);
 });
+
+// Aqui viveu o `avatarUrlProvider`, que pedia ao Storage o URL de cada
+// avatar. Era um pedido de rede POR PESSOA — cinquenta numa lista de
+// cinquenta, e outros cinquenta ao reentrar no ecrã. O URL passou a ser
+// escrito no documento da pessoa pela `resizeAvatar`, por isso já vem
+// com dados que a app lê de qualquer maneira e não há nada a pedir.
+// `getDownloadUrl` continua a existir no repositório para o vídeo de
+// exercícios, que é pedido um de cada vez, quando alguém o abre.
 
 final storageRepositoryProvider = Provider<StorageRepository>((ref) {
   return FirebaseStorageRepository(

@@ -6,6 +6,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/consent.dart';
 import '../widgets/design_system.dart';
+import '../widgets/privacy_policy_link.dart';
 
 /// Fase 11 (RGPD) — o ecrã que recolhe o consentimento, mostrado pelo
 /// `AuthGate` antes de qualquer outro assim que falta o registo da
@@ -86,6 +87,11 @@ class _ConsentScreenState extends ConsumerState<ConsentScreen> {
                 ),
                 const SizedBox(height: 20),
                 const _PolicySummary(),
+                // A política a sério, não o resumo acima. O
+                // consentimento para dados de saúde tem de ser
+                // informado (artigo 9.º), e isso quer dizer poder ler
+                // o documento ANTES de carregar em aceitar.
+                const PrivacyPolicyLink(),
                 const SizedBox(height: 20),
                 PanelCard(
                   child: Column(

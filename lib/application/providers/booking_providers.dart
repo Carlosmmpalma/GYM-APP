@@ -286,6 +286,11 @@ final sessionSeriesRepositoryProvider =
   );
 });
 
+/// Só o NÚMERO de séries ativas — ver [activeMemberCountProvider].
+final activeSeriesCountProvider = FutureProvider.autoDispose<int>((ref) {
+  return ref.watch(sessionSeriesRepositoryProvider).countActiveSeries();
+});
+
 final seriesProvider = StreamProvider<List<SessionSeries>>((ref) {
   return ref.watch(sessionSeriesRepositoryProvider).watchSeries();
 });

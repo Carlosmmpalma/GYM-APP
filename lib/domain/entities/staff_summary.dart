@@ -15,6 +15,9 @@ class StaffSummary extends Equatable {
     required this.active,
     this.modalityIds = const {},
     this.serviceIds = const {},
+    this.photoPath,
+    this.photoUrl,
+    this.photoUpdatedAt,
   });
 
   final String uid;
@@ -33,6 +36,12 @@ class StaffSummary extends Equatable {
   /// mesmo documento de sempre; um Gestor puro simplesmente nunca
   /// preenche isto.
   final Set<String> modalityIds;
+
+  /// Ver `MemberSummary.photoPath` — o avatar é a mesma coisa para
+  /// alunos e para staff, e vive no mesmo sítio.
+  final String? photoPath;
+  final String? photoUrl;
+  final int? photoUpdatedAt;
 
   /// Fase 11 — os serviços que este instrutor pode lecionar.
   ///
@@ -60,5 +69,8 @@ class StaffSummary extends Equatable {
         active,
         modalityIds,
         serviceIds,
+        photoPath,
+        photoUrl,
+        photoUpdatedAt,
       ];
 }

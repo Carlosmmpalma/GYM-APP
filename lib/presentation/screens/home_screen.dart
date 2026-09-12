@@ -62,16 +62,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // operativo); isto é o mínimo para o utilizador ver algo enquanto
     // usa a app. Sem `flutter_local_notifications` (pacote novo, fora
     // de âmbito desta fase) — só um SnackBar.
-    FirebaseMessaging.onMessage.listen((message) {
-      final notification = message.notification;
-      if (notification == null || !mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text('${notification.title ?? ''}: ${notification.body ?? ''}'),
-        ),
-      );
-    });
+    // Falha em silêncio, pelo mesmo motivo que o registo do token em
+    // `notification_providers.dart`: o FCM pode não existir onde a app
+    // corre — um Android sem Google Play Services, um browser com as
+    // notificações bloqueadas, ou (hoje) a web sem VAPID key
+    // configurada. `FirebaseMessaging.instance` lança nesses casos.
+    //
+    // Sem esta guarda, o que morria era a CASCA da app — a barra de
+    // separadores, tudo — por causa de uma funcionalidade acessória.
+    // Era também o que impedia este ecrã de entrar na matriz de
+    // layouts: rebentava antes de desenhar o primeiro pixel.
+    try {
+      FirebaseMessaging.onMessage.listen((message) {
+        final notification = message.notification;
+        if (notification == null || !mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('${notification.title ?? ''}: ${notification.body ?? ''}'),
+          ),
+        );
+      });
+    } catch (_) {
+      // Sem mensagens em primeiro plano. As de segundo plano continuam
+      // a ser entregues pelo sistema operativo, sem código nosso.
+    }
   }
 
   @override

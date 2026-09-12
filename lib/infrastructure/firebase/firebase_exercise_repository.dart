@@ -9,7 +9,7 @@ Exercise _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     id: doc.id,
     name: data['name'] as String? ?? '',
     description: data['description'] as String? ?? '',
-    muscleGroup: data['muscleGroup'] as String? ?? '',
+    category: data['category'] as String? ?? '',
     videoPath: data['videoPath'] as String?,
   );
 }
@@ -53,12 +53,12 @@ class FirebaseExerciseRepository implements ExerciseRepository {
   Future<String> createExercise({
     required String name,
     required String description,
-    required String muscleGroup,
+    required String category,
   }) async {
     final ref = await _exercises.add({
       'name': name,
       'description': description,
-      'muscleGroup': muscleGroup,
+      'category': category,
       'videoPath': null,
       'createdAt': FieldValue.serverTimestamp(),
     });
@@ -70,12 +70,12 @@ class FirebaseExerciseRepository implements ExerciseRepository {
     required String exerciseId,
     required String name,
     required String description,
-    required String muscleGroup,
+    required String category,
   }) async {
     await _exercises.doc(exerciseId).update({
       'name': name,
       'description': description,
-      'muscleGroup': muscleGroup,
+      'category': category,
     });
   }
 

@@ -139,6 +139,15 @@ afterAll(async () => {
   await adminApp.delete();
 });
 
+// Os limites de tempo por teste saíram daqui: passaram a vir do
+// `vitest.config.ts`, que é onde o valor único vive desde que os
+// ficheiros começaram a estourar uns por causa dos outros. Estes eram
+// dos primeiros e traziam 30 segundos escritos à mão — o suficiente até
+// a suite passar dos 340 testes contra um só emulador de funções, que
+// serializa arranques a frio. O teste da sessão extra faz quatro
+// chamadas e era o que estava mais perto do limite: passa sozinho em 14
+// segundos e estourava os 30 acompanhado.
+
 describe('UC08-A — sessão extra e o limite semanal (Fase 8, regressão)', () => {
   it('atribuir uma sessão EXTRA não consome utilização; cancelá-la não devolve nenhuma', async () => {
     await createOccurrence('occ_normal', 48);
@@ -166,7 +175,7 @@ describe('UC08-A — sessão extra e o limite semanal (Fase 8, regressão)', () 
       occurrenceId: 'occ_extra',
     });
     expect(await usedThisPeriod()).toBe(1);
-  }, 30_000);
+  });
 
   it('o próprio membro cancelar uma sessão EXTRA também não devolve utilização', async () => {
     await createOccurrence('occ_extra_self', 96);
@@ -186,7 +195,7 @@ describe('UC08-A — sessão extra e o limite semanal (Fase 8, regressão)', () 
       memberId: MEMBER_ID,
     });
     expect(await usedThisPeriod()).toBe(before);
-  }, 30_000);
+  });
 
   it('remarcar uma sessão EXTRA mantém-na extra no destino', async () => {
     await createOccurrence('occ_extra_from', 120);
@@ -215,7 +224,7 @@ describe('UC08-A — sessão extra e o limite semanal (Fase 8, regressão)', () 
       .doc(`tenants/${TENANT_ID}/sessionOccurrences/occ_extra_to/bookings/${MEMBER_ID}`)
       .get();
     expect(moved.data()?.isExtra).toBe(true);
-  }, 30_000);
+  });
 
   it('cancelar uma sessão NORMAL continua a devolver a utilização', async () => {
     // Prova que a correção não desligou o comportamento correto —
@@ -229,5 +238,5 @@ describe('UC08-A — sessão extra e o limite semanal (Fase 8, regressão)', () 
       memberId: MEMBER_ID,
     });
     expect(await usedThisPeriod()).toBe(before - 1);
-  }, 30_000);
+  });
 });

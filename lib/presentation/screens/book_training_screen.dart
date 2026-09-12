@@ -337,10 +337,12 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
       // evento de snapshot chegar sozinho.
       ref.invalidate(occurrencesForServicesProvider);
       ref.invalidate(myBookingsProvider);
+      // A semana da AULA, não a de hoje: marcar uma aula da semana que
+      // vem não mexe na contagem desta.
       ref.invalidate(usageProvider((
         memberId: widget.memberId,
         serviceId: widget.occurrence.serviceId,
-        period: isoWeekKey(DateTime.now()),
+        period: isoWeekKey(widget.occurrence.startAt),
       )));
     } on NotEligibleForServiceException catch (e) {
       setState(() => _error = e.toString());
@@ -408,6 +410,7 @@ class _OccurrenceTileState extends ConsumerState<_OccurrenceTile> {
           _WeeklyUsageLine(
             memberId: widget.memberId,
             serviceId: occurrence.serviceId,
+            occurrenceStart: occurrence.startAt,
           ),
           const SizedBox(height: 12),
           // Já marcado → nada para premir aqui. O cancelamento vive em
@@ -607,10 +610,25 @@ class _TinySpinner extends StatelessWidget {
 /// caso já coberto pela mensagem de elegibilidade ao tentar marcar)
 /// não mostra nada.
 class _WeeklyUsageLine extends ConsumerWidget {
-  const _WeeklyUsageLine({required this.memberId, required this.serviceId});
+  const _WeeklyUsageLine({
+    required this.memberId,
+    required this.serviceId,
+    required this.occurrenceStart,
+  });
 
   final String memberId;
   final String serviceId;
+
+  /// Quando a AULA acontece.
+  ///
+  /// O limite é por semana, e esta lista mostra duas semanas de cada
+  /// vez. Isto lia `DateTime.now()` e mostrava a contagem da semana
+  /// CORRENTE em todos os cartões: um aluno com o limite gasto esta
+  /// semana via "1/1 sessões — já usaste as sessões desta semana" numa
+  /// aula da semana seguinte, ao lado de um botão "Marcar" que
+  /// funcionava perfeitamente. A interface a contradizer-se, e do lado
+  /// que faz as pessoas não marcarem.
+  final DateTime occurrenceStart;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -624,7 +642,8 @@ class _WeeklyUsageLine extends ConsumerWidget {
       data: (rule) {
         if (rule == null || rule.isUnlimited) return const SizedBox.shrink();
         final limit = rule.limit!;
-        final period = isoWeekKey(DateTime.now());
+        final period = isoWeekKey(occurrenceStart);
+        final estaSemana = period == isoWeekKey(DateTime.now());
         final usageAsync = ref.watch(
           usageProvider(
               (memberId: memberId, serviceId: serviceId, period: period)),
@@ -639,10 +658,11 @@ class _WeeklyUsageLine extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Esta semana',
-                      style: TextStyle(color: AppColors.mute, fontSize: 11),
+                      estaSemana ? 'Esta semana' : 'Nessa semana',
+                      style:
+                          const TextStyle(color: AppColors.mute, fontSize: 11),
                     ),
                   ),
                   Text(
@@ -661,9 +681,12 @@ class _WeeklyUsageLine extends ConsumerWidget {
               // conclusão errada de que não há nada a fazer.
               if (reached) ...[
                 const SizedBox(height: 8),
-                const AppBanner(
-                  text: 'Já usaste as sessões desta semana. O estúdio pode '
-                      'marcar-te uma sessão extra, se houver vaga.',
+                AppBanner(
+                  text: estaSemana
+                      ? 'Já usaste as sessões desta semana. O estúdio pode '
+                          'marcar-te uma sessão extra, se houver vaga.'
+                      : 'Já tens as sessões dessa semana ocupadas. O estúdio '
+                          'pode marcar-te uma sessão extra, se houver vaga.',
                 ),
               ],
             ],

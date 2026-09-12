@@ -197,29 +197,6 @@ class FirebaseFreeTrainingRepository implements FreeTrainingRepository {
   }
 
   @override
-  Future<void> deleteSchedule(String weekId) async {
-    final slots = await _schedules.doc(weekId).collection('slots').get();
-
-    // Contar primeiro, apagar depois. Sem isto, apagar uma semana com
-    // inscritos ia deixando blocos vazios pelo caminho até a Security
-    // Rule recusar um deles a meio — uma grelha meio apagada, que é
-    // pior do que qualquer um dos dois estados inteiros.
-    final withBookings = slots.docs
-        .where((doc) => ((doc.data()['activeBookingCount'] as num?) ?? 0) > 0)
-        .length;
-    if (withBookings > 0) {
-      throw ScheduleHasBookingsException(withBookings);
-    }
-
-    final batch = _firestore.batch();
-    for (final doc in slots.docs) {
-      batch.delete(doc.reference);
-    }
-    batch.delete(_schedules.doc(weekId));
-    await batch.commit();
-  }
-
-  @override
   Future<int> retargetSlots({
     required String weekId,
     required String serviceId,

@@ -10,17 +10,6 @@ import '../domain/entities/free_training_slot.dart';
 /// muda (`freeTrainingSchedules/{weekId}/slots/{slotId}/...` em vez de
 /// `sessionOccurrences/{id}/...`), por isso os métodos abaixo pedem
 /// sempre `weekId`+`slotId` em vez de um único `occurrenceId`.
-/// Lançada por [FreeTrainingRepository.deleteSchedule] quando a semana
-/// ainda tem gente inscrita.
-class ScheduleHasBookingsException implements Exception {
-  const ScheduleHasBookingsException(this.slotsWithBookings);
-
-  final int slotsWithBookings;
-
-  @override
-  String toString() => 'ScheduleHasBookingsException($slotsWithBookings)';
-}
-
 abstract class FreeTrainingRepository {
   Stream<FreeTrainingSchedule?> watchSchedule(String weekId);
 
@@ -55,15 +44,6 @@ abstract class FreeTrainingRepository {
     required DateTime weekStart,
     required String serviceId,
   });
-
-  /// Elimina a grelha de uma semana inteira, com os seus blocos.
-  ///
-  /// A sugestão automática copia a semana anterior; quando copia mal (ou
-  /// quando se gerou a semana errada), a única saída era apagar bloco a
-  /// bloco. Recusa — antes de apagar seja o que for — se algum bloco
-  /// tiver inscritos: aí o que se quer é avisar as pessoas, não fazer a
-  /// semana desaparecer por baixo delas.
-  Future<void> deleteSchedule(String weekId);
 
   /// UC17-A fechado — só fica visível ao Aluno depois disto. Lança se
   /// a semana não tiver nenhum horário ainda.

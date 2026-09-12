@@ -113,6 +113,49 @@ class FirebaseWorkoutSessionRepository implements WorkoutSessionRepository {
   }
 
   @override
+  Future<void> changeWorkout({
+    required String memberId,
+    required String sessionId,
+    required String workoutId,
+    required String workoutName,
+  }) async {
+    // `workoutName` é copiado, e não lido do treino em cada leitura: é
+    // o nome que fica no histórico, e um treino renomeado meses depois
+    // não deve reescrever o passado. Mesmo raciocínio de `startSession`.
+    await _sessions(memberId).doc(sessionId).update({
+      'workoutId': workoutId,
+      'workoutName': workoutName,
+    });
+  }
+
+  @override
+  // ---------------------------------------------------------------
+  // Porque as três operações abaixo (`updateSet`, `deleteSet`,
+  // `undoLastSet`) correm dentro de uma TRANSAÇÃO.
+  //
+  // As séries vivem num array dentro do documento da sessão, e há duas
+  // formas de lá mexer: `logSet` acrescenta com `arrayUnion`, e estas
+  // três lêem o array inteiro, mudam-no em memória e reescrevem-no.
+  //
+  // Misturar as duas é uma corrida. Sem transação, uma série registada
+  // entre a LEITURA e a ESCRITA de um "desfazer" desaparecia — a
+  // reescrita punha lá uma versão do array anterior a ela existir.
+  // Nada falhava, nada avisava: a série simplesmente não estava lá.
+  //
+  // Parecia improvável enquanto só o próprio aluno registava do seu
+  // telemóvel. A aula de grupo mudou isso: o instrutor regista as séries
+  // de toda a gente a partir do dispositivo dele, e o aluno pode estar a
+  // registar no seu ao mesmo tempo. Dois escritores no mesmo array.
+  //
+  // A transação torna o ler-mudar-escrever atómico, e o Firestore repete
+  // a operação se alguém lá mexeu entretanto.
+  //
+  // ⚠️ Não há teste a provar isto. As nossas ferramentas não conseguem:
+  // os testes contra o Emulator Suite são em TypeScript e não chamam
+  // este código Dart; e o `fake_cloud_firestore` dos testes de widget
+  // não modela conflitos de transação. Fica escrito em vez de fingido.
+  // ---------------------------------------------------------------
+
   Future<void> logSet({
     required String memberId,
     required String sessionId,
@@ -174,21 +217,29 @@ class FirebaseWorkoutSessionRepository implements WorkoutSessionRepository {
     required String exerciseId,
   }) async {
     final ref = _sessions(memberId).doc(sessionId);
-    final snapshot = await ref.get();
-    if (!snapshot.exists) return;
 
-    final rawSets = ((snapshot.data()?['sets'] as List?) ?? const [])
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
+    await _firestore.runTransaction((tx) async {
+      final snapshot = await tx.get(ref);
+      if (!snapshot.exists) return;
 
-    // A última série DESTE exercício, não a última da sessão: numa
-    // sessão alterna-se entre exercícios, e "desfazer" tem de tirar a
-    // que se acabou de confirmar ali.
-    final index = rawSets.lastIndexWhere((s) => s['exerciseId'] == exerciseId);
-    if (index < 0) return;
+      final rawSets = ((snapshot.data()?['sets'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
 
-    final removed = rawSets.removeAt(index);
-    await _writeSets(memberId, ref, rawSets, removing: [removed]);
+      // A última série DESTE exercício, não a última da sessão: numa
+      // sessão alterna-se entre exercícios, e "desfazer" tem de tirar a
+      // que se acabou de confirmar ali.
+      final index =
+          rawSets.lastIndexWhere((s) => s['exerciseId'] == exerciseId);
+      if (index < 0) return;
+
+      final removed = rawSets.removeAt(index);
+      tx.update(ref, {'sets': rawSets});
+      final loadHistoryId = removed['loadHistoryId'] as String?;
+      if (loadHistoryId != null) {
+        tx.delete(_loadHistory(memberId).doc(loadHistoryId));
+      }
+    });
   }
 
   @override
@@ -202,52 +253,54 @@ class FirebaseWorkoutSessionRepository implements WorkoutSessionRepository {
     required String performedBy,
   }) async {
     final ref = _sessions(memberId).doc(sessionId);
-    final snapshot = await ref.get();
-    if (!snapshot.exists) return;
 
-    final rawSets = ((snapshot.data()?['sets'] as List?) ?? const [])
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
-    final index = rawSets.indexWhere((s) =>
-        s['exerciseId'] == exerciseId && (s['setNumber'] as num?) == setNumber);
-    if (index < 0) return;
+    await _firestore.runTransaction((tx) async {
+      final snapshot = await tx.get(ref);
+      if (!snapshot.exists) return;
 
-    final original = _setFromMap(rawSets[index]);
-    final batch = _firestore.batch();
+      final rawSets = ((snapshot.data()?['sets'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      final index = rawSets.indexWhere((s) =>
+          s['exerciseId'] == exerciseId &&
+          (s['setNumber'] as num?) == setNumber);
+      if (index < 0) return;
 
-    // O registo de carga antigo sai e entra um novo, em vez de ser
-    // alterado: `loadHistory` é append-only nas Rules (Fase 8), e
-    // continua a ser — o que se apaga é um engano, não o histórico.
-    if (original.loadHistoryId != null) {
-      batch.delete(_loadHistory(memberId).doc(original.loadHistoryId!));
-    }
-    DocumentReference<Map<String, dynamic>>? newLoadRef;
-    if (load != null) {
-      newLoadRef = _loadHistory(memberId).doc();
-      batch.set(newLoadRef, {
-        'exerciseId': exerciseId,
-        'load': load,
-        'reps': reps,
-        'recordedBy': performedBy,
-        'recordedAt': Timestamp.fromDate(original.completedAt),
-        'sessionId': sessionId,
-      });
-    }
+      final original = _setFromMap(rawSets[index]);
 
-    rawSets[index] = _setToMap(
-      SetLog(
-        exerciseId: exerciseId,
-        setNumber: setNumber,
-        reps: reps,
-        load: load,
-        // A hora original mantém-se: corrigir um valor não muda quando
-        // a série foi feita.
-        completedAt: original.completedAt,
-        loadHistoryId: newLoadRef?.id,
-      ),
-    );
-    batch.update(ref, {'sets': rawSets});
-    await batch.commit();
+      // O registo de carga antigo sai e entra um novo, em vez de ser
+      // editado: o id é a ligação entre a série e a entrada do
+      // histórico, e refazê-la é mais simples do que a manter.
+      if (original.loadHistoryId != null) {
+        tx.delete(_loadHistory(memberId).doc(original.loadHistoryId!));
+      }
+      DocumentReference<Map<String, dynamic>>? newLoadRef;
+      if (load != null) {
+        newLoadRef = _loadHistory(memberId).doc();
+        tx.set(newLoadRef, {
+          'exerciseId': exerciseId,
+          'load': load,
+          'reps': reps,
+          'recordedBy': performedBy,
+          'recordedAt': Timestamp.fromDate(original.completedAt),
+          'sessionId': sessionId,
+        });
+      }
+
+      rawSets[index] = _setToMap(
+        SetLog(
+          exerciseId: exerciseId,
+          setNumber: setNumber,
+          reps: reps,
+          load: load,
+          // A hora original mantém-se: corrigir um valor não muda quando
+          // a série foi feita.
+          completedAt: original.completedAt,
+          loadHistoryId: newLoadRef?.id,
+        ),
+      );
+      tx.update(ref, {'sets': rawSets});
+    });
   }
 
   @override
@@ -280,42 +333,30 @@ class FirebaseWorkoutSessionRepository implements WorkoutSessionRepository {
     required int setNumber,
   }) async {
     final ref = _sessions(memberId).doc(sessionId);
-    final snapshot = await ref.get();
-    if (!snapshot.exists) return;
 
-    final rawSets = ((snapshot.data()?['sets'] as List?) ?? const [])
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
-    final index = rawSets.indexWhere((s) =>
-        s['exerciseId'] == exerciseId && (s['setNumber'] as num?) == setNumber);
-    if (index < 0) return;
+    await _firestore.runTransaction((tx) async {
+      final snapshot = await tx.get(ref);
+      if (!snapshot.exists) return;
 
-    // As restantes NÃO são renumeradas — `setNumber` é guardado
-    // precisamente para isso (ver `SetLog`). Renumerar mudaria o que as
-    // outras séries dizem, e quem apaga a 2.ª de quatro quer perder uma
-    // série, não reescrever o registo das outras três.
-    final removed = rawSets.removeAt(index);
-    await _writeSets(memberId, ref, rawSets, removing: [removed]);
-  }
+      final rawSets = ((snapshot.data()?['sets'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      final index = rawSets.indexWhere((s) =>
+          s['exerciseId'] == exerciseId &&
+          (s['setNumber'] as num?) == setNumber);
+      if (index < 0) return;
 
-  /// Grava a lista de séries e limpa os registos de carga das que
-  /// saíram. Um registo órfão aparecia na evolução da carga como um
-  /// ponto que não correspondia a nenhuma série feita.
-  Future<void> _writeSets(
-    String memberId,
-    DocumentReference<Map<String, dynamic>> sessionRef,
-    List<Map<String, dynamic>> sets, {
-    required List<Map<String, dynamic>> removing,
-  }) async {
-    final batch = _firestore.batch();
-    batch.update(sessionRef, {'sets': sets});
-    for (final raw in removing) {
-      final loadHistoryId = raw['loadHistoryId'] as String?;
+      // As restantes NÃO são renumeradas — `setNumber` é guardado
+      // precisamente para isso (ver `SetLog`). Renumerar mudaria o que
+      // as outras séries dizem, e quem apaga a 2.ª de quatro quer perder
+      // uma série, não reescrever o registo das outras três.
+      final removed = rawSets.removeAt(index);
+      tx.update(ref, {'sets': rawSets});
+      final loadHistoryId = removed['loadHistoryId'] as String?;
       if (loadHistoryId != null) {
-        batch.delete(_loadHistory(memberId).doc(loadHistoryId));
+        tx.delete(_loadHistory(memberId).doc(loadHistoryId));
       }
-    }
-    await batch.commit();
+    });
   }
 
   @override

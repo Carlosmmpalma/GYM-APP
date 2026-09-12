@@ -10,6 +10,7 @@ import 'package:gym_saas/core/config/tenant_app_config.dart';
 import 'package:gym_saas/core/utils/iso_week.dart';
 import 'package:gym_saas/domain/entities/app_user.dart';
 import 'package:gym_saas/domain/entities/role.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:gym_saas/presentation/screens/instructor_home_screen.dart';
 import 'package:mocktail/mocktail.dart';
 
@@ -23,6 +24,13 @@ const _instructorUid = 'instructor_1';
 class _MockFirebaseFunctions extends Mock implements FirebaseFunctions {}
 
 void main() {
+  setUpAll(() async {
+    // O ecrã passou a mostrar as aulas de HOJE com a hora formatada —
+    // e um `DateFormat` com locale rebenta sem isto. Não rebentava
+    // antes porque este ecrã não formatava data nenhuma.
+    await initializeDateFormatting('pt_PT');
+  });
+
   const appUser = AppUser(
     uid: _instructorUid,
     tenantId: _tenantId,
@@ -37,6 +45,11 @@ void main() {
         ),
         firestoreProvider.overrideWithValue(firestore),
         functionsProvider.overrideWithValue(_MockFirebaseFunctions()),
+        // O ecrã recebe o `appUser` como parâmetro, mas
+        // `visibleMembersProvider` precisa de saber QUEM está a
+        // perguntar para decidir que alunos mostrar. Na app real quem o
+        // resolve é o `HomeScreen`, acima deste ecrã.
+        currentAppUserProvider.overrideWith((ref) => Stream.value(appUser)),
       ],
       child: const MaterialApp(
         home: Scaffold(body: InstructorHomeScreen(appUser: appUser)),
@@ -62,6 +75,9 @@ void main() {
       'roles': ['instructor'],
       'status': 'active',
       'modalityIds': ['mod_hyrox'],
+      // "Os alunos dele" são os que contrataram um serviço que ele
+      // leciona — sem isto, não vê aluno nenhum.
+      'serviceIds': ['svc_hyrox'],
     });
     return firestore;
   }
@@ -133,6 +149,16 @@ void main() {
         .collection('members')
         .doc('member_1')
         .set({'name': 'Rita', 'memberNumber': '0142', 'status': 'active'});
+    await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('subscriptions')
+        .doc('sub_rita')
+        .set({
+      'memberId': 'member_1',
+      'status': 'active',
+      'activeServiceIds': ['svc_hyrox'],
+    });
 
     await tester.pumpWidget(buildApp(firestore));
     await tester.pumpAndSettle();
@@ -141,5 +167,53 @@ void main() {
     expect(find.text('Alunos ativos'), findsOneWidget);
     // 1 sessão minha hoje, 1 aluno ativo.
     expect(find.text('1'), findsNWidgets(2));
+  });
+
+  testWidgets('"Alunos ativos" conta só os alunos DESTE instrutor',
+      (tester) async {
+    // Durante muito tempo isto contava (e o ecrã listava) todos os
+    // alunos do estúdio, incluindo quem não treina nada que ele
+    // lecione. O mockup pedia "só alunos com serviço na tua
+    // modalidade"; o âmbito nunca tinha sido modelado.
+    final firestore = await seed();
+
+    for (final (id, nome) in [('member_1', 'Rita'), ('member_2', 'Bruno')]) {
+      await firestore
+          .collection('tenants')
+          .doc(_tenantId)
+          .collection('members')
+          .doc(id)
+          .set({'name': nome, 'memberNumber': id, 'status': 'active'});
+    }
+
+    // A Rita treina o que ele leciona; o Bruno faz outra coisa.
+    await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('subscriptions')
+        .doc('sub_rita')
+        .set({
+      'memberId': 'member_1',
+      'status': 'active',
+      'activeServiceIds': ['svc_hyrox'],
+    });
+    await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('subscriptions')
+        .doc('sub_bruno')
+        .set({
+      'memberId': 'member_2',
+      'status': 'active',
+      'activeServiceIds': ['svc_pilates'],
+    });
+
+    await tester.pumpWidget(buildApp(firestore));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alunos ativos'), findsOneWidget);
+    // Um, não dois.
+    expect(find.text('1'), findsWidgets);
+    expect(find.text('2'), findsNothing);
   });
 }

@@ -8,6 +8,7 @@ import '../../application/providers/privacy_providers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/entities/consent.dart';
 import 'design_system.dart';
+import 'privacy_policy_link.dart';
 
 /// Fase 11 (RGPD) — a secção "Os meus dados" do perfil do Aluno.
 ///
@@ -128,6 +129,7 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
       children: [
         const SizedBox(height: 24),
         const SectionLabel('Os meus dados'),
+        const PrivacyPolicyLink(centered: false),
         const SizedBox(height: 8),
         PanelCard(
           child: Column(

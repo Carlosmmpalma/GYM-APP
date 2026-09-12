@@ -239,6 +239,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
                           }
                           final current = freeTrainingAsync.valueOrNull;
                           return DropdownButtonFormField<String?>(
+                            isExpanded: true,
                             initialValue: active.any((s) => s.id == current)
                                 ? current
                                 : null,

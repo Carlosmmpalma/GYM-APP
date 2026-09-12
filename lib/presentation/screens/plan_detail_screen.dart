@@ -350,6 +350,7 @@ class _UsageRuleDialogState extends State<_UsageRuleDialog> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<UsagePeriod>(
+              isExpanded: true,
               initialValue: _period,
               decoration: const InputDecoration(labelText: 'Período'),
               items: UsagePeriod.values

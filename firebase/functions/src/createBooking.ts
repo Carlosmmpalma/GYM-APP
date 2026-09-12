@@ -4,7 +4,11 @@ import { z } from 'zod';
 
 import { requireAuthenticated } from './lib/callerContext';
 import { enforceRateLimit } from './lib/rateLimit';
-import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
+import {
+  isContentionError,
+  resolveEligibility,
+  runBookingTransaction,
+} from './lib/bookingLogic';
 import { parseInput } from './lib/validation';
 
 const inputSchema = z.object({
@@ -99,16 +103,40 @@ export const createBooking = onCall(async (request) => {
     );
   }
 
-  const result = await runBookingTransaction(firestore, {
-    tenantRef,
-    occurrenceRef,
-    bookingRef,
-    memberId,
-    serviceId,
-    startAt,
-    source: 'self',
-    eligibility,
-  });
+  // Uma transação que esgota as tentativas sobe daqui como uma exceção
+  // qualquer, e o Firebase embrulha-a em `internal` — ao aluno chega uma
+  // mensagem genérica de erro, numa aula que pode ter lugares.
+  //
+  // Isto acontece quando muita gente marca a MESMA aula ao mesmo tempo:
+  // todas as marcações disputam o documento onde vive o contador. Medido
+  // contra o emulador, com trinta em simultâneo e as quinze tentativas
+  // que `runBookingTransaction` já faz, não voltou a acontecer — mas
+  // "não voltou a acontecer" não é "não acontece", e a diferença entre
+  // "não deu, tenta outra vez" e um erro genérico é a diferença entre a
+  // pessoa tentar e desistir.
+  let result;
+  try {
+    result = await runBookingTransaction(firestore, {
+      tenantRef,
+      occurrenceRef,
+      bookingRef,
+      memberId,
+      serviceId,
+      startAt,
+      source: 'self',
+      eligibility,
+    });
+  } catch (error) {
+    if (isContentionError(error)) {
+      throw new HttpsError(
+        'aborted',
+        'Está muita gente a marcar esta aula ao mesmo tempo. Tenta outra '
+          + 'vez — ainda pode haver lugar.',
+        { reason: 'contention' },
+      );
+    }
+    throw error;
+  }
 
   switch (result.kind) {
     case 'booked':

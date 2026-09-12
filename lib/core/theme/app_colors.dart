@@ -44,6 +44,28 @@ abstract final class AppColors {
   static const warn = Color(0xFFF5A524);
 
   /// Borda subtil dos cards — `rgba(255,255,255,.05)` no mockup.
+  /// As cores dos avatares, quando a pessoa não tem foto.
+  ///
+  /// Todos os avatares eram o mesmo gradiente vermelho da marca, o que
+  /// transformava a tira da turma numa fila de cartões iguais — e é
+  /// precisamente aí que o instrutor precisa de distinguir doze pessoas
+  /// de relance, a meio da aula.
+  ///
+  /// Escolhidas escuras o suficiente para o texto branco se ler por
+  /// cima, e afastadas do vermelho da marca: no resto da app o vermelho
+  /// quer dizer "ação" ou "atenção", e um avatar não é nem uma coisa
+  /// nem outra.
+  static const avatarPalette = <(Color, Color)>[
+    (Color(0xFF2563EB), Color(0xFF1E3A8A)), // azul
+    (Color(0xFF7C3AED), Color(0xFF4C1D95)), // violeta
+    (Color(0xFF0891B2), Color(0xFF155E75)), // ciano
+    (Color(0xFF059669), Color(0xFF065F46)), // verde
+    (Color(0xFFD97706), Color(0xFF92400E)), // âmbar
+    (Color(0xFFDB2777), Color(0xFF831843)), // rosa
+    (Color(0xFF4F46E5), Color(0xFF312E81)), // índigo
+    (Color(0xFF65A30D), Color(0xFF3F6212)), // lima
+  ];
+
   static const cardBorder = Color(0x0DFFFFFF);
 
   /// Borda de input — `rgba(255,255,255,.08)`.

@@ -9,11 +9,14 @@ import 'student_training_screen.dart';
 
 /// Fase 8 — "Alunos": ponto de entrada do Instrutor para UC13/UC14/UC16
 /// (mockup: `<b>Alunos</b>Ponto de entrada para UC13/UC14/UC16`).
-/// Reutiliza `membersProvider` (já existia desde a Fase 3, usado pelo
-/// Gestor) — os dados são os mesmos, só o destino ao tocar muda:
-/// `ManageMembersScreen` (Gestor) vai para `MemberDetailScreen`
-/// (subscriptions); este vai para `StudentTrainingScreen` (plano de
-/// treino + avaliações), um conceito diferente.
+/// O destino ao tocar é o que o distingue do ecrã do Gestor:
+/// `ManageMembersScreen` vai para `MemberDetailScreen` (subscrições);
+/// este vai para `StudentTrainingScreen` (plano de treino + avaliações),
+/// um conceito diferente.
+///
+/// Reutilizava `membersProvider` — e com ele listava TODOS os alunos
+/// ativos do estúdio, incluindo quem não treina nada que este instrutor
+/// lecione. Passou a `visibleMembersProvider`.
 class InstructorStudentsScreen extends ConsumerStatefulWidget {
   const InstructorStudentsScreen({super.key});
 
@@ -28,7 +31,11 @@ class _InstructorStudentsScreenState
 
   @override
   Widget build(BuildContext context) {
-    final membersAsync = ref.watch(membersProvider);
+    // `visibleMembersProvider` e não `membersProvider`: um Instrutor
+    // via TODOS os alunos ativos do estúdio, incluindo os que não
+    // treinam nada que ele lecione. Ver a nota nesse provider sobre
+    // isto ser âmbito e não segurança.
+    final membersAsync = ref.watch(visibleMembersProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Alunos')),

@@ -4,6 +4,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 
 import { requireManager } from './lib/callerContext';
 import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
+import { publishPublicSchedule } from './lib/publicSchedule';
 import { tenantTimeZone, zonedWallClockToUtc } from './lib/timeZone';
 
 /** O guia (Fase 5) pede "materializa as próximas N semanas... 4-8 semanas". */
@@ -91,6 +92,8 @@ export interface GenerationSummary {
   seriesProcessed: number;
   occurrencesCreated: number;
   assignments: { assigned: number; skipped: number };
+  /** Aulas anunciadas na vitrina pública — ver `lib/publicSchedule.ts`. */
+  publicScheduleEntries: number;
 }
 
 async function generateForSeries(
@@ -145,6 +148,11 @@ async function generateForSeries(
       capacity: series.capacity,
       status: 'scheduled',
       activeBookingCount: 0,
+      // Explicitamente `null`, e não ausente: é o que permite aos
+      // lembretes procurarem SÓ as aulas por avisar. O Firestore não
+      // encontra `== null` em documentos onde o campo não existe, por
+      // isso um campo em falta aqui fazia a aula nunca ser avisada.
+      reminderSentAt: null,
       createdAt: FieldValue.serverTimestamp(),
     });
     summary.occurrencesCreated += 1;
@@ -210,6 +218,7 @@ export async function runGenerateRecurringOccurrences(
     seriesProcessed: 0,
     occurrencesCreated: 0,
     assignments: { assigned: 0, skipped: 0 },
+    publicScheduleEntries: 0,
   };
 
   const seriesSnap = tenantId
@@ -226,6 +235,13 @@ export async function runGenerateRecurringOccurrences(
   // leituras do mesmo documento.
   const timeZoneByTenant = new Map<string, string>();
 
+  // As séries de cada tenant, para a vitrina pública ser reescrita uma
+  // vez por tenant e não uma vez por série.
+  const seriesByTenant = new Map<
+    string,
+    { ref: FirebaseFirestore.DocumentReference; series: SeriesData[] }
+  >();
+
   for (const doc of seriesSnap.docs) {
     const series = seriesFromDoc(doc);
     let timeZone = timeZoneByTenant.get(series.tenantRef.path);
@@ -235,6 +251,31 @@ export async function runGenerateRecurringOccurrences(
     }
     await generateForSeries(firestore, series, now, summary, timeZone);
     summary.seriesProcessed += 1;
+
+    const bucket = seriesByTenant.get(series.tenantRef.path);
+    if (bucket) {
+      bucket.series.push(series);
+    } else {
+      seriesByTenant.set(series.tenantRef.path, {
+        ref: series.tenantRef,
+        series: [series],
+      });
+    }
+  }
+
+  // O mapa de aulas que se vê sem conta, derivado das mesmas séries
+  // ativas — ver `lib/publicSchedule.ts` sobre porque é derivado e não
+  // escrito à mão.
+  //
+  // Falhar aqui não pode deitar abaixo a geração das aulas, que é o que
+  // esta função existe para fazer: uma vitrina desatualizada é um
+  // incómodo, um dia sem aulas geradas é um estúdio parado.
+  for (const { ref, series } of seriesByTenant.values()) {
+    try {
+      summary.publicScheduleEntries += await publishPublicSchedule(ref, series);
+    } catch (error) {
+      console.error('publishPublicSchedule falhou', ref.path, error);
+    }
   }
 
   return summary;

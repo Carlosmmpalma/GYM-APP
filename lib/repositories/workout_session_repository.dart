@@ -32,6 +32,26 @@ abstract class WorkoutSessionRepository {
   /// é o que alimenta o gráfico de evolução, que já existia antes das
   /// sessões e continua a ser a forma de responder a "quanto é que eu
   /// levantava há três meses".
+  /// Troca o treino que esta sessão está a fazer.
+  ///
+  /// Serve o engano no arranque: numa aula de grupo escolhe-se o treino
+  /// de cada aluno numa folha com quatro ou cinco nomes, e enganar-se
+  /// numa linha é fácil. Sem isto, a única saída era terminar a sessão
+  /// e recomeçar — com a aula a decorrer.
+  ///
+  /// ⚠️ Só faz sentido **antes de haver séries registadas**. As séries
+  /// já feitas pertencem a exercícios do treino antigo: mudar por baixo
+  /// delas deixava-as fora da lista (o painel filtra pelo treino) mas a
+  /// contar nos totais da sessão. Quem chama isto tem de garantir a
+  /// condição — é uma correção de engano, não uma operação do meio do
+  /// treino.
+  Future<void> changeWorkout({
+    required String memberId,
+    required String sessionId,
+    required String workoutId,
+    required String workoutName,
+  });
+
   Future<void> logSet({
     required String memberId,
     required String sessionId,

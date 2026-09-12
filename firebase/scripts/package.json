@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "seed": "node seed.mjs"
+    "seed": "node seed.mjs",
+    "check-deploy": "node check-deploy.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.1.0"

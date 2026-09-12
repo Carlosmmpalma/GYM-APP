@@ -127,6 +127,11 @@ export const cancelBooking = onCall(async (request) => {
     }
 
     return { found: true, usageRefunded };
+  }, {
+    // Mesma razão de `runBookingTransaction`: cancelar mexe no
+    // `activeBookingCount` da MESMA aula que toda a gente está a
+    // disputar. Ver a nota lá.
+    maxAttempts: 10,
   });
 
   if (!result.found) {

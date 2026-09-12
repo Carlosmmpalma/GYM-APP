@@ -44,13 +44,26 @@ export async function sendSessionRemindersForTenant(params: {
 
   const horizon = new Date(now.getTime() + hours * 3600_000);
 
-  // Só sessões que ainda não começaram e caem dentro da janela. A
-  // função corre de hora a hora, portanto a mesma sessão entra na
-  // janela várias vezes — é `reminderSentAt` que garante um único
-  // aviso, não a janela.
+  // Só sessões que ainda não começaram, caem dentro da janela, e ainda
+  // não foram avisadas.
+  //
+  // O `reminderSentAt == null` não é cosmético. A função corre de hora
+  // a hora com uma janela de doze, portanto a MESMA aula entra na
+  // janela doze vezes; antes eram lidas as doze e onze delas descartadas
+  // em memória, logo a seguir a serem pagas. Agora o filtro é do lado do
+  // servidor e a query devolve só o que há mesmo para fazer — quase
+  // sempre nada.
+  //
+  // Depende de as ocorrências nascerem com `reminderSentAt: null`
+  // explícito (ver `generateRecurringOccurrences.ts` e
+  // `firebase_session_occurrence_repository.dart#createOccurrence`): o
+  // Firestore não encontra `== null` onde o campo não existe. Uma
+  // ocorrência criada antes desta mudança nunca entra nesta query — e é
+  // isso que o script `backfill-reminder-field.mjs` vai lá corrigir.
   const occurrences = await tenantRef
     .collection('sessionOccurrences')
     .where('status', '==', 'scheduled')
+    .where('reminderSentAt', '==', null)
     .where('startAt', '>=', now)
     .where('startAt', '<=', horizon)
     .get();
@@ -59,8 +72,6 @@ export async function sendSessionRemindersForTenant(params: {
   let processed = 0;
 
   for (const occurrence of occurrences.docs) {
-    if (occurrence.get('reminderSentAt') != null) continue;
-
     const bookings = await occurrence.ref
       .collection('bookings')
       .where('status', '==', 'booked')

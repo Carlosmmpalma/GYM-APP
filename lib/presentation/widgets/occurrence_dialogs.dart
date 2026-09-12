@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/session_occurrence.dart';
 import 'design_system.dart';
+import '../../core/utils/time_range.dart';
+import 'time_range_field.dart';
 
 /// Fase 8 (revisão geral) — estes dois diálogos existiam DUPLICADOS em
 /// `series_detail_screen.dart` (Fase 5) e `occurrence_detail_screen.dart`
@@ -16,7 +18,14 @@ import 'design_system.dart';
 /// `bookingLogic.ts` foi extraído para evitar do lado do servidor.
 ///
 /// Resultado de [showEditOccurrenceDialog]: `null` se cancelado.
-typedef EditOccurrenceResult = ({DateTime startAt, int capacity});
+/// `endAt` passou a fazer parte do resultado: sem ele, quem chamava
+/// isto tinha de reconstruir o fim a partir da duração antiga, e por
+/// isso a duração era impossível de mudar.
+typedef EditOccurrenceResult = ({
+  DateTime startAt,
+  DateTime endAt,
+  int capacity,
+});
 
 /// UC18 — "editar só esta ocorrência" (hora/data/capacidade). Nunca
 /// toca em `activeBookingCount` nem em `status`: cancelar passa sempre
@@ -80,6 +89,12 @@ class _EditOccurrenceDialog extends StatefulWidget {
 class _EditOccurrenceDialogState extends State<_EditOccurrenceDialog> {
   late DateTime _date = widget.occurrence.startAt;
   late TimeOfDay _time = TimeOfDay.fromDateTime(widget.occurrence.startAt);
+
+  /// Editar uma aula não deixava mexer na duração: ela era herdada em
+  /// silêncio da aula original. Uma aula criada com 60 minutos ficava
+  /// com 60 minutos para sempre — a única saída era apagá-la e criar
+  /// outra, e as aulas geradas por série nem isso permitem.
+  late TimeOfDay _endTime = TimeOfDay.fromDateTime(widget.occurrence.endAt);
   late final _capacityController =
       TextEditingController(text: widget.occurrence.capacity.toString());
 
@@ -89,12 +104,21 @@ class _EditOccurrenceDialogState extends State<_EditOccurrenceDialog> {
     super.dispose();
   }
 
-  void _submit() {
+  bool get _valid {
     final capacity = int.tryParse(_capacityController.text.trim());
-    if (capacity == null || capacity <= 0) return;
+    return capacity != null && capacity > 0 && endsAfterStart(_time, _endTime);
+  }
+
+  void _submit() {
+    if (!_valid) return;
+    final capacity = int.parse(_capacityController.text.trim());
     final startAt =
         DateTime(_date.year, _date.month, _date.day, _time.hour, _time.minute);
-    Navigator.of(context).pop((startAt: startAt, capacity: capacity));
+    final endAt = DateTime(
+        _date.year, _date.month, _date.day, _endTime.hour, _endTime.minute);
+    Navigator.of(context).pop(
+      (startAt: startAt, endAt: endAt, capacity: capacity),
+    );
   }
 
   @override
@@ -126,17 +150,17 @@ class _EditOccurrenceDialogState extends State<_EditOccurrenceDialog> {
               if (picked != null) setState(() => _date = picked);
             },
           ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Hora'),
-            subtitle: Text(_time.format(context)),
-            trailing: const Icon(Icons.access_time_outlined),
-            onTap: () async {
-              final picked =
-                  await showTimePicker(context: context, initialTime: _time);
-              if (picked != null) setState(() => _time = picked);
-            },
+          const SizedBox(height: 8),
+          TimeRangeField(
+            compact: true,
+            start: _time,
+            end: _endTime,
+            onChanged: (start, end) => setState(() {
+              _time = start;
+              _endTime = end;
+            }),
           ),
+          const SizedBox(height: 8),
           TextField(
             controller: _capacityController,
             decoration: const InputDecoration(labelText: 'Capacidade'),

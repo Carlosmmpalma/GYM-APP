@@ -127,6 +127,29 @@ service cloud.firestore {
       allow write: if isManager(tenantId);
     }
 
+    // A VITRINA: o único sítio desta base de dados que se lê sem sessão.
+    //
+    // Existe para a app poder mostrar o mapa de aulas a quem ainda não é
+    // membro — quem instala antes de se inscrever, e quem revê a app na
+    // App Store. Todo o resto continua a exigir sessão e tenant, por isso
+    // vale a pena ser explícito sobre o que isto abre e o que não abre.
+    //
+    // O que está aqui dentro é EXATAMENTE o que já estaria num cartaz na
+    // montra: nome da modalidade, dia, hora, duração. Sem nomes de
+    // alunos, sem lotações ocupadas, sem instrutores, sem ids que sirvam
+    // para pedir outra coisa. Quem escreve é a função agendada, com o
+    // Admin SDK — ver `publishPublicSchedule` em
+    // `generateRecurringOccurrences.ts`.
+    //
+    // `write: if false` e não `isManager`: se um dia o Gestor puder
+    // editar isto pela app, tem de passar por uma Cloud Function que
+    // valide o que lá põe. Um documento público com escrita direta do
+    // cliente é um convite a pôr lá o que não devia.
+    match /tenants/{tenantId}/public/{document} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Fase 5 (UC02) — até aqui, `allow read, write: if belongsToTenant`
     // deixava QUALQUER membro autenticado do tenant escrever no
     // documento de QUALQUER OUTRO membro (incluindo `memberNumber`/
@@ -394,6 +417,15 @@ service cloud.firestore {
     // contrário de `services`/`modalities`/`plans`, que continuam
     // Manager-only — a biblioteca é uma ferramenta do dia a dia do
     // Instrutor, não uma decisão de gestão do negócio).
+    // Como o estúdio arruma a biblioteca. Escrita a Gestor E Instrutor,
+    // igual à própria biblioteca: quem cria exercícios é quem precisa
+    // de os arrumar, e obrigar a pedir ao Gestor para criar uma
+    // categoria recriava o bloqueio que isto veio resolver.
+    match /tenants/{tenantId}/exerciseCategories/{categoryId} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if isManager(tenantId) || isInstructor(tenantId);
+    }
+
     match /tenants/{tenantId}/exercises/{exerciseId} {
       allow read: if belongsToTenant(tenantId);
       allow write: if isManager(tenantId) || isInstructor(tenantId);
@@ -438,7 +470,20 @@ service cloud.firestore {
           || (instructorOwnsSession(tenantId, resource.data)
               && instructorOwnsSession(tenantId, request.resource.data)))
         && request.resource.data.activeBookingCount == resource.data.activeBookingCount
-        && request.resource.data.status == resource.data.status;
+        && request.resource.data.status == resource.data.status
+        // Varredura de funcionalidades: `startAt` também não. Cada
+        // marcação guarda uma CÓPIA da data e a semana ISO em que foi
+        // contada, e o limite semanal vive num documento por semana —
+        // mover uma aula de uma semana para outra por escrita direta
+        // deixava a utilização na semana antiga e devolvia ao aluno a
+        // semana de destino inteira. Com um plano de 1x por semana,
+        // ficava com duas aulas nessa semana.
+        //
+        // Mesmo raciocínio do `status` acima: a mudança tem de
+        // cascatar, e só a Cloud Function `updateOccurrenceSchedule`
+        // (Admin SDK) o faz. Fechar aqui é o que impede o caminho
+        // antigo de continuar a existir ao lado do novo.
+        && request.resource.data.startAt == resource.data.startAt;
       // Continua `false`, e a tentativa de o abrir foi um erro que
       // vale a pena deixar escrito.
       //

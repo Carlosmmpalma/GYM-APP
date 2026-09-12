@@ -44,6 +44,13 @@ class FirebaseSessionSeriesRepository implements SessionSeriesRepository {
       .collection('sessionOccurrences');
 
   @override
+  Future<int> countActiveSeries() async {
+    final snapshot =
+        await _series.where('status', isEqualTo: 'active').count().get();
+    return snapshot.count ?? 0;
+  }
+
+  @override
   Stream<List<SessionSeries>> watchSeries() {
     return _series
         .snapshots()

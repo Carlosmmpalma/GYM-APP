@@ -15,6 +15,8 @@ import '../widgets/personal_data_fields.dart';
 import '../widgets/manager_account_actions.dart';
 import '../../repositories/catalogue_admin_repository.dart';
 import '../widgets/catalogue_delete.dart';
+import '../widgets/avatar_upload_button.dart';
+import '../widgets/person_avatar.dart';
 
 /// Detalhe de staff (Instrutor/Gestor): dados + toggle ativo/inativo.
 /// Mesmo raciocínio de `MemberDetailScreen` (desativar, nunca eliminar
@@ -58,17 +60,72 @@ class StaffDetailScreen extends ConsumerWidget {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    currentStaff.email,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                      'Papel: ${currentStaff.roles.map((r) => r.name).join(', ')}'),
-                ],
+              // A foto vive aqui e não em "O meu perfil", pela mesma
+              // razão que a do aluno: é a cara que aparece nas listas do
+              // estúdio, e quem a gere é quem gere as fichas. Sem isto,
+              // um instrutor nunca podia ter foto nenhuma — o botão do
+              // perfil tinha saído e não havia outro sítio.
+              child: Builder(
+                builder: (context) {
+                  final coluna = Column(
+                    children: [
+                      PersonAvatar(
+                        name: currentStaff.name,
+                        photoUrl: currentStaff.photoUrl,
+                        size: 44,
+                      ),
+                      AvatarUploadButton(
+                        userId: currentStaff.uid,
+                        hasPhoto: currentStaff.photoPath != null,
+                      ),
+                    ],
+                  );
+                  final identificacao = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        currentStaff.name,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(currentStaff.email),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Papel: '
+                        '${currentStaff.roles.map((r) => r.name).join(', ')}',
+                      ),
+                    ],
+                  );
+
+                  // O botão de foto é um `Wrap`, mas dentro de uma
+                  // `Column` sem largura recebe espaço infinito e por
+                  // isso nunca chega a quebrar. A 2.0× a coluna do
+                  // avatar sozinha passava 68 px da ficha.
+                  //
+                  // Acima de ~1.3× o avatar e a identificação deixam de
+                  // partilhar a linha. Não é uma cedência: a essa escala
+                  // um nome, um email e um papel não cabem ao lado de
+                  // nada.
+                  if (MediaQuery.textScalerOf(context).scale(14) > 18) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        coluna,
+                        const SizedBox(height: 12),
+                        identificacao,
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      coluna,
+                      const SizedBox(width: 12),
+                      Expanded(child: identificacao),
+                    ],
+                  );
+                },
               ),
             ),
           ),

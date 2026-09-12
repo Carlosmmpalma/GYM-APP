@@ -13,6 +13,8 @@ import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/session_series.dart';
 import '../widgets/design_system.dart';
 import 'manage_series_screen.dart';
+import '../../core/utils/time_range.dart';
+import '../widgets/time_range_field.dart';
 
 final _conflictTimeFormat = DateFormat('HH:mm', 'pt_PT');
 
@@ -44,7 +46,6 @@ class CreateSeriesScreen extends ConsumerStatefulWidget {
 
 class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _durationController = TextEditingController(text: '60');
   final _capacityController = TextEditingController(text: '1');
 
   bool _recurring = true;
@@ -58,6 +59,17 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
   int _dayOfWeek = DateTime.monday;
   DateTime _date = DateTime.now();
   TimeOfDay _time = const TimeOfDay(hour: 18, minute: 0);
+
+  /// A hora a que a aula acaba.
+  ///
+  /// Era um campo de texto a pedir a duração EM MINUTOS. Quem marca uma
+  /// aula pensa "das seis às sete", não "sessenta" — e escrever o
+  /// número obrigava a fazer a conta de cabeça sem nunca ver a que
+  /// horas a aula acabava. A duração continua a ser o que se guarda
+  /// (`durationMinutes`), só deixou de ser o que se escreve.
+  TimeOfDay _endTime = const TimeOfDay(hour: 19, minute: 0);
+
+  int get _durationMinutes => durationInMinutes(_time, _endTime);
 
   /// O formulário abre com segunda-feira às 18:00 — valores plausíveis
   /// para começar, mas que o Gestor ainda não escolheu.
@@ -79,7 +91,6 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
 
   @override
   void dispose() {
-    _durationController.dispose();
     _capacityController.dispose();
     super.dispose();
   }
@@ -140,6 +151,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                     );
                   }
                   return DropdownButtonFormField<Service>(
+                    isExpanded: true,
                     initialValue: _service,
                     decoration: const InputDecoration(labelText: 'Serviço'),
                     items: active
@@ -166,6 +178,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                         .toList();
                     if (options.isEmpty) return const SizedBox.shrink();
                     return DropdownButtonFormField<String?>(
+                      isExpanded: true,
                       key: ValueKey('modality-${_service!.id}'),
                       initialValue: _modalityId,
                       decoration: const InputDecoration(
@@ -209,6 +222,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                       .where((s) => s.roles.contains(Role.instructor))
                       .toList();
                   return DropdownButtonFormField<String?>(
+                    isExpanded: true,
                     initialValue: _instructorId,
                     decoration: const InputDecoration(
                         labelText: 'Instrutor (opcional)'),
@@ -227,6 +241,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
               const SizedBox(height: 16),
               if (_recurring) ...[
                 DropdownButtonFormField<int>(
+                  isExpanded: true,
                   initialValue: _dayOfWeek,
                   decoration: const InputDecoration(labelText: 'Dia da semana'),
                   items: [
@@ -248,27 +263,15 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                   _scheduleTouched = true;
                 }),
               ),
-              const SizedBox(height: 8),
-              _TimePickerTile(
-                time: _time,
-                onPick: (picked) => setState(() {
-                  _time = picked;
+              const SizedBox(height: 12),
+              TimeRangeField(
+                start: _time,
+                end: _endTime,
+                onChanged: (start, end) => setState(() {
+                  _time = start;
+                  _endTime = end;
                   _scheduleTouched = true;
                 }),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _durationController,
-                decoration: InputDecoration(
-                    labelText: requiredLabel('Duração (minutos)')),
-                keyboardType: TextInputType.number,
-                onChanged: (_) => setState(() => _scheduleTouched = true),
-                validator: (v) {
-                  final parsed = int.tryParse((v ?? '').trim());
-                  return (parsed == null || parsed <= 0)
-                      ? 'Valor inválido'
-                      : null;
-                },
               ),
               if (_instructorId != null && _scheduleTouched)
                 _TimeConflictBanner(
@@ -277,8 +280,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                   dayOfWeek: _recurring ? _dayOfWeek : _date.weekday,
                   date: _date,
                   time: _time,
-                  durationMinutes:
-                      int.tryParse(_durationController.text.trim()) ?? 0,
+                  durationMinutes: _durationMinutes,
                 ),
               const SizedBox(height: 16),
               Wrap(
@@ -379,12 +381,12 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
     final instructorId = _instructorId;
     if (instructorId == null) return true;
 
-    final duration = int.tryParse(_durationController.text.trim()) ?? 0;
+    final duration = _durationMinutes;
     final startMinutes = _time.hour * 60 + _time.minute;
 
-    final String? conflict;
+    final List<String> conflicts;
     try {
-      conflict = findScheduleConflict(
+      conflicts = findScheduleConflicts(
         recurring: _recurring,
         instructorId: instructorId,
         dayOfWeek: _recurring ? _dayOfWeek : _date.weekday,
@@ -409,14 +411,15 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
       return true;
     }
 
-    if (conflict == null || !mounted) return true;
+    if (conflicts.isEmpty || !mounted) return true;
 
     final proceed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Conflito de horário'),
         content: Text(
-          'Este instrutor já tem "$conflict" à mesma hora.\n\n'
+          'Este instrutor já tem a esta hora:\n\n'
+          '${conflicts.map((c) => '•  $c').join('\n')}\n\n'
           'Queres criar esta aula na mesma?',
         ),
         actions: [
@@ -437,6 +440,14 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_service == null) return;
+    // O par de horas não vive dentro do `Form`, por isso a validação
+    // acima não lhe toca. Sem isto dava para gravar uma aula com
+    // duração negativa — foi assim que apareceram blocos de treino
+    // livre das 08:10 às 08:00.
+    if (!endsAfterStart(_time, _endTime)) {
+      setState(() => _error = 'A hora de fim tem de ser depois da de início.');
+      return;
+    }
     if (!await _confirmScheduleConflict()) return;
 
     setState(() {
@@ -445,7 +456,7 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
     });
 
     try {
-      final duration = int.parse(_durationController.text.trim());
+      final duration = _durationMinutes;
       final capacity = int.parse(_capacityController.text.trim());
       final startAt = DateTime(
           _date.year, _date.month, _date.day, _time.hour, _time.minute);
@@ -575,28 +586,6 @@ class _DatePickerTile extends StatelessWidget {
   }
 }
 
-class _TimePickerTile extends StatelessWidget {
-  const _TimePickerTile({required this.time, required this.onPick});
-
-  final TimeOfDay time;
-  final ValueChanged<TimeOfDay> onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: const Text('Hora'),
-      subtitle: Text(time.format(context)),
-      trailing: const Icon(Icons.access_time_outlined),
-      onTap: () async {
-        final picked =
-            await showTimePicker(context: context, initialTime: time);
-        if (picked != null) onPick(picked);
-      },
-    );
-  }
-}
-
 /// Devolve a descrição da aula em conflito, ou `null` se não houver.
 ///
 /// Vive fora do widget porque é usada em dois sítios com exigências
@@ -604,7 +593,16 @@ class _TimePickerTile extends StatelessWidget {
 /// confirmação ao gravar. Ter isto duplicado seria a forma mais certa
 /// de os dois deixarem de concordar.
 @visibleForTesting
-String? findScheduleConflict({
+
+/// Tudo o que este instrutor já tem a colidir com o horário indicado.
+///
+/// Devolvia só a PRIMEIRA colisão. Num estúdio com um instrutor só —
+/// que é o caso comum no início — isso escondia metade da história:
+/// quem tinha duas aulas iguais à segunda às 18:00 via um aviso a falar
+/// de uma, criava a terceira, e continuava sem perceber o que se
+/// passava naquele horário.
+@visibleForTesting
+List<String> findScheduleConflicts({
   required bool recurring,
   required String instructorId,
   required int dayOfWeek,
@@ -615,7 +613,8 @@ String? findScheduleConflict({
   required List<SessionOccurrence> occurrences,
   required Map<String, Service> servicesById,
 }) {
-  if (endMinutes <= startMinutes) return null;
+  if (endMinutes <= startMinutes) return const [];
+  final found = <String>[];
 
   if (recurring) {
     // Séries recorrentes com o mesmo instrutor, no mesmo dia da
@@ -629,11 +628,11 @@ String? findScheduleConflict({
       final otherStart = int.parse(parts[0]) * 60 + int.parse(parts[1]);
       final otherEnd = otherStart + s.durationMinutes;
       if (startMinutes < otherEnd && otherStart < endMinutes) {
-        return '${servicesById[s.serviceId]?.name ?? s.serviceId} '
-            '· ${weekdayName(s.dayOfWeek)} ${s.startTime}';
+        found.add('${servicesById[s.serviceId]?.name ?? s.serviceId} '
+            '· ${weekdayName(s.dayOfWeek)} ${s.startTime}');
       }
     }
-    return null;
+    return found;
   }
 
   // "Só esta data" — compara contra ocorrências JÁ MATERIALIZADAS
@@ -646,11 +645,64 @@ String? findScheduleConflict({
     final otherStart = o.startAt.hour * 60 + o.startAt.minute;
     final otherEnd = o.endAt.hour * 60 + o.endAt.minute;
     if (startMinutes < otherEnd && otherStart < endMinutes) {
-      return '${servicesById[o.serviceId]?.name ?? o.serviceId} '
-          '· ${_conflictTimeFormat.format(o.startAt)}';
+      found.add('${servicesById[o.serviceId]?.name ?? o.serviceId} '
+          '· ${_conflictTimeFormat.format(o.startAt)}');
     }
   }
-  return null;
+  return found;
+}
+
+/// O horário completo deste instrutor naquele dia, colida ou não.
+///
+/// É a informação que faltava: o aviso dizia "há conflito" sem mostrar
+/// o que lá está, e quem o lê não tem como escolher uma hora livre sem
+/// sair do ecrã e ir ver o calendário.
+@visibleForTesting
+List<String> instructorDaySchedule({
+  required bool recurring,
+  required String instructorId,
+  required int dayOfWeek,
+  required DateTime date,
+  required List<SessionSeries> series,
+  required List<SessionOccurrence> occurrences,
+  required Map<String, Service> servicesById,
+}) {
+  final entries = <(int, String)>[];
+
+  if (recurring) {
+    for (final s in series) {
+      if (!s.isActive || s.instructorId != instructorId) continue;
+      if (s.dayOfWeek != dayOfWeek) continue;
+      final parts = s.startTime.split(':');
+      final start = int.parse(parts[0]) * 60 + int.parse(parts[1]);
+      entries.add((
+        start,
+        '${s.startTime}–${_minutesLabel(start + s.durationMinutes)} · '
+            '${servicesById[s.serviceId]?.name ?? s.serviceId}'
+      ));
+    }
+  } else {
+    for (final o in occurrences) {
+      if (o.status != SessionOccurrenceStatus.scheduled) continue;
+      if (o.instructorId != instructorId) continue;
+      if (!_isSameDay(o.startAt, date)) continue;
+      entries.add((
+        o.startAt.hour * 60 + o.startAt.minute,
+        '${_conflictTimeFormat.format(o.startAt)}–'
+            '${_conflictTimeFormat.format(o.endAt)} · '
+            '${servicesById[o.serviceId]?.name ?? o.serviceId}'
+      ));
+    }
+  }
+
+  entries.sort((a, b) => a.$1.compareTo(b.$1));
+  return [for (final entry in entries) entry.$2];
+}
+
+String _minutesLabel(int minutes) {
+  final capped = minutes.clamp(0, 24 * 60);
+  return '${(capped ~/ 60).toString().padLeft(2, '0')}:'
+      '${(capped % 60).toString().padLeft(2, '0')}';
 }
 
 /// Fase 8 (auditoria funcional) — aviso de conflito de horário. O
@@ -696,45 +748,93 @@ class _TimeConflictBanner extends ConsumerWidget {
     // Só o lado que interessa é observado: subscrever as duas listas
     // seria um listener de Firestore a mais, aberto durante todo o
     // preenchimento do formulário.
-    final conflictLabel = findScheduleConflict(
+    final seriesList = recurring
+        ? ref.watch(seriesProvider).valueOrNull ?? const <SessionSeries>[]
+        : const <SessionSeries>[];
+    final occurrenceList = recurring
+        ? const <SessionOccurrence>[]
+        : ref.watch(allUpcomingOccurrencesProvider).valueOrNull ??
+            const <SessionOccurrence>[];
+
+    final conflicts = findScheduleConflicts(
       recurring: recurring,
       instructorId: instructorId,
       dayOfWeek: dayOfWeek,
       date: date,
       startMinutes: startMinutes,
       endMinutes: endMinutes,
-      series: recurring
-          ? ref.watch(seriesProvider).valueOrNull ?? const <SessionSeries>[]
-          : const <SessionSeries>[],
-      occurrences: recurring
-          ? const <SessionOccurrence>[]
-          : ref.watch(allUpcomingOccurrencesProvider).valueOrNull ??
-              const <SessionOccurrence>[],
+      series: seriesList,
+      occurrences: occurrenceList,
       servicesById: servicesById,
     );
 
-    if (conflictLabel == null) return const SizedBox.shrink();
+    if (conflicts.isEmpty) return const SizedBox.shrink();
 
+    // O dia inteiro, e não só o que colide. O aviso antigo dizia "há
+    // conflito" e obrigava a sair do ecrã para perceber onde estava o
+    // espaço livre.
+    final daySchedule = instructorDaySchedule(
+      recurring: recurring,
+      instructorId: instructorId,
+      dayOfWeek: dayOfWeek,
+      date: date,
+      series: seriesList,
+      occurrences: occurrenceList,
+      servicesById: servicesById,
+    );
+
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Card(
-        color: Theme.of(context).colorScheme.errorContainer,
+        color: scheme.errorContainer,
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.warning_amber_outlined,
-                  color: Theme.of(context).colorScheme.onErrorContainer),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Conflito de horário: este instrutor já tem "$conflictLabel" '
-                  'à mesma hora. Podes continuar, mas confirma que não é um erro.',
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.onErrorContainer),
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_outlined,
+                      color: scheme.onErrorContainer),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      conflicts.length == 1
+                          ? 'Este instrutor já tem uma aula a esta hora. '
+                              'Podes continuar, mas confirma que não é engano.'
+                          : 'Este instrutor já tem ${conflicts.length} aulas a '
+                              'esta hora. Podes continuar, mas confirma que '
+                              'não é engano.',
+                      style: TextStyle(color: scheme.onErrorContainer),
+                    ),
+                  ),
+                ],
               ),
+              if (daySchedule.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  recurring
+                      ? 'O que ele já tem à ${weekdayName(dayOfWeek).toLowerCase()}:'
+                      : 'O que ele já tem nesse dia:',
+                  style: TextStyle(
+                    color: scheme.onErrorContainer,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                for (final entry in daySchedule)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Text(
+                      '•  $entry',
+                      style: TextStyle(
+                          color: scheme.onErrorContainer, fontSize: 12),
+                    ),
+                  ),
+              ],
             ],
           ),
         ),

@@ -9,6 +9,10 @@ import '../domain/entities/session_series.dart';
 /// ocorrências e a auto-atribuição de `preAssignedMemberIds` continuam
 /// sempre do lado do servidor — ver [generateNow].
 abstract class SessionSeriesRepository {
+  /// Quantas séries ativas há, sem trazer nenhuma — ver
+  /// `MemberRepository.countActiveMembers`.
+  Future<int> countActiveSeries();
+
   Stream<List<SessionSeries>> watchSeries();
 
   /// Devolve o id do documento criado.

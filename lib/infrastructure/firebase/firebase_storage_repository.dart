@@ -11,6 +11,39 @@ class FirebaseStorageRepository implements StorageRepository {
   final String _tenantId;
 
   @override
+  Future<void> uploadAvatar({
+    required String userId,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    // O nome do ficheiro original é preservado só pela extensão — a
+    // `resizeAvatar` lê os bytes, não confia no nome. O que importa é
+    // NÃO se chamar `avatar.jpg`: esse é o nome do ficheiro reduzido, e
+    // escrever nele faria a função disparar sobre o seu próprio
+    // resultado, em ciclo.
+    final safe = fileName.contains('.') ? fileName.split('.').last : 'img';
+    await _storage
+        .ref('tenants/$_tenantId/avatars/$userId/original.$safe')
+        .putData(bytes, SettableMetadata(contentType: 'image/$safe'));
+  }
+
+  @override
+  Future<void> deleteAvatar(String userId) async {
+    // Só o ficheiro. Quem limpa o `photoPath` no documento da pessoa é
+    // a Cloud Function `clearAvatarOnDelete`, pelo mesmo motivo que é
+    // ela a escrevê-lo: um aluno não pode escrever no seu próprio
+    // documento (as Rules limitam os campos que ele toca), e duplicar a
+    // escrita no cliente obrigaria a abrir isso.
+    //
+    // Pode não existir — nunca teve foto, ou a redução falhou a meio.
+    // Apagar o que não está lá não é um erro que interesse a ninguém.
+    await _storage
+        .ref('tenants/$_tenantId/avatars/$userId/avatar.jpg')
+        .delete()
+        .catchError((_) {});
+  }
+
+  @override
   Future<String> uploadExerciseVideo({
     required String exerciseId,
     required Uint8List bytes,

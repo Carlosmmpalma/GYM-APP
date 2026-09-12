@@ -300,16 +300,26 @@ class _ConsistencyChart extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
+        // Passa a matriz de ecrãs hoje — os dois textos são curtos e
+        // estão a 10 px. Mas é a MESMA forma (um `spaceBetween` com
+        // dois `Text` livres) que estourou na vitrina e no detalhe da
+        // avaliação, e aqui o texto da esquerda vem de um formatador de
+        // datas. Constranger custa duas linhas e fecha a porta.
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              _shortDayFormat.format(weeks.first.monday),
-              style: const TextStyle(color: AppColors.dim, fontSize: 10),
+            Flexible(
+              child: Text(
+                _shortDayFormat.format(weeks.first.monday),
+                style: const TextStyle(color: AppColors.dim, fontSize: 10),
+              ),
             ),
-            const Text(
-              'esta semana',
-              style: TextStyle(color: AppColors.dim, fontSize: 10),
+            const SizedBox(width: 8),
+            const Flexible(
+              child: Text(
+                'esta semana',
+                textAlign: TextAlign.end,
+                style: TextStyle(color: AppColors.dim, fontSize: 10),
+              ),
             ),
           ],
         ),

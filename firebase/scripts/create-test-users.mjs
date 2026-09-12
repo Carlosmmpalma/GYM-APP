@@ -166,6 +166,18 @@ async function createInstructor() {
 
   await auth.setCustomUserClaims(user.uid, { tenantId, roles: ['instructor'] });
 
+  // Os serviços que ele leciona. Sem isto o instrutor entra na app e
+  // NÃO CONSEGUE criar aulas: as Security Rules exigem que a aula seja
+  // de um serviço dele (`instructorOwnsSession`), e o ecrã dele
+  // escondia o atalho sem dizer porquê.
+  //
+  // Uma conta de teste leciona tudo — não há nada a decidir aqui, e
+  // deixá-la sem serviços era criar um instrutor que não faz nada.
+  const services = await tenantRef.collection('services').get();
+  const serviceIds = services.docs
+    .filter((doc) => doc.get('active') !== false)
+    .map((doc) => doc.id);
+
   await tenantRef
     .collection('staff')
     .doc(user.uid)
@@ -178,12 +190,16 @@ async function createInstructor() {
         status: 'active',
         passwordTemporaria: false,
         isTestAccount: true,
+        serviceIds,
         createdAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
 
-  console.log(`✓ instrutor  ·  ${INSTRUCTOR_EMAIL}`);
+  console.log(
+    `✓ instrutor  ·  ${INSTRUCTOR_EMAIL}  ` +
+      `(${serviceIds.length} serviço(s) atribuídos)`,
+  );
 }
 
 // ------------------------------------------------------------ apagar

@@ -11,10 +11,10 @@ import '../../core/utils/iso_week.dart';
 import '../../domain/entities/free_training_slot.dart';
 import '../../application/providers/plan_providers.dart';
 import '../widgets/design_system.dart';
+import '../widgets/period_navigator.dart';
 
 final _dayFormat = DateFormat('EEE, d MMM', 'pt_PT');
 final _timeFormat = DateFormat('HH:mm', 'pt_PT');
-final _weekRangeFormat = DateFormat('d MMM', 'pt_PT');
 
 /// Fase 7 (UC09) — "Treino sem acompanhamento": o Aluno só vê a
 /// CONTAGEM de vagas de cada horário, nunca quem mais está inscrito
@@ -44,27 +44,13 @@ class _FreeTrainingScreenState extends ConsumerState<FreeTrainingScreen> {
 
     return Column(
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              tooltip: 'Semana anterior',
-              icon: const Icon(Icons.chevron_left),
-              onPressed: () => setState(() =>
-                  _weekAnchor = _weekAnchor.subtract(const Duration(days: 7))),
-            ),
-            Text(
-              '${_weekRangeFormat.format(weekRange.start)} – '
-              '${_weekRangeFormat.format(weekRange.end)}',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            IconButton(
-              tooltip: 'Semana seguinte',
-              icon: const Icon(Icons.chevron_right),
-              onPressed: () => setState(
-                  () => _weekAnchor = _weekAnchor.add(const Duration(days: 7))),
-            ),
-          ],
+        WeekNavigator(
+          inicio: weekRange.start,
+          fim: weekRange.end,
+          onAnterior: () => setState(() =>
+              _weekAnchor = _weekAnchor.subtract(const Duration(days: 7))),
+          onSeguinte: () => setState(
+              () => _weekAnchor = _weekAnchor.add(const Duration(days: 7))),
         ),
         Expanded(
           child: scheduleAsync.when(

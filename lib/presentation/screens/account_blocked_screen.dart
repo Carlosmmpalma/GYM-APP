@@ -26,44 +26,51 @@ class AccountBlockedScreen extends ConsumerWidget {
         title: const Text('Conta inativa'),
         automaticallyImplyLeading: false,
       ),
+      // `mainAxisSize: min` faz a coluna caber no que tem — mas se o
+      // que ela tem for mais alto do que o ecrã, continua a estourar.
+      // Com o texto a 2.0× faltavam 254 px, e o que ficava de fora era
+      // a explicação de como desbloquear a conta: exatamente a
+      // informação que traz alguém a este ecrã.
       body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // O mockup mostra isto como o banner de aviso, com
-                // título e corpo dentro do mesmo bloco — não como um
-                // ícone gigante centrado.
-                const AppBanner(
-                  icon: Icons.lock_outline,
-                  title: 'Conta inativa',
-                  text: 'Mensalidade em atraso. Contacta o estúdio para '
-                      'reativar o acesso.',
-                ),
-                const SizedBox(height: 20),
-                // Sem passos que o Aluno possa dar sozinho, o mínimo é
-                // dizer-lhe o que acontece a seguir — senão o ecrã é só
-                // uma porta fechada.
-                const Text(
-                  'Assim que o estúdio registar o pagamento, o acesso volta '
-                  'a abrir sozinho no próximo login.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.mute,
-                    fontSize: 12,
-                    height: 1.45,
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // O mockup mostra isto como o banner de aviso, com
+                  // título e corpo dentro do mesmo bloco — não como um
+                  // ícone gigante centrado.
+                  const AppBanner(
+                    icon: Icons.lock_outline,
+                    title: 'Conta inativa',
+                    text: 'Mensalidade em atraso. Contacta o estúdio para '
+                        'reativar o acesso.',
                   ),
-                ),
-                const SizedBox(height: 24),
-                OutlinedButton(
-                  onPressed: () => ref.read(authRepositoryProvider).signOut(),
-                  child: const Text('Sair'),
-                ),
-              ],
+                  const SizedBox(height: 20),
+                  // Sem passos que o Aluno possa dar sozinho, o mínimo é
+                  // dizer-lhe o que acontece a seguir — senão o ecrã é só
+                  // uma porta fechada.
+                  const Text(
+                    'Assim que o estúdio registar o pagamento, o acesso volta '
+                    'a abrir sozinho no próximo login.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.mute,
+                      fontSize: 12,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  OutlinedButton(
+                    onPressed: () => ref.read(authRepositoryProvider).signOut(),
+                    child: const Text('Sair'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

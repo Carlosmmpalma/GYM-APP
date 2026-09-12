@@ -17,6 +17,7 @@ import '../../domain/entities/staff_summary.dart';
 import '../../repositories/session_occurrence_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/offline_write.dart';
+import '../widgets/attendance_status.dart';
 import '../widgets/design_system.dart';
 import '../widgets/occurrence_dialogs.dart';
 import 'manage_series_screen.dart';
@@ -252,6 +253,7 @@ class OccurrenceDetailScreen extends ConsumerWidget {
                       _BulkAttendance(
                         occurrenceId: occurrence.id,
                         memberIds: active.map((b) => b.memberId).toList(),
+                        comecou: !DateTime.now().isBefore(occurrence.startAt),
                       ),
                       ...active.map(
                         (booking) => _MemberTile(
@@ -403,8 +405,7 @@ class OccurrenceDetailScreen extends ConsumerWidget {
       await ref.read(sessionOccurrenceRepositoryProvider).updateOccurrence(
             occurrenceId: occurrence.id,
             startAt: result.startAt,
-            endAt: result.startAt
-                .add(occurrence.endAt.difference(occurrence.startAt)),
+            endAt: result.endAt,
             capacity: result.capacity,
             instructorId: occurrence.instructorId,
             modalityId: occurrence.modalityId,
@@ -588,10 +589,18 @@ class _ReduceSlotsDialogState extends State<_ReduceSlotsDialog> {
 /// faltaram e carrega aqui para o resto; sobrescrever o que ele acabou
 /// de marcar seria apagar-lhe o trabalho.
 class _BulkAttendance extends ConsumerStatefulWidget {
-  const _BulkAttendance({required this.occurrenceId, required this.memberIds});
+  const _BulkAttendance({
+    required this.occurrenceId,
+    required this.memberIds,
+    required this.comecou,
+  });
 
   final String occurrenceId;
   final List<String> memberIds;
+
+  /// A aula já começou. Antes disso, "por marcar" é o estado normal e
+  /// não um aviso.
+  final bool comecou;
 
   @override
   ConsumerState<_BulkAttendance> createState() => _BulkAttendanceState();
@@ -602,51 +611,55 @@ class _BulkAttendanceState extends ConsumerState<_BulkAttendance> {
 
   @override
   Widget build(BuildContext context) {
-    final recorded = (ref
-                .watch(occurrenceAttendanceProvider(widget.occurrenceId))
-                .valueOrNull ??
-            const <Attendance>[])
-        .map((a) => a.memberId)
-        .toSet();
+    final registos = ref
+            .watch(occurrenceAttendanceProvider(widget.occurrenceId))
+            .valueOrNull ??
+        const <Attendance>[];
+    final recorded = registos.map((a) => a.memberId).toSet();
     final pending =
         widget.memberIds.where((id) => !recorded.contains(id)).toList();
 
-    if (pending.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 8),
-        child: Row(
-          children: [
-            Icon(Icons.check_circle_outline, size: 15, color: AppColors.ok),
-            SizedBox(width: 6),
-            Text(
-              'Presenças registadas para todos.',
-              style: TextStyle(color: AppColors.mute, fontSize: 12),
-            ),
-          ],
-        ),
-      );
-    }
+    // Os números vêm sempre, mesmo com a chamada feita — "12 presentes,
+    // 1 falta" é o registo do que aconteceu, não um aviso que se apaga
+    // quando o trabalho acaba. Antes, a chamada completa dizia só
+    // "Presenças registadas para todos", que confirma a tarefa e esconde
+    // o resultado.
+    final contagem = AttendanceCounts(
+      resumo: AttendanceSummary.de(
+        registos,
+        inscritos: widget.memberIds.length,
+      ),
+      comecou: widget.comecou,
+    );
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          onPressed: _busy ? null : () => _markAll(pending),
-          icon: _busy
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.done_all, size: 18),
-          label: Text(
-            pending.length == widget.memberIds.length
-                ? 'Marcar todos como presentes'
-                : 'Marcar os restantes ${pending.length} como presentes',
+    if (pending.isEmpty) return contagem;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        contagem,
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : () => _markAll(pending),
+              icon: _busy
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.done_all, size: 18),
+              label: Text(
+                pending.length == widget.memberIds.length
+                    ? 'Marcar todos como presentes'
+                    : 'Marcar os restantes ${pending.length} como presentes',
+              ),
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -699,6 +712,8 @@ class _BulkAttendanceState extends ConsumerState<_BulkAttendance> {
   }
 }
 
+enum _AccaoInscrito { presente, faltou, limpar, remarcar }
+
 /// UC10-A — presença/falta por inscrito, separada do booking (Domain
 /// Model v1 §29). `attended`/`noShow` são mutuamente exclusivos e
 /// substituem-se (mesmo id-por-membro do documento, `set()` sobrescreve).
@@ -735,44 +750,88 @@ class _MemberTile extends ConsumerWidget {
       }
     }
 
+    final estado = attendance?.status;
+    final identificacao = member == null
+        ? ''
+        : 'Nº ${member!.memberNumber}'
+            '${booking.source.name != 'self' ? ' · atribuído' : ''}';
+
+    // O estado à CABEÇA da linha e escrito no subtítulo.
+    //
+    // Estavam aqui dois `IconButton` no fim da linha, um visto e uma
+    // cruz, sempre os dois visíveis e ambos cinzentos enquanto não
+    // houvesse registo. Numa turma de doze eram vinte e quatro ícones
+    // pequenos para ler, e "por marcar" era indistinguível de "marcado"
+    // a um metro de distância — que é a distância a que um instrutor
+    // olha para o telemóvel enquanto dá aula.
+    //
+    // Tocar na LINHA marca presença, porque é o que acontece a nove em
+    // cada dez pessoas. Tocar outra vez limpa o registo, para que um
+    // toque errado se desfaça pelo mesmo gesto que o causou. A falta,
+    // que é a exceção, está no menu.
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
+        leading: AttendanceMark(status: estado),
         title: Text(member?.name ?? booking.memberId),
         subtitle: Text(
-          member == null
-              ? ''
-              : 'Nº ${member!.memberNumber}'
-                  '${booking.source.name != 'self' ? ' · atribuído' : ''}',
+          identificacao.isEmpty
+              ? AttendanceMark.rotulo(estado)
+              : '$identificacao · ${AttendanceMark.rotulo(estado)}',
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              tooltip: 'Presente',
-              icon: Icon(
-                Icons.check_circle,
-                color: attendance?.status == AttendanceStatus.attended
-                    ? AppColors.ok
-                    : Theme.of(context).disabledColor,
+        onTap: () => _record(
+          context,
+          ref,
+          estado == AttendanceStatus.attended
+              ? null
+              : AttendanceStatus.attended,
+        ),
+        trailing: PopupMenuButton<_AccaoInscrito>(
+          tooltip: 'Mais ações',
+          onSelected: (accao) => switch (accao) {
+            _AccaoInscrito.presente =>
+              _record(context, ref, AttendanceStatus.attended),
+            _AccaoInscrito.faltou =>
+              _record(context, ref, AttendanceStatus.noShow),
+            _AccaoInscrito.limpar => _record(context, ref, null),
+            _AccaoInscrito.remarcar => _reschedule(context, ref),
+          },
+          itemBuilder: (context) => [
+            if (estado != AttendanceStatus.attended)
+              const PopupMenuItem(
+                value: _AccaoInscrito.presente,
+                child: ListTile(
+                  leading: Icon(Icons.check_circle, color: AppColors.ok),
+                  title: Text('Presente'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-              onPressed: () => _record(context, ref, AttendanceStatus.attended),
-            ),
-            IconButton(
-              tooltip: 'Faltou',
-              icon: Icon(
-                Icons.cancel,
-                color: attendance?.status == AttendanceStatus.noShow
-                    ? Theme.of(context).colorScheme.error
-                    : Theme.of(context).disabledColor,
+            if (estado != AttendanceStatus.noShow)
+              const PopupMenuItem(
+                value: _AccaoInscrito.faltou,
+                child: ListTile(
+                  leading: Icon(Icons.cancel, color: AppColors.red),
+                  title: Text('Faltou'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-              onPressed: () => _record(context, ref, AttendanceStatus.noShow),
-            ),
+            if (estado != null)
+              const PopupMenuItem(
+                value: _AccaoInscrito.limpar,
+                child: ListTile(
+                  leading: Icon(Icons.remove_circle_outline),
+                  title: Text('Limpar registo'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
             if (occurrence.status == SessionOccurrenceStatus.scheduled)
-              IconButton(
-                tooltip: 'Remarcar',
-                icon: const Icon(Icons.swap_horiz),
-                onPressed: () => _reschedule(context, ref),
+              const PopupMenuItem(
+                value: _AccaoInscrito.remarcar,
+                child: ListTile(
+                  leading: Icon(Icons.swap_horiz),
+                  title: Text('Remarcar'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
           ],
         ),
@@ -839,8 +898,9 @@ class _MemberTile extends ConsumerWidget {
     }
   }
 
+  /// `status: null` limpa o registo — ver `clearAttendance`.
   Future<void> _record(
-      BuildContext context, WidgetRef ref, AttendanceStatus status) async {
+      BuildContext context, WidgetRef ref, AttendanceStatus? status) async {
     // Ver a nota em `_BulkAttendanceState._markAll`.
     final recordedBy = (await ref.read(currentAppUserProvider.future))?.uid;
     if (recordedBy == null) return;
@@ -848,13 +908,19 @@ class _MemberTile extends ConsumerWidget {
       // A marca no ecrã muda logo (vem da cache local do Firestore); o
       // que isto evita é ficar à espera de uma confirmação que, sem
       // rede, não chega — ver `writeOrQueue`.
+      final repository = ref.read(attendanceRepositoryProvider);
       final outcome = await writeOrQueue(
-        ref.read(attendanceRepositoryProvider).recordAttendance(
-              occurrenceId: occurrenceId,
-              memberId: booking.memberId,
-              status: status,
-              recordedBy: recordedBy,
-            ),
+        status == null
+            ? repository.clearAttendance(
+                occurrenceId: occurrenceId,
+                memberId: booking.memberId,
+              )
+            : repository.recordAttendance(
+                occurrenceId: occurrenceId,
+                memberId: booking.memberId,
+                status: status,
+                recordedBy: recordedBy,
+              ),
       );
       if (outcome == WriteOutcome.queued && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

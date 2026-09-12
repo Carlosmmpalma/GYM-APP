@@ -25,14 +25,14 @@ abstract class ExerciseRepository {
   Future<String> createExercise({
     required String name,
     required String description,
-    required String muscleGroup,
+    required String category,
   });
 
   Future<void> updateExercise({
     required String exerciseId,
     required String name,
     required String description,
-    required String muscleGroup,
+    required String category,
   });
 
   /// Chamado depois do upload para o Storage terminar

@@ -10,6 +10,9 @@ MemberSummary _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
   final data = doc.data()!;
   return MemberSummary(
     uid: doc.id,
+    photoPath: data['photoPath'] as String?,
+    photoUrl: data['photoUrl'] as String?,
+    photoUpdatedAt: (data['photoUpdatedAt'] as num?)?.toInt(),
     memberNumber: data['memberNumber'] as String? ?? '',
     name: data['name'] as String? ?? '(sem nome)',
     active: (data['status'] as String? ?? 'active') == 'active',
@@ -77,6 +80,18 @@ class FirebaseMemberRepository implements MemberRepository {
 
   final FirebaseFirestore _firestore;
   final String _tenantId;
+
+  @override
+  Future<int> countActiveMembers() async {
+    final snapshot = await _firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('members')
+        .where('status', isEqualTo: 'active')
+        .count()
+        .get();
+    return snapshot.count ?? 0;
+  }
 
   CollectionReference<Map<String, dynamic>> get _members =>
       _firestore.collection('tenants').doc(_tenantId).collection('members');

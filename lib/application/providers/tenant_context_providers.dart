@@ -3,11 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/tenant_app_config.dart';
 import '../../domain/entities/app_user.dart';
+import '../../domain/entities/public_schedule.dart';
+import '../../domain/entities/studio_info.dart';
 import '../../infrastructure/firebase/firebase_account_repository.dart';
 import '../../infrastructure/firebase/firebase_auth_repository.dart';
+import '../../infrastructure/firebase/firebase_public_schedule_repository.dart';
 import '../../infrastructure/firebase/firebase_tenant_repository.dart';
 import '../../repositories/account_repository.dart';
 import '../../repositories/auth_repository.dart';
+import '../../repositories/public_schedule_repository.dart';
 import '../../repositories/tenant_repository.dart';
 import '../use_cases/complete_temporary_password_change_use_case.dart';
 import '../use_cases/sign_in_with_member_number_use_case.dart';
@@ -32,6 +36,33 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 
 final tenantRepositoryProvider = Provider<TenantRepository>((ref) {
   return FirebaseTenantRepository(ref.watch(firestoreProvider));
+});
+
+final publicScheduleRepositoryProvider =
+    Provider<PublicScheduleRepository>((ref) {
+  return FirebasePublicScheduleRepository(ref.watch(firestoreProvider));
+});
+
+/// O mapa de aulas da vitrina.
+///
+/// `FutureProvider` e não `Stream`: isto é lido por quem ainda não tem
+/// conta, muda uma vez por dia, e um listener aberto num ecrã público
+/// seria pagar uma ligação permanente por cada pessoa que abre a app
+/// para ver o horário.
+final publicScheduleProvider =
+    FutureProvider.autoDispose<PublicSchedule>((ref) {
+  final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
+  return ref.watch(publicScheduleRepositoryProvider).getSchedule(tenantId);
+});
+
+/// Morada, contactos, horário e política de privacidade do estúdio.
+///
+/// Lê-se sem sessão (é o que a vitrina mostra a quem ainda não tem
+/// conta) e é o mesmo provider que o ecrã de consentimento usa para
+/// ligar à política — ver `StudioInfo`.
+final studioInfoProvider = FutureProvider.autoDispose<StudioInfo>((ref) {
+  final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
+  return ref.watch(publicScheduleRepositoryProvider).getStudioInfo(tenantId);
 });
 
 final accountRepositoryProvider = Provider<AccountRepository>((ref) {

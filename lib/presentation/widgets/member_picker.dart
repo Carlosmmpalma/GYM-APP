@@ -4,6 +4,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/search_text.dart';
 import '../../domain/entities/member_summary.dart';
 import 'design_system.dart';
+import 'person_avatar.dart';
 
 /// Fase 11 — escolher um membro numa lista pesquisável, em vez de um
 /// `DropdownButtonFormField`.
@@ -131,7 +132,10 @@ class _MemberPickerSheetState extends State<_MemberPickerSheet> {
                   itemBuilder: (context, index) {
                     final member = visible[index];
                     return ListTile(
-                      leading: Avatar(member.name),
+                      leading: PersonAvatar(
+                        name: member.name,
+                        photoUrl: member.photoUrl,
+                      ),
                       title: Text(member.name),
                       subtitle: Text('Nº ${member.memberNumber}'),
                       onTap: () => Navigator.of(context).pop(member),

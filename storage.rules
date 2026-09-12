@@ -39,6 +39,40 @@ service firebase.storage {
       allow delete: if isManager(tenantId) || isInstructor(tenantId);
     }
 
+    // Foto de perfil, para o avatar deixar de ser um círculo com
+    // iniciais. Um caminho por pessoa, seja ela aluno ou staff — o
+    // avatar é a mesma coisa nos dois casos e não vale a pena inventar
+    // dois sítios.
+    //
+    // Leitura ampla no tenant: o avatar aparece nas listas de quem já
+    // tem direito a ver a pessoa (o âmbito de quem vê quem resolve-se
+    // acima, nos dados).
+    //
+    // Escrita só ao GESTOR — nem sequer ao próprio.
+    //
+    // A foto de perfil é do estúdio, não da pessoa: é a cara que o
+    // instrutor vê na tira da turma para reconhecer quem tem à frente.
+    // Um aluno a trocá-la por um desenho qualquer não está a
+    // personalizar o perfil dele, está a estragar a ferramenta de outra
+    // pessoa. Um instrutor também não mexe: gerir fichas é do Gestor.
+    //
+    // Esta regra já deixou o próprio escrever. A mudança é deliberada, e
+    // as Rules dizem-no além da app: sem isto, o botão desaparecia do
+    // ecrã e a permissão continuava lá para quem chamasse a API
+    // diretamente.
+    //
+    // O limite de 10MB é generoso de propósito: quem envia é a pessoa,
+    // com a foto que o telemóvel tirou, e a redução é feita por nós
+    // (`resizeAvatar`) — recusar por tamanho seria empurrar para o
+    // utilizador um problema que é nosso.
+    match /tenants/{tenantId}/avatars/{userId}/{fileName} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if isManager(tenantId)
+        && request.resource.contentType.matches('image/.*')
+        && request.resource.size < 10 * 1024 * 1024;
+      allow delete: if isManager(tenantId);
+    }
+
     // Tudo o resto continua bloqueado.
     match /{allPaths=**} {
       allow read, write: if false;

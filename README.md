@@ -5325,6 +5325,1730 @@ deixarem de concordar. Na confirmação, as listas são lidas com
 ninguém as observa, e `valueOrNull` devolvia `null` — a verificação
 diria "sem conflito" exatamente quando era mais precisa.
 
+### Todos os ecrãs, em todos os telemóveis
+
+Os 859 testes de widget deste projeto corriam todos no ecrã por omissão
+do `flutter_test`: **800×600, sem recortes, texto à escala 1.0**. Não é
+nenhum telemóvel. É mais largo do que qualquer iPhone e mais baixo do
+que todos — exatamente o tamanho em que um `Row` demasiado cheio cabe e
+uma `Column` demasiado alta não estoura.
+
+`test/presentation/layout_matrix_test.dart` põe **os 56 ecrãs da app em
+9 tamanhos** (522 casos, 20 segundos) e deixa o framework acusar: um
+`RenderFlex overflowed` é um `FlutterError`, e um `FlutterError` faz o
+teste falhar sozinho. Não foi preciso escrever asserções de layout — só
+faltava pôr os ecrãs onde isso acontece.
+
+Isto não é estética. O Flutter desenha as barras amarelas e pretas por
+cima do conteúdo, e **o que ficou de fora deixa de ser tocável**. Um
+botão "Confirmar" empurrado para lá da margem é uma funcionalidade que
+não existe naquele telefone.
+
+#### Os nove tamanhos, e porque são estes
+
+`test/support/device_matrix.dart`. A lista é curta de propósito — cada
+entrada multiplica-se por todos os ecrãs, e uma matriz lenta é uma
+matriz que se deixa de correr. Cada uma está lá por representar um canto
+diferente do espaço:
+
+| | Porquê |
+|---|---|
+| iPhone SE · 375×667 | o mais estreito que a App Store ainda aceita |
+| Android pequeno · 360×640 | mais estreito do que qualquer iPhone atual |
+| iPhone 15 · 393×852 | entalhe + gestos: 93 pontos desaparecem antes do conteúdo |
+| Pixel 7 · 412×915 | Android moderno, furo na câmara e barra de gestos |
+| **iPhone deitado · 852×393** | a app **não** tranca a orientação |
+| iPad · 744×1133 | é submetida como universal |
+| **Android · texto 1.3×** | o "Enorme" do Android |
+| **iPhone SE · texto 2.0×** | acessibilidade a sério no iOS |
+| **iPhone SE · teclado aberto** | 291 dos 667 pontos desaparecem |
+
+Os quatro a negrito são os que encontraram quase tudo, e são os quatro
+que nunca se testam à mão: ninguém roda o telemóvel, ninguém muda o
+tamanho de letra, e no emulador escreve-se com o teclado do computador —
+o teclado do telefone nunca chega a aparecer.
+
+A orientação não foi uma escolha minha: o `Info.plist` declara landscape
+nas duas direções e o Android não declara `screenOrientation` nenhum.
+A app anuncia que roda, portanto tem de rodar — e quem faz a revisão na
+App Store roda o telefone.
+
+#### A armadilha que este teste tem de evitar
+
+**Um ecrã de erro cabe sempre.** Se o fixture não servir, o provider
+falha, o ecrã mostra três linhas de [ErrorState], e o teste passa a
+verde sem ter medido nada — a pior espécie de teste, porque dá confiança
+em vez de a medir.
+
+Cada caso verifica por isso duas coisas além do estouro: que não há
+`ErrorState` no ecrã, e que há texto desenhado. Apanhou-me logo três
+vezes — `RetentionScreen` precisava de uma Cloud Function que o fixture
+não tinha, e `ManagerScreen` e `MemberHomeScreen` são **corpos de
+separador**, que rebentam com "No Material widget found" se forem postos
+como `home:` sem o `Scaffold` do `HomeScreen` à volta. Sem estas
+asserções teria contado 24 falsos verdes.
+
+O fixture também é deliberadamente **comprido**: "Maria Madalena
+Gonçalves", "Treino Funcional em Grupo", "07:00 – 13:00, 16:00 – 21:30".
+Um fixture de "Ana" e "Plano A" cabe em qualquer ecrã e não prova nada.
+
+#### 51 falhas, e o que estava por trás
+
+Do primeiro arranque saíram 51 falhas em 328 casos. Dezanove eram do meu
+andaime; **32 eram reais**. Por ordem de gravidade:
+
+**🔴 A vitrina estourava em todos os tamanhos, incluindo iPad.** A linha
+do horário era um `Row` com `spaceBetween` e dois `Text` sem
+constrangimento nenhum. Com um horário real de um estúdio com pausa de
+almoço — "Segunda a sexta" ao lado de "07:00 – 13:00, 16:00 – 21:30" —
+passava 226 px num iPhone SE e 141 num iPad. É o **primeiro ecrã que
+qualquer pessoa vê**, incluindo a revisão da App Store, e só não se via
+ainda porque a informação pública em produção está por preencher.
+
+**🔴 Todos os dropdowns da app.** `isExpanded` não era usado em lado
+nenhum, e sem ele o `DropdownButton` põe o item selecionado num `Row`
+que não constrange — um nome como "Bernardo Albuquerque Teixeira"
+passava 595 px a 2.0×. São 8 dropdowns em 5 ficheiros; a matriz só
+apanhou um ecrã porque só lá o fixture pôs nomes reais. Corrigidos
+todos.
+
+**🔴 O ecrã da password temporária, com o teclado aberto.** É um
+formulário de password: o teclado está sempre aberto enquanto alguém o
+usa, e tira 291 dos 667 pontos de um iPhone SE. Faltavam 52 px, e o que
+ficava de fora era o botão de confirmar. **É o primeiro ecrã de qualquer
+sócio novo** — estar preso ali é estar preso fora da app.
+
+**🔴 O navegador de período, escrito à mão quatro vezes.** Dois
+`IconButton` de 96 px fixos e um `Text` sem constrangimento. A 1.3×
+faltavam 54 px e a 2.0× faltavam 207 — e o que saía do ecrã eram **as
+setas de mudar de semana**, deixando o ecrã preso num período só sem
+nada a indicar que havia mais. Estava em `FreeTrainingScreen`,
+`InstructorCalendarScreen` e `ManageFreeTrainingScreen`; extraí
+`PeriodNavigator`, e a matriz apontou-me logo a **quarta cópia**, por
+meses, em `ManagePaymentsScreen`. É o argumento inteiro para extrair: a
+quinta vai nascer certa.
+
+**🟠 Cartões de atalho com razão de aspeto fixa.** O `GridView.count` do
+início do Aluno usava `childAspectRatio: 1.9` — uma razão fixa deriva a
+**altura da largura**, e a altura de que aqueles cartões precisam vem do
+tamanho de letra, que é do utilizador. Estourava já com texto normal num
+iPhone SE. Passou a duas linhas de dois com altura natural.
+
+**🟠 Estados vazios e ecrãs de informação sem rolamento.** As categorias
+de exercícios (o botão "Criar uma de raiz" fora do ecrã: o ecrã que
+existe para resolver o vazio não tinha como o resolver) e a conta
+bloqueada (a explicação de como desbloquear, cortada).
+
+**🟠 Linhas que não podiam caber, e passaram a adaptar-se.** "Pago com
+atraso" ao lado de um nome a 2.0× não cabe em telemóvel nenhum —
+espremer não resolve. Acima de ~1.3× o estado desce para baixo do nº de
+sócio. O mesmo para a barra do treino de turma (as ações descem para uma
+fila que desliza) e para a ficha do instrutor (o avatar e a
+identificação deixam de partilhar a linha).
+
+#### Cobrir os 15 ecrãs que faltavam encontrou mais três
+
+A primeira versão da matriz cobria 41 dos 56 ecrãs — os que faltavam
+precisavam de entidades que o fixture não construía. Construí-as, e a
+matriz respondeu logo:
+
+**🔴 O detalhe da avaliação física estourava em TODOS os telemóveis**,
+incluindo um Pixel 7, já com o tamanho de letra normal. É o mesmo
+`Row(spaceBetween)` com dois `Text` livres da vitrina, agora com
+etiquetas como "Perímetro abdominal". Depois de corrigido, procurei a
+forma em toda a app: havia uma terceira ocorrência em
+`MemberStatsScreen` que a matriz aprova hoje — dois textos curtos a
+10 px — mas que vem de um formatador de datas. Ficou constrangida
+também; custa duas linhas e fecha a porta.
+
+Aqui os dois lados cedem de formas diferentes, e a diferença importa: a
+etiqueta quebra em linhas, e o valor **quebra mas nunca é cortado**. Um
+peso com o fim truncado não é informação incompleta — é outro número, e
+num ecrã de avaliação física isso lê-se e acredita-se.
+
+**🟠 A ficha do instrutor, a 2.0×.** O botão de foto é um `Wrap`, mas
+dentro de uma `Column` sem largura recebe espaço infinito e por isso
+nunca chega a quebrar.
+
+**E o `HomeScreen` deixou de estar de fora.** Estava excluído porque
+chamava `FirebaseMessaging.onMessage` no `initState` sem guarda, e isso
+rebenta sem Firebase inicializado. Não era só um problema de teste: o
+FCM pode não existir onde a app corre — um Android sem Google Play
+Services, um browser com notificações bloqueadas, ou (hoje) a web sem
+VAPID key. Sem a guarda, o que morria era a **casca da app** — a barra
+de separadores, tudo — por causa de uma funcionalidade acessória. O
+registo do token já falhava em silêncio de propósito; este era o único
+sítio que não. Entra agora na matriz uma vez por perfil, porque a barra
+é diferente em cada um e é ela que come altura ao conteúdo.
+
+#### O que isto NÃO prova
+
+* **Não é um teste visual.** Mede se o layout cabe, não se está bonito.
+  Um ecrã pode caber e estar horrível, e a matriz dá verde.
+* **Corre no computador, não no telefone.** As métricas de tipo de letra
+  do iOS (SF Pro) e do Android (Roboto) não são iguais às da máquina de
+  testes. Uma linha que cabe por 2 px aqui pode cortar no dispositivo.
+* **Cobre os 56 ecrãs, mas um ecrã tem mais do que um estado.** A
+  matriz vê cada um numa configuração — a do fixture. Um diálogo aberto,
+  uma lista vazia, um erro de validação por baixo de um campo: nada
+  disso é medido, e qualquer um deles muda a altura.
+* **Nada disto substitui abrir a app num telemóvel.** Substitui é ter de
+  abrir 56 ecrãs em 9 telemóveis para descobrir o que um teste encontra
+  em 20 segundos.
+
+```bash
+flutter test test/presentation/layout_matrix_test.dart
+```
+
+### A chamada: de "está algures" a "está à frente"
+
+A presença já existia e funcionava. O que não existia era forma de
+**ver** — nem de lá chegar sem saber o caminho.
+
+#### Três problemas, e o pior era o mais simples
+
+**"Sessões hoje: 2" era um número morto.** O cartão que diz que há
+trabalho não levava ao trabalho. Marcar a chamada da aula de hoje eram
+três toques — "As minhas aulas" → escolher o dia → escolher a aula — e
+a ação mais frequente que um instrutor faz nesta app estava mais longe
+do que "Biblioteca de exercícios". O painel do Gestor era pior: quatro
+toques, por Aulas/Horários → série → ocorrência.
+
+**Não dava para saber se uma aula já tinha sido marcada sem a abrir.** O
+cartão de cada aula mostrava "8/12 inscritos" — isso é lotação, não
+presença. Um instrutor que deu quatro aulas e se esqueceu de uma tinha
+de abrir as quatro para descobrir qual.
+
+**Lá dentro, "por marcar" era invisível.** Dois `IconButton` no fim da
+linha, um visto e uma cruz, sempre os dois visíveis e ambos cinzentos
+enquanto não houvesse registo. Numa turma de doze eram vinte e quatro
+ícones pequenos para ler, e "por marcar" era indistinguível de "marcado"
+à distância a que se olha para um telemóvel enquanto se dá aula.
+
+#### O que mudou
+
+**As aulas de hoje passaram a ser o primeiro ecrã** — do Instrutor (as
+dele) e do Gestor (as do estúdio), pelo mesmo widget, `TodayClasses`.
+Cada uma com o estado da chamada e um toque para a fazer.
+
+A janela é a **semana ISO**, não "daqui para a frente", e a diferença é
+o ponto todo: as aulas que precisam de chamada são precisamente as que
+**já aconteceram**. Com `upcomingWeekOccurrencesProvider` — que começa em
+`DateTime.now()` — a aula das 9h desaparecia da lista às 9h01, no minuto
+exato em que passava a interessar. Há um teste só para isso.
+
+**O crachá diz o estado sem abrir a aula:** "3 por marcar" ou "Chamada
+feita". Não aparece antes de a aula começar — nessa altura ter toda a
+gente por marcar é o estado normal, e um aviso aceso desde a manhã para
+a aula da noite ensina a ignorar os avisos.
+
+**A linha do inscrito passou o estado para a cabeça.** Os estados formam
+uma coluna que se lê de uma vez — ○ ✓ ✓ ○ ✓ — e é isso que torna "falta
+alguém?" respondível sem ler nomes. **Tocar na linha marca presença**,
+porque é o que acontece nove em cada dez vezes; tocar outra vez limpa o
+registo, para que um toque errado se desfaça pelo mesmo gesto que o
+causou. A falta, que é a exceção, está no menu.
+
+Limpar exigiu um `clearAttendance` novo no repositório, e a distinção
+importa: uma falta é uma **afirmação** sobre o aluno e entra nas contas
+de retenção; "por marcar" é a ausência de afirmação. Sem isto, desfazer
+um engano obrigava a trocá-lo por outro — marcar falta a alguém que
+veio. As Rules não mudaram: `allow write` já cobria `delete`.
+
+**Os números apareceram.** O ecrã da aula já tinha o botão certo
+("marcar os restantes como presentes") e uma frase quando não havia
+restantes. Não tinha a contagem — quantos vieram, quantos faltaram,
+quantos faltam ver. E a contagem fica mesmo com a chamada completa: "12
+presentes, 1 falta" é o registo do que aconteceu, não um aviso que se
+apaga quando o trabalho acaba.
+
+#### Cor não é informação
+
+O estado vai **escrito** no subtítulo de cada linha, não só na cor do
+ícone. Verde e vermelho são exatamente os dois tons que uma pessoa
+daltónica não separa, e são exatamente os dois que este ecrã usaria.
+Há um teste que o fixa.
+
+#### O que isto custa
+
+Uma leitura da subcoleção `attendance` por aula mostrada. É por isso que
+o crachá só aparece depois de a aula começar e que a lista é só de hoje:
+o calendário mostra um dia de cada vez e o painel mostra as de hoje, por
+isso são poucas aulas em ambos os casos. Uma lista semanal com crachás
+em todas seria vinte leituras para desenhar vinte etiquetas.
+
+### Testes de carga — um ginásio cheio, e o cronómetro ligado
+
+Tudo o que tinha sido medido até aqui foi medido com o seed de
+desenvolvimento: meia dúzia de membros, duas aulas, uma série. Nesse
+tamanho tudo é rápido, e a pergunta que interessa ficava por responder.
+
+`firebase/scripts/load-test.mjs` constrói o estúdio que o NXT vai ser —
+**100 sócios, 20 séries semanais, 8 semanas de história** (160 aulas
+passadas, 1528 marcações, 1528 presenças) — e cronometra o que dói. Corre
+só contra o emulador, e recusa-se a correr contra outra coisa.
+
+#### O que aguentou sem se notar
+
+| | |
+|---|---|
+| Cron diário (gerar 8 semanas de 20 séries) | **655 ms** — 160 aulas |
+| Painel de retenção sobre 160 aulas e 1528 presenças | **252 ms** |
+| Lembretes, uma passagem | **41 ms** |
+| Lista de membros (Gestor) | **26 ms** |
+| Contagem de membros ativos (`count()`) | **10 ms** |
+| Aulas das próximas 2 semanas (Aluno) | **12 ms** |
+| As minhas marcações (Aluno) | **10 ms** |
+
+O painel de retenção é o caso mais interessante: a docstring chama-lhe "a
+função mais cara do projeto" e, à escala real deste estúdio, resolve-se
+em **um quarto de segundo**. A preocupação era legítima e a dimensão
+não é a que se temia — fica medido, para não se voltar a otimizar às
+cegas.
+
+#### 🔴 O que não aguentou: muita gente a marcar a MESMA aula
+
+Trinta marcações simultâneas numa aula de doze lugares: **306 segundos**
+e só oito aceites. Quatro lugares vazios e quatro pessoas recusadas sem
+ser por falta de vaga.
+
+Antes de concluir seja o que for, era preciso separar o que é a app do
+que é o emulador. A mesma contenção, medida **diretamente no Firestore**
+sem passar pelas funções:
+
+| Em simultâneo | Firestore só | Pelo emulador de funções |
+|---|---|---|
+| 5 | 3,6 s — todas ✓ | 7,2 s — 5 aceites ✓ |
+| 10 | 7,7 s — todas ✓ | **306 s** — 8 aceites |
+| 30 | 19,4 s — **28 de 30** | **306 s** — 8 aceites |
+
+O tecto de 306 segundos, **idêntico** para 10 e para 30, não é carga: é
+um limite a ser atingido. O emulador de funções serializa invocações e
+tem um teto de concorrência. Isso é ferramenta, não produto, e não vale
+como aviso sobre produção.
+
+O que **é** real é a coluna do meio. Marcações da mesma aula disputam o
+mesmo documento — é lá que vive o `activeBookingCount` — e com trinta em
+simultâneo duas falharam por **esgotarem as tentativas da transação**,
+não por falta de vaga.
+
+E a perda é **intermitente**: repeti a medição e à segunda passaram as
+trinta. É isso que a torna traiçoeira — não aparece num teste, aparece na
+manhã em que o estúdio abre as marcações às 9h00 e toda a gente toca ao
+mesmo tempo. Ao aluno diz "não foi possível marcar" numa aula com
+lugares, e ele não tenta outra vez.
+
+#### Quantas tentativas, medido em vez de escolhido
+
+A primeira correção foi `maxAttempts: 15` — um número escolhido por ser
+grande. `firebase/scripts/contention-probe.mjs` existe para não deixar
+esse número por justificar: replica a transação da marcação **direto no
+Firestore**, varia só o `maxAttempts`, e repete cada valor várias vezes,
+porque a perda é intermitente e uma ronda só não decide nada.
+
+Só conta como perda quem foi recusado por **esgotar tentativas**. Quem
+chega depois de a aula encher é recusado por **capacidade**, que é a
+resposta certa e imediata — misturar as duas era medir o sucesso do
+teste, não o da app.
+
+Trinta em simultâneo, doze lugares, três rondas cada:
+
+| `maxAttempts` | Rondas limpas | Tempo | Pior ronda |
+|---|---|---|---|
+| 5 (por omissão) | 2 de 3 | 12,8–20,8 s | **3 aceites, 27 perdidos** |
+| 10 | 3 de 3 | **7,6–12,5 s** | — |
+| 15 | 3 de 3 | 12,3–18,4 s | — |
+
+Duas coisas que eu não sabia antes de medir. A primeira: o valor por
+omissão não falha "às vezes uma ou duas" — na ronda em que falha, colapsa
+e deixa **nove lugares vazios**. A segunda: quinze tentativas é *pior* do
+que dez. Mais tentativas significa mais transações a disputar o mesmo
+documento ao mesmo tempo, e a disputa alimenta-se a si própria.
+
+Ficou em **`maxAttempts: 10`**, na marcação e no cancelamento — nove
+rondas seguidas sem perder ninguém, e o mais rápido dos três.
+
+#### E uma conclusão minha que estava errada
+
+Na mesma ronda havia um teste a expirar aos 60 s na suite completa
+(`extra-session-usage.test.ts`) e passando sozinho em 1,4 s. Baixei o
+`maxAttempts`, a suite ficou verde, e escrevi que era isso. **Não era.**
+Falhou outra vez na corrida seguinte.
+
+O que me levou ao erro foi a plausibilidade: mais tentativas seguram
+transações mais tempo, o emulador serializa, a história fechava. E uma
+corrida verde a seguir a uma mudança é a evidência mais fácil de aceitar
+que existe — pela mesma razão que é a mais fraca.
+
+A causa verdadeira era outra e independente: 32 ficheiros de teste
+lançados em paralelo contra **um** emulador de funções, que serializa
+invocações. Está medida e corrigida em
+`firebase/tests/vitest.config.ts` — a suite passou a correr com 4
+workers em vez de 16, ficou estável em seis corridas seguidas, e ainda
+por cima mais rápida.
+
+Fica escrito porque o quase-erro é maior do que o erro: com uma corrida
+verde eu tinha dado o problema por resolvido e publicado com ele lá
+dentro.
+
+O custo é latência para quem calha ficar no fim da fila, e é limitado por
+desenho: o número de transações a disputar de facto o documento nunca
+passa muito da lotação.
+
+O custo é latência para quem calha ficar no fim da fila, e é um custo
+limitado por desenho: quem chega depois de a aula encher é recusado por
+**capacidade**, o que é uma resposta imediata e não uma repetição. O
+número de transações a disputar de facto o documento nunca passa muito da
+lotação.
+
+Isto não resolve contenção infinita — nada resolve, num contador exato
+dentro de um documento. Resolve a ordem de grandeza deste estúdio, que é
+a que interessa.
+
+#### E quando mesmo assim falhar, o que o aluno lê
+
+Dez tentativas reduzem a contenção; não a abolem. Num contador exato
+dentro de um documento nada abole — por isso interessa o que acontece na
+vez em que falha.
+
+Falhava com a mensagem genérica de erro do Firebase: *"Ocorreu um erro.
+Tenta novamente."* Diz a coisa errada duas vezes. Primeiro porque parece
+uma avaria da app, quando na verdade a aula **tem lugar** e a marcação
+só não conseguiu passar à frente dos outros. Depois porque não diz o
+único facto que faria a pessoa tentar outra vez.
+
+`isContentionError()` distingue as duas causas — `ABORTED` (10) e
+`DEADLINE_EXCEEDED` (4), por código numérico, por código em texto e, em
+último recurso, pela mensagem, porque o SDK não é consistente em qual
+deles traz. `createBooking` converte-as num `aborted` com texto próprio:
+
+> Está muita gente a marcar esta aula ao mesmo tempo. Tenta outra vez —
+> ainda pode haver lugar.
+
+"Ainda pode haver lugar" é a parte que interessa: é a diferença entre
+alguém tentar outra vez e alguém fechar a app. E é uma afirmação
+verdadeira — se não houvesse, a recusa teria vindo por capacidade.
+
+Coberto por `contention.test.ts` (5 testes), que fixa sobretudo o que
+**não** deve ser tratado como contenção: uma aula cheia e uma recusa de
+elegibilidade têm de continuar a dizer o que são.
+
+#### E uma asserção minha que estava errada
+
+O teste de carga marcava como incoerente qualquer corrida em que o número
+de aceites não fosse igual à lotação. Com cinco pessoas a disputar doze
+lugares, cinco aceites é o resultado **correto** — e o teste chamava-lhe
+falha. Passou a comparar com o menor entre quem tentou e quantos lugares
+há.
+
+Vale a pena o registo: um teste de carga que grita a toda a hora é um
+teste que se aprende a ignorar, e foi por sorte que dei com este antes de
+o usar para decidir alguma coisa.
+
+#### Os números são do emulador
+
+Corre num processo só, é mais lento em latência do que a produção e **não
+modela a rede**. Servem para comparar operações entre si e apanhar o que
+cresce mal — não para prever o tempo que um telemóvel vai sentir.
+
+Para responder à pergunta seguinte sem reescrever nada:
+
+```bash
+node firebase/scripts/load-test.mjs --membros=500 --series=40 --concorrentes=20
+```
+
+E para voltar a pôr em causa o `maxAttempts` — com o emulador do
+Firestore a correr, sem precisar de seed nenhum:
+
+```bash
+node firebase/scripts/contention-probe.mjs 30 5,10,15 3
+```
+
+### Varredura de funcionalidades, e a app a correr
+
+Duas varreduras seguidas: uma à lógica de negócio, outra a usar a app a
+sério contra o emulador, com os três perfis.
+
+#### 🔴 Mudar a hora de uma aula partia o limite semanal do plano
+
+Editar uma aula era uma escrita direta do cliente que só tocava no
+documento da aula. Parecia inofensivo — é um documento e uma data.
+
+Mas cada marcação guarda uma **cópia** da `startAt` e o `period`, a
+semana ISO em que foi contada, e o limite do plano vive num documento
+`usage/{membro}_{serviço}_{semana}`. Mover uma aula de uma semana para
+outra deixava a utilização contada na semana antiga **e a semana de
+destino outra vez livre**.
+
+O custo não era um número errado num ecrã. Com um plano de 1x por
+semana, o aluno passava a ter **duas aulas** na semana para onde a aula
+foi movida — o limite deixava de existir, e tudo continuava a parecer
+certo.
+
+Passou por `updateOccurrenceSchedule`, que numa transação atualiza a
+aula, a data copiada em cada marcação ativa e move a utilização entre
+semanas. **E as Rules deixaram de aceitar a mudança de `startAt` por
+escrita direta**, mesmo do Gestor — sem isso o caminho partido
+continuava a existir ao lado do novo, que é como estes bugs voltam.
+
+Não recusa quem fique acima do limite na semana nova: é o estúdio a
+mudar o horário, não o membro a marcar. Recusar deixaria o Gestor sem
+forma de corrigir uma hora errada porque um aluno tem a semana cheia.
+
+#### 🔴 Séries de treino que desapareciam
+
+`logSet` acrescenta ao array com `arrayUnion`; `updateSet`, `deleteSet` e
+`undoLastSet` liam o array inteiro, mudavam-no em memória e
+reescreviam-no. Misturar as duas coisas é uma corrida: uma série
+registada entre a LEITURA e a ESCRITA de um "desfazer" desaparecia,
+porque a reescrita punha lá uma versão anterior a ela existir. Nada
+falhava, nada avisava.
+
+Parecia improvável enquanto só o aluno registava do seu telemóvel. A
+aula de grupo mudou isso — o instrutor regista as séries de toda a gente
+do dispositivo dele, e o aluno pode estar a registar no seu. Dois
+escritores no mesmo array.
+
+As três passaram a correr dentro de uma transação. Varri o resto da
+camada de infraestrutura à procura do mesmo padrão: não há mais nenhum.
+
+#### 🔴 Três bugs que só a app a correr revelou
+
+**O login não funcionava.** `ReCaptchaV3Provider('debug')` não é um modo
+de debug — passa a string "debug" ao reCAPTCHA como chave de site. Dava
+dezenas de erros por minuto, o SDK do Auth tropeçava neles, e o login
+falhava. Proteção nenhuma, e a estorvar. Deixou de se ativar App Check
+sem chave real: ativá-lo com uma chave inventada dá a ilusão de proteção
+e o custo de a não ter.
+
+**Autenticar com sucesso deixava a pessoa no formulário de login.** Desde
+que a app abre na vitrina, o login é *empilhado* por cima do gate — o
+gate trocava o ecrã por baixo e ninguém tirava o login de cima. Ficava
+com o aspeto exato de um login que falhou. Bug meu, da mesma semana.
+
+**A app mentia sobre o limite semanal.** Marquei a aula de amanhã, e a
+aula da semana seguinte passou a mostrar "1/1 sessões — já usaste as
+sessões desta semana" com um botão "Marcar" ativo ao lado. Toquei:
+marcou. O servidor estava certo; a interface é que lia sempre
+`DateTime.now()` em vez da semana da aula. É o pior lado para errar — é
+o que faz as pessoas **não** marcarem.
+
+#### 🟠 Quando a app não consegue ler, finge que o estúdio está vazio
+
+A cache local do Firestore ficou corrompida a meio dos testes
+(`refusing to open IndexedDB database`) e o instrutor viu o seu próprio
+ecrã inicial com um "?" no lugar do nome, "0 sessões hoje" e "0 alunos
+ativos". Tudo plausível, tudo falso, e sem um único sinal de que algo
+tinha corrido mal.
+
+A causa está em 54 sítios, em 22 ficheiros, escritos assim:
+
+```dart
+final membros = ref.watch(membersProvider).valueOrNull ?? const [];
+```
+
+Cada um trata **três coisas diferentes como a mesma**: "ainda não
+carregou", "falhou a carregar" e "está mesmo vazio".
+
+Corrigir os 54 significaria 54 formas diferentes de mostrar o mesmo erro,
+e o 55.º a ser escrito nascia outra vez errado. O Riverpod já sabe quando
+um provider falha: um `ProviderObserver` ouve isso num sítio só
+(`DataHealthObserver`) e um aviso discreto no fundo do ecrã diz o que se
+passa — sem tapar nada, porque quem está offline com a cache quente
+continua a poder usar o que tem.
+
+Espera quatro segundos antes de aparecer: um aviso que pisca a cada
+hesitação da rede ensina as pessoas a ignorá-lo. E quem o dispensa não
+volta a ser incomodado pela mesma falha — só pela seguinte.
+
+Isto não substitui o tratamento de erro de cada ecrã. É a rede por baixo,
+para garantir que um erro nunca passa em silêncio onde ninguém se lembrou
+de o tratar.
+
+#### 🟡 Coerência, encontrada a usar
+
+O aviso "Falta preencher" da Informação pública ficava **vermelho por
+causa de um campo que já nem listava** — desalinhou quando a política de
+privacidade passou a viver dentro da app. E o campo continuava a dizer
+"Obrigatória" quando já não é.
+
+Na vitrina, "Sábado" e "Domingo" apareciam **sem horas nenhumas**: o
+ecrã de gestão sugere os dias da semana pré-preenchidos, por isso quem
+fecha ao fim de semana guardava linhas só com o dia. Um dia seguido de
+nada lê-se como um erro. Passou a contar só a linha que tem horas.
+
+#### Duas vezes estive quase a reportar um bug que não existe
+
+**"O Enter não submete o login."** Fui verificar antes de escrever:
+`onFieldSubmitted: (_) => _submit()` já lá estava. O que falhou foi a
+escrita não ter chegado ao campo.
+
+**"O instrutor vê '?' em vez do nome."** Vi isso no ecrã. Mas os dados no
+emulador estavam certos — era a cache corrompida. Virou o achado do
+`DataHealthObserver`, que é o problema verdadeiro.
+
+A causa das duas: a janela do browser estava minimizada, e nessas
+condições o Flutter web não desenha nem processa input. Vale a pena
+ficar escrito, porque quem tentar repetir estes testes vai tropeçar no
+mesmo.
+
+#### O que não está coberto por testes, e porquê
+
+A corrida das séries de treino **não tem teste**. As ferramentas não
+chegam lá: os testes contra o Emulator Suite são em TypeScript e não
+chamam código Dart, e o `fake_cloud_firestore` dos testes de widget não
+modela conflitos de transação. A correção é claramente certa —
+ler-mudar-escrever dentro de uma transação — mas fica dito que é
+raciocínio, não prova.
+
+O mesmo para a contagem semanal do ecrã de marcar: tentei prendê-la com
+um teste de widget e naquele fixture a linha nem chega a ser desenhada.
+Deixei o buraco escrito no ficheiro em vez de um teste que não testa o
+que diz.
+
+#### E dos perfis, o que ficou por percorrer
+
+Cobri o Gestor (visão global, gestão, informação pública) e o Aluno
+(início, marcar, limite semanal). Do Instrutor vi só o ecrã inicial, e
+com dados que não eram de confiança. Ficaram por percorrer: treino livre,
+plano de treino, avaliações, calendário do instrutor e a aula de grupo.
+
+### 🔴 O bug que fazia as fotos "não aparecerem" — e os vídeos também
+
+Reportado como "a foto do ícone, mesmo depois de a carregar, não
+aparece". O que se via era o avatar com iniciais, como se o envio não
+tivesse acontecido.
+
+Tinha acontecido, e tudo o resto estava certo. Fui verificar contra
+produção antes de mexer em código:
+
+* o ficheiro estava no Storage — `avatar.jpg`, 5774 bytes, reduzido;
+* o original tinha sido apagado, como a função faz;
+* o documento do membro tinha `photoPath`, `photoUrl` e `photoUpdatedAt`;
+* e o URL respondia **HTTP 200, `image/jpeg`, 5774 bytes**.
+
+Tudo a funcionar, e na app nada. A diferença estava num cabeçalho que não
+vinha na resposta:
+
+```
+$ curl -I -H "Origin: https://gym-sas.web.app" <url>
+HTTP/1.1 200 OK
+Content-Type: image/jpeg
+Cache-Control: public, max-age=31536000
+                          ← e nada de Access-Control-Allow-Origin
+```
+
+**O Flutter web não usa um `<img>`.** Busca os bytes para os descodificar
+ele próprio, e isso é um pedido sujeito a CORS. Sem
+`Access-Control-Allow-Origin`, o browser bloqueia-o, o `errorBuilder` do
+`PersonAvatar` dispara — e o `errorBuilder` desenha exatamente as
+iniciais. O caso de falha era visualmente idêntico ao caso de "esta
+pessoa não tem foto", e é por isso que isto se aguentou sem ninguém
+perceber porquê.
+
+Um bucket do Firebase Storage nasce **sem** configuração de CORS, e
+nunca ninguém lhe pôs uma. Ou seja: nenhum conteúdo servido do Storage
+alguma vez funcionou na web. Não eram só os avatares — os **vídeos de
+demonstração dos exercícios** estavam partidos pela mesma razão desde
+que existem, e ninguém tinha ligado as duas coisas.
+
+Corrigido com `firebase/scripts/set-storage-cors.mjs`. O `origin` é `*`, e
+vale a pena dizer porquê em vez de parecer desleixo: aqui o CORS não é
+uma barreira de acesso. Estes URLs já são buscáveis por qualquer servidor
+— o segredo é o token que vai no endereço, não a origem do pedido. O CORS
+só limita o que o JavaScript de outro site pode ler no browser, e esse
+site consegue a mesma imagem através do seu próprio servidor. Restringir
+às origens de produção dava a mesma segurança (nenhuma) e partia o
+desenvolvimento local, onde o servidor do Flutter muda de porta a cada
+arranque.
+
+Nenhum teste podia ter apanhado isto: contra o emulador não há CORS
+nenhum, e o widget test não faz rede. É uma daquelas coisas que só se vê
+a olhar para os cabeçalhos de uma resposta real.
+
+### A foto de perfil passou a ser do estúdio
+
+Pedido depois: o aluno não deve poder mudar a própria foto.
+
+A razão é boa e mudou como isto se pensa. A foto não é personalização de
+perfil — é a cara que o instrutor vê na tira da turma para reconhecer
+quem tem à frente, a meio de uma aula. Um aluno a trocá-la por um desenho
+qualquer não está a enfeitar o perfil dele, está a estragar a ferramenta
+de outra pessoa.
+
+Saiu o botão de "O meu perfil", e as Security Rules acompanharam: a
+escrita em `avatars/` passou a exigir Gestor, nem sequer o próprio. Sem
+isso, tirar o botão só escondia a permissão — quem chamasse a API
+diretamente continuava a poder.
+
+Isso abriu um buraco que o pedido não previa: **sem o botão do perfil,
+um instrutor ou gestor deixava de poder ter foto de todo**, porque não
+havia outro sítio onde alguém lha pusesse. A ficha de staff ganhou o
+mesmo bloco que a ficha de aluno já tinha.
+
+### Duas coisas menores, encontradas à volta
+
+**Um aviso de "alterações por gravar" que era mentira.** O ecrã novo de
+Informação pública usava uma flag ligada pelo `onChanged` do `Form` — e o
+próprio carregamento dos valores dispara esse `onChanged`, tal como se
+alguém estivesse a escrever. Abrir o ecrã e sair sem tocar em nada
+perguntava se se queriam perder alterações que não existiam. O docstring
+do `UnsavedChangesGuard` até avisa contra isto ("pode ser uma função que
+compara o estado atual com o inicial — não é preciso manter uma flag");
+ignorei-o e paguei. Passou a comparar com o formulário tal como ficou
+depois de carregado — incluindo as sugestões de horário que o próprio
+ecrã escreve, que também não são alterações do utilizador. Há dois testes
+a prender os dois lados.
+
+**Um comentário que descrevia o que não acontecia.** O
+`AvatarUploadButton` dizia que ficava em "a preparar…" até o documento da
+pessoa ganhar o `photoPath`. Nunca fez isso — espera pelo envio e mais
+nada. Um comentário que descreve o que se queria ter feito é pior do que
+nenhum, porque quem o lê deixa de ir ver.
+
+### O que a varredura NÃO encontrou
+
+Fui à procura de incoerências nos dados de produção, que é onde costuma
+estar a sensação de que há mais coisa partida por baixo. Não havia:
+
+| | |
+|---|---|
+| Subscrições a apontar para planos ou membros inexistentes | 0 |
+| Aulas e séries a apontar para serviços inexistentes | 0 |
+| Entradas de plano de treino a apontar para exercícios apagados | 0 (de 33) |
+| Aulas com o contador de marcações desalinhado do real | 0 (de 41) |
+| Membros sem número de sócio | 0 (de 51) |
+
+### Preparar a submissão às lojas
+
+Chegaram cinco avisos sobre o que a App Store costuma recusar. Fui
+verificar cada um contra o código em vez de os aceitar de cor — duas
+estavam certas, uma estava certa mas não se aplica, numa delas estamos na
+exceção, e o enquadramento da primeira estava inflacionado. E faltavam
+quatro coisas que ninguém tinha mencionado, uma das quais recusa o upload
+antes de um humano abrir a app.
+
+#### O que era verdade e o que não era
+
+**"Só o ecrã de login é o perfil clássico de rejeição por 4.2"** — meia
+verdade, guideline errada. A 4.2 é *Minimum Functionality*: apps que são
+pouco mais do que um site embrulhado. A que morde apps atrás de login é a
+**5.1.1(v)**, e diz que se a app não tiver funcionalidades significativas
+ligadas à conta, deve deixar usar sem login. Esta tem — marcações, planos
+de treino, avaliações. O risco real é mais banal: o reviewer não
+consegue entrar, ou entra e vê ecrãs vazios.
+
+**Conta demo nas review notes** — verdade, e o item mais importante da
+lista.
+
+**Sign in with Apple** — regra verdadeira, não se aplica. Procurei:
+não há `google_sign_in`, Facebook, `OAuthProvider` nem `signInWithPopup`.
+Só número de sócio/email e password contra o Firebase Auth. A obrigação
+da 4.8 só nasce com login social de terceiros.
+
+**Eliminação de conta** — a 5.1.1(v) exige-a a apps que **suportam
+criação de conta**. Esta não suporta: só o estúdio cria acessos. Ficamos
+na exceção, e por decisão de produto fica assim — o aluno exporta os
+dados pela app e o apagamento pede-se ao estúdio, que confirma a
+identidade. Está explicado no ecrã "Os meus dados" e vai nas review
+notes.
+
+**Dizer nas notas que o registo é feito pelo ginásio** — verdade, e o
+ecrã de login já o diz a quem lá chega.
+
+#### O que faltava, e ninguém tinha visto
+
+**O `Info.plist` não tinha uma única descrição de uso.** Estava
+exatamente como o Flutter o gerou, e a app abre o seletor de fotos em
+dois sítios (foto de perfil, vídeo de exercício). Fui ao código do
+`file_picker` instalado: usa `PHPickerViewController` quando pode, mas
+tem um caminho alternativo com `UIImagePickerController` — e é a presença
+dessa API no binário que dispara o `ITMS-90683 — Missing Purpose String
+in Info.plist`, **no upload**, antes de qualquer pessoa ver a app.
+
+Uma chave só, e não mais: o plugin abre a biblioteca de fotos
+(`DKImagePickerControllerSourceTypePhoto`) e nunca a câmara nem o
+microfone. Declarar permissões que não se usam é convidar perguntas na
+revisão.
+
+**O ecrã de arranque do iOS era branco puro.** `LaunchScreen.storyboard`
+com `red="1" green="1" blue="1"` numa app que só tem modo escuro — o
+mesmo flash branco que tínhamos acabado de corrigir na web, em todos os
+arranques no iPhone. Passou a `#0B0B0C`.
+
+**Não existia política de privacidade em lado nenhum** — nem documento,
+nem URL. O `ConsentScreen` geria um `kPrivacyPolicyVersion` mas não
+mostrava política nenhuma. Isto não é um risco, é um bloqueio: o App
+Store Connect não deixa submeter sem o URL. E é mais sério aqui do que
+numa app qualquer, porque esta trata dados de saúde — categoria especial
+do artigo 9.º, que exige consentimento **informado**, e informado quer
+dizer poder ler o documento antes de aceitar.
+
+A política passou a viver **dentro da app** (`PrivacyPolicyScreen`), em
+código e versionada — pela mesma razão que o resumo do ecrã de
+consentimento: é a versão mostrada que o registo de consentimento
+identifica, e um texto que muda no servidor sem mudar a versão tornaria
+esse registo inútil como prova. Antes, a ligação dependia de alguém ter
+publicado o documento noutro sítio e colado o endereço; até lá, o ecrã
+de consentimento pedia aceitação de um documento que não existia em lado
+nenhum.
+
+Está em quatro sítios: consentimento (para se ler antes de aceitar),
+login (é onde quem revê a app a procura), "Os meus dados" e a vitrina. O
+campo de URL continua a existir, agora opcional, para a ficha da loja —
+que exige um endereço público — e para o dia em que houver uma versão
+revista alojada.
+
+⚠️ O texto foi escrito a partir do que o código faz, e cada afirmação é
+verificável nas Rules, nas Functions ou nos ecrãs. Isso torna-o exato,
+não suficiente: **falta a revisão jurídica**. Quando ela existir,
+substitui-se o texto **e sobe-se o `kPrivacyPolicyVersion`**, senão
+ninguém volta a ser perguntado sobre um documento que mudou.
+
+#### A vitrina
+
+Em vez de um formulário de password à entrada, a app abre agora num ecrã
+com a marca, o que o estúdio faz, morada, contactos, horário e o mapa de
+aulas. O login fica a um toque, em "Já sou membro — entrar".
+
+Não custa nada a quem já é membro: a sessão do Firebase sobrevive a
+fechar a app, por isso isto só aparece no primeiro arranque e depois de
+sair.
+
+Isso obrigou ao primeiro caminho desta base de dados que se lê **sem
+sessão**: `tenants/{t}/public/`. Abrir leitura sem autenticação num
+projeto multi-tenant é a mudança mais fácil de fazer mal, por isso vale a
+pena ser explícito:
+
+* lá dentro está o que já estaria num cartaz na montra — morada,
+  contactos, horário, e o mapa de aulas com modalidade, dia, hora,
+  duração e lotação total. Sem nomes, sem instrutores, sem lugares
+  ocupados, sem ids que sirvam para pedir outra coisa;
+* **não se escreve diretamente**, nem sendo Gestor. Um documento público
+  com escrita direta do cliente é um convite a pôr lá o que não devia;
+* e há sete testes de regras que provam que ele **não abriu mais nada** —
+  sem sessão, o documento do tenant, os membros e até o catálogo de
+  serviços continuam fechados.
+
+Os dois documentos que lá vivem chegam por caminhos diferentes, e a
+diferença é a questão:
+
+* **`public/schedule`** é *derivado*. Sai das séries ativas e é reescrito
+  pelo mesmo cron diário que gera as ocorrências. Ninguém o mantém, e por
+  isso não desatualiza — um horário público errado manda pessoas ao
+  ginásio à hora errada.
+* **`public/info`** é *escrito pelo Gestor*, pela Cloud Function
+  `updateStudioInfo`.
+
+O ecrã cala-se sobre o que não sabe: um campo vazio não aparece, e um
+mapa de aulas que não é reescrito há mais de uma semana também não. O
+cron corre todos os dias; sete dias de silêncio significam que alguma
+coisa parou.
+
+#### Onde a morada do estúdio devia viver (e a correção a meio)
+
+A primeira versão disto pôs a morada, os contactos, o horário e o URL da
+política na **configuração da build**, com uma marca `POR PREENCHER` e um
+teste que falhava a build de produção enquanto lá estivesse.
+
+O argumento era que estes dados aparecem antes de haver sessão, e sem
+sessão não há leitura autorizada de nada do tenant. Era verdade — e tinha
+deixado de ser um impedimento **no mesmo trabalho**, no momento em que a
+vitrina passou a ler de um caminho público para o mapa de aulas. Se o
+horário das aulas pode vir de lá, a morada também pode.
+
+E na config era pior por uma razão que não se vê no código: mudar o
+número de telefone do ginásio obrigava a um developer, uma build nova e
+uma revisão da App Store. É exatamente o problema que o resto da app foi
+resolvendo fase a fase — tudo o que é negócio pertence a quem gere o
+negócio.
+
+Passou para **Gestão › Informação pública**. Com ele desapareceu a marca
+`POR PREENCHER` e o teste que a guardava; o guarda passou a ser um aviso
+no próprio ecrã, que lista o que falta e fica **vermelho** quando o que
+falta é a política de privacidade — a única coisa ali sem a qual não há
+submissão possível.
+
+A troca de guarda tem um custo honesto: um teste falha no CI, um aviso na
+app só falha a quem o abre. Ganha-se não precisar de um developer para
+mudar uma morada, e deixa de haver uma build vermelha por preencher que
+toda a gente aprende a ignorar.
+
+Pormenores que a implementação obrigou a decidir:
+
+* **A escrita passa por uma Cloud Function** e valida o que lá se põe —
+  não por segurança, mas para o Gestor não publicar um botão partido: um
+  "URL" sem esquema abre uma página em branco no telemóvel e ninguém
+  saberia porquê.
+* **Campos vazios são válidos** e querem dizer "não mostrar". Bloquear o
+  Gestor de guardar a morada enquanto não tiver o horário todo seria pior
+  do que deixá-lo fazer uma coisa de cada vez.
+* **Linhas de horário totalmente em branco não são guardadas.** O ecrã
+  oferece quatro linhas e o Gestor deixa em branco as que não usa; isso
+  não é dado.
+
+#### A conta para a revisão
+
+Já havia o `create-test-users.mjs`, e não servia: as contas que ele cria
+estão **vazias**. Um reviewer que entre e veja "sem marcações, sem plano
+de treino, sem avaliações" fica exatamente onde estava. E havia um risco
+concreto — essas contas têm `isTestAccount: true` e são apagadas em bloco
+pelo `--delete`. Apagar a conta de demonstração a meio de uma revisão é
+rejeição garantida, e é o tipo de coisa que se faz sem pensar.
+
+O `seed-review-account.mjs` cria um aluno com o estúdio já andado: plano
+contratado (escolhe o que dá acesso a mais serviços), três aulas
+marcadas, plano de treino com três treinos, uma avaliação física e a
+mensalidade do mês paga. Marca-o com `isReviewAccount: true` e **não**
+com `isTestAccount`, por isso o `--delete` das contas de teste não lhe
+toca. No fim imprime o que copiar para as review notes.
+
+#### Ainda por fazer
+
+* ⚠️ **Preencher Gestão › Informação pública** — morada, contactos,
+  horário e sobretudo a política de privacidade. O ecrã diz o que falta e
+  fica vermelho enquanto a política não estiver lá.
+* **App Privacy labels** no App Store Connect: declarar recolha de dados
+  de saúde e fitness, contactos e identificadores. Declarar a menos é
+  motivo de rejeição.
+* **Notificações push** pedem permissão logo a seguir ao login, sem
+  contexto, e ainda não entregam nada (falta a chave APNs). Não bloqueia
+  a revisão; vale a pena rever a altura do pedido.
+* A **versão** está em `0.1.0`, que a um reviewer lê como beta.
+
+### O tempo que o utilizador sente
+
+A varredura anterior foi atrás de leituras e de euros. Esta foi atrás de
+outra coisa: o tempo entre tocar no link e conseguir fazer alguma coisa.
+São problemas diferentes e moram em sítios diferentes.
+
+#### O ecrã ficava branco durante o arranque todo
+
+O `<body>` do `index.html` tinha exatamente uma linha: o script do
+Flutter. Mais nada. Entre tocar no link e a app pintar o primeiro pixel,
+o utilizador via **branco** — e nesse intervalo o browser tem de
+descarregar vários megabytes, compilar o motor gráfico, arrancar o
+Flutter e inicializar sete SDKs do Firebase.
+
+Em localhost isso são milissegundos, que é por isso que nunca ninguém
+deu por nada. Num telemóvel com dados móveis são segundos, e segundos de
+ecrã branco não se leem como "está a carregar" — leem-se como "não
+funciona".
+
+Há agora um ecrã de arranque: fundo `#0B0B0C` (a mesma cor da app, para
+não haver o salto de branco para preto), o nome do estúdio e uma barra
+indeterminada. É tudo CSS embutido no `index.html`, de propósito:
+qualquer ficheiro externo — uma folha de estilos, o logótipo — seria
+mais um pedido de rede a acontecer precisamente no momento que isto
+existe para tapar.
+
+Para o tirar foi preciso um `web/flutter_bootstrap.js` próprio: o que o
+Flutter gera limita-se a chamar o carregador e não dá gancho nenhum para
+saber quando a app está viva.
+
+Duas coisas correram mal a fazer isto, e as duas ficaram registadas no
+código:
+
+* **O comentário que se auto-sabotou.** Escrevi os nomes dos
+  placeholders (`{{...}}`) dentro de um comentário a explicá-los — e o
+  `flutter build` substitui-os *também aí*. Injetou o carregador do motor
+  inteiro a meio de um `//`, e o ficheiro deixou de ser JavaScript
+  válido. O `node --check` passou a fazer parte da verificação.
+* **`requestAnimationFrame` não dispara num separador em segundo
+  plano.** A remoção dependia dele, e o ecrã de arranque ficava preso por
+  cima de uma app já a funcionar até alguém voltar ao separador. Apanhei
+  isto a testar com o painel do browser escondido.
+
+O segundo caso mudou o desenho: a remoção vive agora no `index.html`,
+com um prazo de segurança de 20 segundos. Um ecrã de arranque que não sai
+é **pior** do que não ter nenhum — fica por cima de uma app que está a
+funcionar e ninguém consegue tocar em nada. Ao fim de 20 segundos sai de
+qualquer maneira, mesmo que nada lho peça.
+
+#### A app passou a ser compilada para WebAssembly
+
+Medido, com as duas builds lado a lado e comprimidas:
+
+| | gzip |
+|---|---|
+| `main.dart.js` + CanvasKit | **3,90 MB** |
+| `main.dart.wasm` + skwasm | **2,77 MB** |
+
+Menos 1,1 MB, e o motor gráfico passa de 6,8 para 3,4 MB por
+descomprimir. Além dos bytes, o browser deixa de ter de interpretar 4 MB
+de JavaScript antes de correr o primeiro `main()`.
+
+O `--wasm` gera as **duas** builds e o carregador escolhe: quem tiver um
+browser sem WasmGC recebe exatamente o que recebia antes. Confirmei numa
+build real que o `buildConfig` traz as duas entradas, e confirmei num
+browser que a versão wasm carrega o `main.dart.wasm` e o `skwasm`, **não**
+toca no `main.dart.js`, renderiza o login e aceita texto nos campos.
+
+Isto obrigou a uma correção nos cabeçalhos de cache que teria passado
+despercebida: o `firebase.json` dava regra ao `/main.dart.js` mas o
+`main.dart.wasm` e o `main.dart.mjs` não existiam quando aquilo foi
+escrito. Ficariam com o valor por omissão do Firebase Hosting e a app
+servia uma versão velha durante uma hora depois de cada deploy.
+
+#### Entre autenticar e ver a app eram três idas ao servidor, em fila
+
+O `AuthGate` encadeava três verificações — password temporária,
+consentimento, mensalidade — cada uma dentro do `.when(data:)` da
+anterior, cada uma com o seu ecrã de espera de página inteira.
+
+**Nenhuma usava o resultado da outra.** Todas dependem só do utilizador
+autenticado. Estavam em série apenas porque foram escritas encaixadas
+umas nas outras. E liam a mais: para um aluno, a verificação da password
+temporária lia `members/{uid}` **e** `staff/{uid}` — e o segundo nunca
+existe —, e a seguir o consentimento voltava a ler `members/{uid}` por
+outro caminho.
+
+Passaram a arrancar juntas (`gateScreenProvider`): espera-se pela mais
+lenta em vez da soma, vê-se um ecrã de espera em vez de três, e a leitura
+garantidamente falhada desapareceu (os roles vêm no token e dizem
+exatamente onde procurar).
+
+**O teste apanhou uma regressão que eu não tinha previsto.** Encadeadas,
+as verificações seguintes nunca chegavam a correr quando uma anterior já
+decidia o ecrã. Em paralelo correm sempre — e uma falha a ler a
+mensalidade passava a impedir alguém com password temporária de chegar ao
+ecrã onde a trocaria. Ficava preso num erro, sem saída.
+
+Por isso cada verificação responde por si, e o que fazer com cada erro é
+uma decisão escrita:
+
+* **password temporária** — o erro sobe. Sem esta resposta não se decide
+  nada, e deixar entrar quem devia trocar a password seria saltar o UC22.
+* **consentimento** — o erro vale por "não é preciso pedir", que é o que
+  já acontecia antes (o ecrã lia `valueOrNull == true`, e um erro dá
+  `null`).
+* **mensalidade** — o erro sobe, mas só se a decisão chegar lá.
+
+Há dois testes novos a prender os dois lados disto.
+
+#### O logótipo do login tinha 238 KB, e ia um ícone de 229 KB à boleia
+
+O `logo_wordmark.png` era 748×535 para ser mostrado a 72 pontos de
+altura. Passou a 403×288 (quatro vezes o que se vê, folga para qualquer
+densidade de ecrã) e a 76 KB.
+
+E o `pubspec.yaml` declarava a **pasta** `assets/branding/`, não o
+ficheiro. Lá dentro está também o `app_icon.png` — o quadrado 1024×1024
+de onde o `flutter_launcher_icons` gera os ícones. Iam 229 KB em todas as
+builds, incluindo a web, para nunca serem mostrados: nenhum ecrã usa esse
+ficheiro, e o gerador lê-o do disco, não do bundle.
+
+#### O `jimp` deixou de ser carregado por funções que não o usam
+
+O `index.ts` importa tudo, por isso qualquer Cloud Function carrega o
+módulo de todas as outras no arranque a frio. Passou a um `await
+import('jimp')` dentro do handler da `resizeAvatar`, que é a única que o
+usa.
+
+**Sendo honesto sobre o tamanho disto:** o `jimp` medido sozinho levava
+99 ms, e foi com esse número que o assinalei. Depois de o tornar
+preguiçoso, o `index.js` continua a carregar na mesma casa dos 625 ms —
+a diferença está dentro do ruído. Boa parte do que o `jimp` puxa já vinha
+do `firebase-admin`. O que mudou de facto e se mede são os módulos
+carregados: **842 → 686**. Menos código a analisar e menos memória por
+instância, mas não o ganho de arranque que eu tinha anunciado.
+
+#### O que não consegui medir, e por isso não afirmo
+
+Os tamanhos, os tempos de carregamento de módulos e a estrutura do código
+são medidos. Os ganhos em **tempo de arranque** que se seguem daí são
+estimativas: o painel do browser não devolve tempos de pintura, e a única
+forma honesta de os confirmar é abrir a app publicada no DevTools de um
+telemóvel a sério, com a rede limitada.
+
+O que **está** verificado num browser: o ecrã de arranque aparece, a
+build wasm corre e não recorre ao JavaScript, o ecrã de arranque sai
+quando a app assume, e o login renderiza e responde.
+
+### Varredura de performance e de custo
+
+Pedida a seguir à das fotos. Percorri as 34 Cloud Functions, os 24
+repositórios, os providers e os ecrãs. Vale a pena registar o que **não**
+apareceu, porque também é resultado: nenhum `Timer` ou polling, nenhuma
+query sem `limit` numa coleção que cresce sem fim, nenhum `await` dentro
+de um ciclo que não fosse preciso, região e `maxInstances` corretos,
+persistência offline ligada, e as duas correções da varredura anterior
+ainda de pé.
+
+Sete coisas novas. Uma delas era um remédio escrito que nunca curou
+nada.
+
+#### A limpeza das imagens de deploy apontava para a região errada
+
+O custo real que apareceu em produção eram imagens de contentor a
+acumular no Artifact Registry, e a varredura anterior deixou o remédio
+escrito aqui:
+
+```
+firebase functions:artifacts:setpolicy --days=3
+```
+
+O `--help` do CLI diz o resto da história:
+
+```
+--location <location>   If omitted, uses the default functions location
+                        (default: "us-central1")
+```
+
+As funções estão em `europe-west1`. O comando cria a política num
+repositório do Iowa que está vazio, diz que correu bem, e as imagens que
+estão mesmo a ocupar espaço continuam onde estavam. Um remédio que
+devolve sucesso é pior do que nenhum: ninguém volta lá confirmar.
+
+#### Cada avatar numa lista era uma ida à rede
+
+`avatarUrlProvider` chamava `getDownloadURL()`, que é um pedido HTTP aos
+metadados do Storage. Abrir Gestão › Utilizadores com cinquenta pessoas
+eram cinquenta pedidos — e outros cinquenta ao sair e voltar, porque o
+provider era `autoDispose` e o resultado não ficava em lado nenhum.
+
+Sendo exato: **em euros isto era quase nada**. São operações Classe B e o
+nível gratuito dá 50 000 por dia. O que custava era tempo, e custava-o no
+sítio errado: a lista abria com cinquenta círculos de iniciais e as fotos
+iam caindo à medida que os pedidos voltavam. A funcionalidade existia
+precisamente para acabar com a fila de cartões iguais.
+
+Um URL de download do Firebase é só o caminho mais um token guardado nos
+metadados do objeto. Se for a `resizeAvatar` a gerar o token, o URL é
+construível no servidor e viaja no documento da pessoa, que a app já lê.
+Cinquenta pedidos passam a zero e as fotos aparecem com a lista.
+
+Não muda quem vê o quê — o `getDownloadURL()` que isto substitui já
+devolvia exatamente este URL; muda só de onde vem, e vem para as mesmas
+pessoas. E o token novo a cada envio trata da cache de borla: o URL muda,
+por isso a foto nova aparece já, apesar do ano de validade.
+
+De caminho, o `PersonAvatar` deixou de ser um `ConsumerWidget` (já não há
+nada para observar) e passou a descodificar a imagem no tamanho em que a
+mostra. Sem isso, cada avatar ia para memória com os 160px do ficheiro
+para desenhar um círculo de 34 — cinquenta avatares são ~5 MB de bitmaps.
+
+#### O array `sets` de cada treino estava a ser indexado para nada
+
+O Firestore indexa automaticamente todos os campos, incluindo cada campo
+dos mapas dentro de um array. `workoutSessions.sets` é um array de mapas
+com seis campos, e cada série confirmada faz `arrayUnion` — o documento é
+reescrito e as entradas de índice recalculadas. Um treino de trinta
+séries anda pelas quatrocentas entradas de índice.
+
+Confirmei que **nenhuma query usa `sets`**. Nem `fcmTokens`, nem os
+campos de texto livre.
+
+Ser preciso sobre o que isto custava: **não muda a faturação das
+escritas** — o Firestore cobra por documento, não por entrada de índice.
+Custa armazenamento de índice, latência em cada série confirmada durante
+o treino, e é a direção do limite de 40 000 entradas por documento. Cinco
+isenções em `fieldOverrides`.
+
+#### Os lembretes reliam de hora a hora as aulas que já tinham avisado
+
+A janela é de doze horas e a função corre de hora a hora, portanto a
+mesma aula entrava na query doze vezes. O `reminderSentAt` já evitava
+reler as *marcações*, mas a ocorrência era lida na mesma nas onze vezes
+em que não havia nada a fazer — e descartada em memória logo a seguir a
+ser paga. O filtro passou para o servidor.
+
+Isto obriga a uma migração, e é a parte que engana: o Firestore **não
+encontra `== null` em documentos onde o campo não existe**. Uma
+ocorrência criada antes desta mudança fica invisível para a query e nunca
+recebe lembrete — sem erro nenhum, só silêncio. As ocorrências novas
+nascem com `reminderSentAt: null` explícito, e para as que já existem há
+`firebase/scripts/backfill-reminder-field.mjs`, que só toca nas futuras
+(reescrever um ano de histórico seria pagar escritas para nada). Há um
+teste que prende exatamente este caso, para ser uma decisão registada e
+não uma descoberta.
+
+#### Dois ecrãs a ler listas inteiras para desenhar pouco
+
+O **painel do Gestor** mostrava "412 membros ativos" lendo os 412
+documentos. É o primeiro ecrã que um Gestor vê. Passou a `count()`, que é
+faturado como uma leitura por cada mil documentos contados — e, mais do
+que ser mais barato, deixa de crescer com o ginásio. Quem for depois a
+Gestão › Membros paga a lista aí, que é quando ela serve para alguma
+coisa. A lotação prevista continua a ler as sessões: essa precisa mesmo
+da capacidade e das marcações de cada uma.
+
+As **mensalidades** construíam todas as linhas de uma vez (`ListView` com
+`children`, não `builder`) e contavam os chips com quatro varreduras
+completas da lista — tudo isso a cada tecla escrita na pesquisa. Passou a
+uma varredura e a uma lista preguiçosa. O mesmo no diálogo de atribuir
+membros do treino livre, onde cada toque numa caixa reconstruía as
+cinquenta linhas para mudar uma.
+
+#### Uma que estava mal medida por mim
+
+Tinha assinalado o `getRetentionOverview` como "300 sub-queries → 1". Fui
+refazer a conta antes de lhe mexer e estava errada: das ~2300 leituras de
+uma abertura do painel, ~2000 são os próprios documentos de presença, que
+se leem à mesma de qualquer forma. Uma query de grupo de coleções
+pouparia as ~300 do resto — **13%**, não o que eu tinha dito — e obrigava
+a denormalizar `tenantId` e a data em cada documento de presença, mais
+uma regra nova e um retropreenchimento. Num ecrã só do Gestor, com taxa
+limitada a 60 chamadas por minuto, não compensa. Fica como estava, e fica
+dito porque.
+
+#### O deploy levava 7,4 MB de símbolos de depuração
+
+Os `.symbols` do CanvasKit nunca são pedidos pelo browser. Passaram a
+estar no `ignore` do hosting.
+
+#### Um teste que estourava por causa de outro
+
+A suite dos emuladores começou a falhar num sítio que eu não tinha
+tocado: `extra-session-usage.test.ts` passa sozinho em 14 segundos e
+estourava os 30 na suite completa. Dei com a resposta errada duas vezes
+(culpei a máquina, depois culpei um teste meu que era de facto lento e
+que corrigi) antes de ver o que era: aqueles limites estavam escritos à
+mão dentro do ficheiro, de quando ainda não havia um valor único, e
+ganhavam ao do `vitest.config.ts`. São mais ficheiros a disputar um só
+emulador de funções, que serializa arranques a frio. O limite passou a
+vir de um sítio só, e subiu para 60 segundos — continua a apanhar um
+teste que nunca acaba, que é para o que serve.
+
+#### O que verifiquei e estava bem
+
+O mês corrente das mensalidades já saía do campo denormalizado, sem
+leitura nenhuma. Os cabeçalhos de cache do hosting estão certos,
+incluindo o ano no CanvasKit. As séries do treino num array em vez de
+subcoleção continua a ser a decisão certa. O `minInstances` não está
+definido, que é o correto para o custo. O limitador de chamadas custa uma
+leitura e uma escrita por chamada protegida, que é o preço da proteção.
+
+### Fotos de perfil (e avatares que deixaram de ser todos iguais)
+
+Perguntado pelo cliente: pôr fotos das pessoas no ícone,
+independentemente do papel. Fizemos as duas metades da coisa.
+
+#### Primeiro: as iniciais já não são todas do mesmo vermelho
+
+Todos os avatares usavam o gradiente da marca. Numa lista — a tira da
+turma, os cinquenta alunos da Gestão — isso é uma fila de cartões
+iguais, e é precisamente aí que o instrutor precisa de distinguir doze
+pessoas de relance, a meio da aula.
+
+A cor passa a sair do nome, de uma paleta de oito. É determinística: a
+mesma pessoa tem sempre a mesma cor, hoje e daqui a um mês, porque é
+isso que faz do avatar uma coisa que se reconhece. A soma dos *code
+units* do nome, **não** o `hashCode` — o `hashCode` de uma `String` em
+Dart não é estável entre plataformas nem entre versões, e a cor mudava
+de um browser para o outro.
+
+Isto entrou sozinho porque vale por si: quem nunca puser uma foto fica
+com uma lista legível na mesma.
+
+#### Depois: a foto
+
+Um caminho por pessoa, `tenants/{t}/avatars/{uid}/`, seja ela aluno ou
+staff — o avatar é a mesma coisa nos dois casos e não valia a pena
+inventar dois sítios.
+
+**A redução é nossa, não do cliente.** Foi decisão de produto, e a
+alternativa estava escrita e por implementar quando foi corrigida: o
+cliente envia a foto tal como o telemóvel a tirou, e a Cloud Function
+`resizeAvatar` corta-a a 160px, guarda `avatar.jpg` e **apaga o
+original**. Apagar não é limpeza: é o que garante que ninguém serve
+por engano os 3 MB que chegaram. A garantia de que nada grande é
+servido deixa de depender de a app estar atualizada.
+
+A conta que justifica o esforço:
+
+| | por abertura do ecrã de Utilizadores |
+|---|---|
+| 50 fotos como saem do telemóvel | ~150 MB |
+| 50 fotos reduzidas a 160px | ~400 KB |
+
+O nível gratuito do Storage são 1 GB/dia. Sem redução, **sete
+aberturas desse ecrã esgotavam o dia**. A largura de banda de *entrada*
+não é faturada, por isso o custo do original é o instante em que
+existe.
+
+Detalhes que só se descobrem a fazer:
+
+* **`cover`, não `resize`** — corta ao centro para dar um quadrado, em
+  vez de espremer a pessoa para caber num círculo.
+* **`jimp` e não `sharp`** — puro JavaScript, sem compilação nativa no
+  deploy. `sharp` é mais rápido; aqui isso não vale o risco de um
+  deploy que falha a construir um binário.
+* **A função só escreve `photoPath` no fim**, depois de o ficheiro
+  existir. Escrevê-lo antes dava um avatar partido no intervalo.
+* **Guarda contra o ciclo**: a própria função escreve na pasta que a
+  dispara. Sem ignorar o `avatar.jpg`, era um gatilho a chamar-se a si
+  próprio.
+* **`clearAvatarOnDelete`** limpa o `photoPath` quando o ficheiro
+  desaparece. Sem ela, remover a foto deixava o documento a apontar
+  para um ficheiro que já não existe — e o avatar ficava partido em
+  vez de voltar às iniciais. É o servidor a fazê-lo porque um aluno
+  não pode escrever no seu próprio documento (as Rules limitam os
+  campos), e abrir a regra só para isto seria pior.
+
+Entre o envio e a foto aparecer passam alguns segundos, que é o preço
+de a redução ser do lado do servidor. O botão diz "A preparar…" e a
+lista continua a mostrar as iniciais — **sem spinner**: a bolinha a
+girar dentro de um círculo de 34px é ruído, e numa lista de cinquenta
+pessoas são cinquenta. As iniciais servem de marca de água até a foto
+chegar, e servem outra vez se a imagem falhar.
+
+O URL leva `?v={photoUpdatedAt}`. O ficheiro é servido com um ano de
+validade e o caminho é fixo por pessoa: sem isto, uma foto nova só
+aparecia no ano seguinte.
+
+#### Uma lacuna nas regras que escrevi, apanhada a testá-las
+
+A primeira versão da regra de escrita era
+`request.auth.uid == userId || isManager(tenantId)`. O ramo do
+"próprio" não verificava o tenant — e o uid é único em toda a
+instalação. Alguém do tenant B escrevia em
+`tenants/A/avatars/{o-seu-uid}/` e a foto passava a ser servida no
+tenant A. Corrigido com `belongsToTenant` à frente dos dois ramos, e
+há agora um teste que falha se voltar a acontecer.
+
+Quem pode mudar a foto de quem: a **própria pessoa** e o **Gestor**.
+Um Instrutor não — pode carregar vídeos da biblioteca, que são do
+estúdio, mas a cara de alguém não é conteúdo do estúdio.
+
+#### RGPD
+
+`deleteMemberData` só apagava Firestore. Assim que passam a existir
+fotos, isso é um buraco: o pedido de apagamento cumpria-se nos dados e
+deixava a cara da pessoa no Storage. Passa a apagar também os avatares.
+
+#### Onde aparece
+
+Aula de grupo (as duas vistas), seletor de membros, o meu perfil, home
+do instrutor, lista de utilizadores da Gestão, ficha do aluno, folha de
+início de aula. O ecrã de retenção ficou deliberadamente com as
+iniciais: o `MemberAtRisk` não transporta foto, e ir buscá-la seria uma
+leitura por pessoa num ecrã que existe para ser barato.
+
+#### A corrida que o teste do gatilho encontrou
+
+A `resizeAvatar` é um gatilho de Storage: ninguém a chama, ela
+acontece — o que a torna fácil de dar por adquirida. Montei um teste
+que a exercita a sério contra os emuladores (chega uma foto de
+1600×1200, fica um `avatar.jpg` de 160×160 com menos de um décimo do
+tamanho, o original desaparece, o documento ganha o `photoPath`), e o
+log da corrida mostrou um erro que nenhuma asserção apanhava:
+
+```
+Your function was killed because it raised an unhandled error.
+Finished "europe-west1-clearAvatarOnDelete"
+```
+
+É a ordem normal de apagar alguém. A `deleteMemberData` apaga os
+documentos **e** o avatar; a `clearAvatarOnDelete` acorda a seguir para
+limpar o `photoPath` de um documento que já não existe. Entre o `get` e
+o `update` cabe a corrida, e o `update` rebenta com NOT_FOUND — a
+função fica marcada como falhada e a **repetir** uma escrita que nunca
+vai ter onde cair.
+
+Passou a tolerar o NOT_FOUND explicitamente. Não é `set(…, {merge:
+true})`, que seria o outro fim errado do mesmo problema: isso
+*recriava* o documento da pessoa que acabou de ser apagada. Há um teste
+para esse fim também.
+
+Verificação: **7 testes** novos de widget (cor determinística, foto,
+e o estado de carregamento — este obrigou a um futuro que nunca
+resolve, porque um `async =>` completa no microtask seguinte e o teste
+apanhava já a imagem), **8 testes** de Storage Rules e **5 contra os
+emuladores** para o gatilho.
+
+### O âmbito do Instrutor: aulas dele, alunos dele
+
+Perguntado pelo cliente, e a resposta era metade e metade:
+
+* **Aulas: já estava.** "As minhas aulas" filtra por `instructorId`; o
+  Gestor reutiliza o mesmo ecrã sem filtro e vê a semana toda.
+* **Alunos e treinos: não.** `InstructorStudentsScreen` listava **todos**
+  os alunos ativos do estúdio, e daí abria-se o plano de treino e as
+  avaliações de qualquer um. Era uma lacuna já documentada no código
+  desde a Fase 8 — o mockup pedia "só alunos com serviço na tua
+  modalidade", e o âmbito nunca tinha sido modelado.
+
+#### O que define "os meus alunos"
+
+Não existe no domínio uma relação aluno→instrutor. Um aluno contrata um
+**serviço**, e o instrutor leciona serviços (`staff.serviceIds`). Os
+alunos dele são, portanto, os que têm subscrição ativa a algum desses
+serviços — a leitura mais próxima do que o mockup pedia, sem inventar
+uma atribuição que ninguém faria à mão.
+
+`visibleMembersProvider` faz isso: Gestor vê todos, Instrutor vê os
+dele. Uma query só, com `array-contains-any` sobre o índice
+`subscriptions (status, activeServiceIds)` que já existia.
+
+#### ⚠️ Isto é âmbito, não segurança
+
+Vale a pena ser explícito, porque a diferença importa: as Security Rules
+deixam **qualquer Instrutor ler qualquer membro** do tenant
+(`members`, `allow read: if isInstructor(...)`). Filtrar no cliente tira
+o ruído e evita o acesso acidental; **não impede o deliberado**.
+
+Torná-lo uma barreira a sério obrigaria a denormalizar os serviços
+contratados no documento do membro, para a Rule os poder comparar sem um
+`get()` por documento. É uma decisão de privacidade (e de RGPD, tratando-
+se de dados de saúde) que fica em aberto, assinalada.
+
+Verificado: **399 testes Flutter** (1 novo).
+
+### Dois reportados: o vídeo escondido, e o instrutor sem criar aulas
+
+#### 🔴 O ▶ que não era um botão
+
+O aluno não conseguia ver o vídeo de um exercício. Os vídeos estavam lá
+(dois, em produção) e as Storage Rules deixavam-no ler. O problema era
+de interface, e mau:
+
+A linha de cada exercício em "O meu plano" tinha um **`IconBox` com um
+▶** à esquerda — **decoração**, copiada do mockup. Aparecia em TODOS os
+exercícios, tivessem vídeo ou não, e tocar nele fazia o mesmo que tocar
+em qualquer outro sítio da linha: abrir um menu, onde o vídeo às vezes
+estava e às vezes não.
+
+Um aluno que vê um play, toca, e não chega a vídeo nenhum conclui — com
+razão — que a app está partida.
+
+* O ▶ passou a existir **só onde há vídeo**, e a levar lá diretamente.
+  Sem vídeo, o ícone é neutro e deixa de prometer o que não tem.
+* O vídeo saiu do menu de ações: escondido atrás de um toque numa linha
+  que não dizia ter vídeo, ninguém lhe chegava.
+* **Passou a existir durante o treino.** Só era alcançável em "O meu
+  plano", mas o momento em que alguém precisa de rever a execução é a
+  meio do treino, antes da série — e daí obrigava a sair, ir ao plano,
+  encontrar o exercício e voltar. O `ExerciseLogger` ganhou o botão, o
+  que o põe também na aula de grupo, nas duas vistas.
+
+#### 🟠 O instrutor não podia criar aulas — e não sabia porquê
+
+O atalho "Criar aula" existe no ecrã do Instrutor desde a Fase 11, mas
+**desaparecia** (`SizedBox.shrink()`) quando ele não tinha serviços
+atribuídos. O instrutor ficava a olhar para um ecrã onde criar uma aula
+simplesmente não existia, sem nada a dizer que lhe faltava uma
+configuração que ele nem pode fazer.
+
+A restrição em si é correta: as Security Rules exigem que a aula seja de
+um serviço do instrutor (`instructorOwnsSession`), por isso um atalho
+ativo levaria a uma recusa do servidor. O que mudou foi passar a
+**mostrar o atalho inativo, com o motivo e a quem pedir**. Mesmo
+princípio do "Remover" no treino livre.
+
+E a causa nos dados: `create-test-users.mjs` criava o instrutor de teste
+**sem `serviceIds`**, ou seja, um instrutor que não podia fazer nada.
+Passa a receber todos os serviços ativos do estúdio — numa conta de
+teste não há nada a decidir aí.
+
+*Editar* aulas já funcionava: o botão não é limitado por papel e as
+Rules permitem ao instrutor alterar as sessões dele.
+
+Verificado: **398 testes Flutter** (2 novos).
+
+### Corrigir o treino depois de a sessão arrancar
+
+Escolher o treino de quatro ou cinco alunos numa folha é rápido — e
+enganar-se numa linha também. Sem forma de corrigir, a única saída era
+terminar a sessão e recomeçar, com a aula a decorrer.
+
+O cabeçalho de cada aluno ganhou **"Trocar treino"**, que aparece
+**só enquanto não houver séries registadas**.
+
+A condição não é conservadorismo: as séries já feitas pertencem a
+exercícios do treino antigo. Trocar por baixo delas deixava-as fora da
+lista (o painel filtra pelo treino) mas **a contar nos totais da
+sessão** — um estado que não se explica a ninguém.
+
+Escondido em vez de desativado, ao contrário do que esta app faz noutros
+sítios: é uma correção dos primeiros segundos, e um botão
+permanentemente cinzento no cabeçalho de cada aluno seria ruído durante
+a aula inteira. Quando há só um treino no plano, um toque explica em vez
+de abrir uma folha com uma linha.
+
+`workoutName` é copiado para a sessão, e não lido do treino a cada
+leitura: é o nome que fica no histórico, e um treino renomeado meses
+depois não deve reescrever o passado — mesmo raciocínio de
+`startSession`.
+
+Verificado: **396 testes Flutter** (2 novos).
+
+### Aula de grupo: que treino cada aluno vai fazer
+
+Levantado pelo cliente logo a seguir à vista por exercício, e era uma
+falha a sério que nenhuma das duas vistas tornava visível.
+
+O arranque em grupo abria as sessões com **`workoutId: null`** e o nome
+da AULA. O arranque individual (`start_workout_button.dart`) sempre
+perguntou qual dos treinos do split o aluno vai fazer e guardou essa
+escolha; o de grupo não. Duas consequências:
+
+1. **O painel mostrava o plano inteiro.** O filtro por `workoutId` já
+   existia no código — só nunca disparava, porque a sessão nunca tinha
+   um. Quem tem um split A/B/C via vinte exercícios em vez dos sete de
+   hoje, e tinha de os procurar no meio dos outros com a aula a
+   decorrer.
+2. **O histórico ficava sem saber que treino foi feito** — a informação
+   de que a rotação A/B/C depende.
+
+"Iniciar treino para a turma" passou a abrir uma folha com a turma
+listada e, ao lado de cada nome, um seletor com os treinos **desse**
+aluno. A escolha é por aluno e não pela turma, porque numa aula de grupo
+cada um pode estar num dia diferente do seu split.
+
+Decisões que valem a pena:
+
+* **Vem pré-preenchido com o primeiro treino ativo**, e não com um
+  palpite pela rotação. Adivinhar em que dia do split cada um vai
+  exigiria ler o histórico de todos — mais um listener por atleta — para
+  acertar num palpite que o instrutor corrige num toque.
+* **Quem não tem treinos no plano não arranca**, e a folha diz porquê
+  ali mesmo. Uma sessão sem exercícios é uma linha no histórico que não
+  diz nada e que alguém tem de ir fechar à mão; e sem a explicação,
+  ficava a pergunta "porque é que só arrancaram três dos quatro?".
+* **A vista por exercício filtra pelo mesmo critério.** Sem isso, a
+  lista de exercícios da aula juntava os três treinos do split de cada
+  aluno — dezenas de páginas para percorrer a swipe.
+* **O cabeçalho passou a dizer que treino está a decorrer.** Com um
+  split A/B/C, saber qual é metade da informação, e não aparecia em lado
+  nenhum.
+
+Verificado: **394 testes Flutter** (5 novos).
+
+### Aula de grupo: a vista por exercício
+
+O treino de turma já existia, centrado no **aluno**: uma tira com a
+turma, um toque salta entre pessoas, cada uma com o seu plano. Isso é
+certo para PT e para uma sala onde cada um faz o seu treino.
+
+Mas não é como um instrutor conduz uma aula de grupo. Ele não pensa
+"agora a Ana" — **chama o exercício**, e toda a gente o faz. Nesse
+momento o ecrã certo tem o exercício no topo e a turma em coluna, para
+registar a carga de cada um sem trocar de pessoa.
+
+O ecrã ganhou um alternador na barra: **por aluno** ou **por
+exercício**. Cada modo com a sua tira (a turma / os exercícios), o seu
+swipe e os seus pontinhos.
+
+#### Sem inventar um "plano da aula"
+
+A tentação óbvia era criar um conceito novo — o treino da aula, comum a
+todos. Teria sido uma coleção nova, ecrãs novos, e uma contradição com o
+modelo deste estúdio, onde **cada aluno tem o seu plano**.
+
+Em vez disso, `groupExerciseOrder` constrói a lista a partir dos planos
+de quem está na sala. Se o instrutor deu o mesmo plano a toda a gente —
+o caso comum num circuito — a união É o circuito, pela ordem certa. Se
+os planos divergem, cada exercício mostra quem o tem ("3 de 4 alunos") e
+os outros simplesmente não aparecem nessa página.
+
+A ordenação tem duas regras que valeram testes próprios:
+
+* **Pela posição mais baixa, não pela média.** Se o agachamento é o
+  primeiro exercício de três alunos e o quinto de um, continua a ser por
+  onde a aula começa — uma média punha-o depois do supino e a turma
+  começava pelo sítio errado.
+* **Empate desfaz-se por quantos o fazem**, e depois pelo id. Sem esse
+  último critério a lista trocava de ordem a cada reconstrução e o swipe
+  saltava sozinho.
+
+**Limitação assinalada:** só aparecem exercícios que alguém tem
+prescrito. Um circuito improvisado no momento não cabe aqui — isso sim
+exigiria o conceito de plano da aula.
+
+#### Swipe, e o risco que ele traz
+
+Ambos os modos ganharam `PageView`. O risco não é o gesto colidir com o
+registo (é tudo em toques): é **registar uma série na pessoa errada**
+depois de um swipe que passou despercebido — dado errado, em silêncio,
+em duas pessoas ao mesmo tempo.
+
+Por isso a tira acompanha sempre a página (`_revealInStrip`), o nome fica
+no topo do painel, e há pontinhos a dizer quantas páginas existem. E a
+tira continua a ser o caminho principal: numa turma de doze, chegar ao
+nono a swipe são oito gestos.
+
+#### Reutilização
+
+Cada linha da vista por exercício usa o mesmo `ExerciseLogger` do treino
+individual — mesma pré-carga da última sessão, mesmo desfazer, mesma
+edição de série. Uma segunda implementação seria a forma mais certa de
+as duas divergirem.
+
+⚠️ **Custo:** um listener de plano por atleta enquanto o ecrã está
+aberto. Numa turma de doze são doze listeners e umas duas centenas de
+leituras na abertura — é o preço desta vista, e a razão de "por aluno"
+continuar a ser o modo por omissão.
+
+Verificado: **389 testes Flutter** (12 novos).
+
+### Dois bugs reportados: eliminar grelhas, e o aviso de conflito
+
+#### 🔴 Eliminar a grelha de treino livre nunca funcionou
+
+Este foi meu, e a causa é embaraçosa: ao fazer a varredura de
+eliminações, li mal a saída do meu próprio `awk` — a linha
+`allow delete: if isManager(tenantId)` que apanhei era a dos **blocos**,
+não a do documento da semana. O documento da semana é `write: false`.
+
+Resultado: o `deleteSchedule` apagava os blocos num batch e falhava no
+documento-pai, e como um batch é atómico, **não apagava nada**. A
+funcionalidade foi publicada sem nunca ter funcionado.
+
+Passou para `deleteCatalogueEntry`, pelas mesmas três razões que
+levaram lá a eliminação de aulas:
+
+1. `freeTrainingSchedules` é `write: false` — o cliente nunca pôde.
+2. `slots/{id}/bookings` também é, por isso apagar os blocos pelo
+   cliente deixava as marcações órfãs.
+3. O id da semana é o próprio `weekId` (`2026-08-24`): gerar a semana
+   outra vez recria o documento com o MESMO id, e as órfãs voltavam
+   agarradas a ele.
+
+A lição já tinha sido aprendida com as aulas de série uma ronda antes.
+Não a apliquei aqui porque confiei numa leitura em vez de verificar.
+
+#### 🟠 O aviso de conflito estava certo — e a dizer muito pouco
+
+Reproduzi a lógica com as **quatro séries reais de produção**
+(`test/presentation/schedule_conflict_test.dart`): dispara nas três
+horas ocupadas e cala-se nas sete livres. Segunda às 11:00, às 19:00,
+terça inteira, quarta às 18:00, fim de semana — nenhum aviso.
+
+O aviso estava certo. O problema era outro: **o estúdio tem um
+instrutor só**, e ele tem quatro séries — incluindo **duas idênticas à
+segunda às 18:00**. Qualquer aula criada nesse horário colide mesmo, e
+o aviso nomeava só a PRIMEIRA das duas. Quem o lia via "há um
+conflito", olhava para o calendário, encontrava uma aula, e não percebia
+porque continuava a insistir.
+
+Duas mudanças, nenhuma na deteção:
+
+* **Todas as colisões, não só a primeira.** É assim que se descobre que
+  se criou a mesma aula duas vezes.
+* **O dia inteiro do instrutor, por baixo do aviso** — "O que ele já
+  tem à segunda: 09:00–10:00, 18:00–19:00, 18:00–19:00". O aviso dizia
+  que havia um problema e obrigava a sair do ecrã para perceber onde
+  estava o espaço livre; agora mostra-o.
+
+Verificado: **377 testes Flutter** (24 novos) · **332 contra o Emulator
+Suite**.
+
+### Requisito do cliente: a duração da aula deixou de se escrever
+
+O formulário pedia **"Duração (minutos)"** num campo de texto. Quem
+marca uma aula pensa "das seis às sete", não "sessenta" — e escrever o
+número obrigava a fazer a conta de cabeça, confiar nela, e nunca ver a
+que horas a aula acabava.
+
+Passou a **início + fim**, com a duração mostrada ao lado do fim e
+atalhos para as durações do costume (45 min · 1 h · 1 h 30). É o mesmo
+gesto que o treino livre já usava e o que o Google Calendar faz: a
+duração passa a ser lida, não escrita. `durationMinutes` continua a ser
+o que se guarda — só deixou de ser o que se pede.
+
+Detalhes que a interação obrigou a resolver:
+
+* **Mexer no início arrasta o fim**, mantendo a duração. Adiar uma aula
+  uma hora não devia obrigar a corrigir as duas pontas.
+* **Somar minutos encosta ao fim do dia** em vez de dar a volta.
+  Escolher 23:30 e tocar em "1 h 30" devolvia 01:00 — uma hora de
+  madrugada que ninguém pediu, e que a validação depois recusava sem
+  explicar de onde vinha.
+* **Não se atravessa a meia-noite**, de propósito: aceitar isso obrigava
+  a distinguir "acaba amanhã" de "escrevi ao contrário", que é o engano
+  que a validação existe para apanhar.
+
+#### A lacuna que o pedido expôs
+
+**Editar uma aula não deixava mudar a duração.** Ela era herdada em
+silêncio (`result.startAt.add(occurrence.endAt.difference(...))`): uma
+aula criada com 60 minutos ficava com 60 minutos para sempre, e a única
+saída era apagá-la e criar outra — que as aulas geradas por série nem
+sequer permitem. O diálogo passou a devolver `endAt`, e quem o chama
+passou a usá-lo.
+
+#### Deduplicação
+
+O treino livre tinha a sua própria cópia de `endsAfterStart` e dois
+seletores de hora soltos. Ambos passaram para a peça partilhada, o que
+lhes trouxe os atalhos de duração de borla e deixou a validação num
+sítio só — `lib/core/utils/time_range.dart`, com testes próprios.
+
+Verificado: **364 testes Flutter** (14 novos) · **330 contra o Emulator
+Suite**.
+
+### Requisito do cliente: categorias de exercícios definidas pelo estúdio
+
+Os grupos musculares eram uma lista de oito valores escrita no código
+(`Pernas`, `Costas`, `Peito`, `Ombros`, `Braços`, `Core`, `Full body`,
+`Hyrox`). Um estúdio que quisesse "Mobilidade" ou "Aquecimento" tinha de
+pedir a um programador — exatamente o erro que `Service`, `Plan` e
+`Modality` já evitavam desde o início: **nunca um enum fixo na app**,
+porque o vocabulário é do estúdio, não do produto.
+
+Metade já funcionava: os filtros da biblioteca sempre foram construídos
+a partir dos exercícios que existem, não da constante. O único portão
+fechado era o **dropdown do formulário**.
+
+**Grupo muscular passou a categoria.** É a palavra do cliente e acomoda
+o que já acontecia na prática — "Hyrox" nunca foi um músculo. A palavra
+tinha ficado pequena antes de alguém dar por isso.
+
+#### O exercício guarda o NOME, não o id
+
+A decisão que estrutura o resto. Duas razões:
+
+1. Os ecrãs do aluno mostram a categoria ao lado do exercício. Com um
+   id, cada um teria de ir buscar o documento — leituras a mais num
+   caminho que tinha acabado de ser optimizado precisamente para as
+   evitar.
+2. Os exercícios já existentes guardam texto.
+
+O preço é que **renomear tem de propagar**, e é por isso que
+`ExerciseCategoryRepository.rename` existe em vez de um `update`
+genérico: sem ele, mudar "Braços" para "Bíceps e tríceps" deixava os
+exercícios numa categoria fantasma — visível na biblioteca, impossível
+de voltar a atribuir. O ecrã diz quantos exercícios foram arrastados.
+
+#### Detalhes que a lista fixa nunca teve de resolver
+
+* **Não há categorias nenhumas.** Em vez de um dropdown vazio que não
+  explica nada, o formulário diz o que são e deixa criar a primeira sem
+  sair dali. Obrigar a abandonar o exercício a meio é a diferença entre
+  a lista ser gerível e ninguém lhe mexer.
+* **A categoria deste exercício já não é oferecida** (foi desativada).
+  Aparece na mesma, marcada — gravar um exercício não pode ser a forma
+  de lhe apagar a categoria sem ninguém pedir.
+* **Importar as que já estão em uso.** Um estúdio com a biblioteca
+  montada tem categorias em uso sem nenhum documento a defini-las. O
+  estado vazio mostra-as e oferece importá-las de uma vez.
+* **Escrita a Gestor E Instrutor**, como a própria biblioteca: quem cria
+  exercícios é quem precisa de os arrumar, e mandar pedir ao Gestor
+  recriava o bloqueio que isto veio resolver.
+* **Eliminar** passa pelo `deleteCatalogueEntry`, que recusa e diz
+  quantos exercícios usam a categoria. A contagem é pelo nome, não pelo
+  id — tem de seguir a mesma regra do armazenamento.
+
+#### Campo renomeado sem camada de compatibilidade
+
+`muscleGroup` passou a `category`, sem leitura dupla. A app ainda não
+tem utilizadores reais, e a biblioteca em produção é a que o
+`seed-content.mjs` semeou — **uma nova passagem do seed reescreve os 61
+exercícios**. Carregar um fallback para sempre por causa de um nome de
+campo seria pagar juros de uma dívida que se salda com um comando.
+
+⚠️ Depois de publicar, correr:
+`node firebase/scripts/seed-content.mjs --project=<id> --tenant=<t> --only=exercicios --yes`
+
+#### Ainda por fazer, do mesmo tipo
+
+A escala de força nas Avaliações Físicas (`Fraca / Média / Boa / Muito
+boa`) continua fixa no código, em `assessment_form_screen.dart`. Mesmo
+problema, mesma solução — assinalado, não escondido.
+
+Verificado: **354 testes Flutter** · **330 contra o Emulator Suite**.
+
 ### Mensalidades presas ao mês corrente
 
 O ecrã tinha procura por nome/nº e filtros por estado, mas o mês era
@@ -5550,8 +7274,13 @@ Nada a corrigir hoje, mas é aqui que aparece a fatura quando a
 biblioteca tiver vídeos a sério. O remédio é comprimir na origem: uma
 demonstração de 30 s a 720p ocupa 3-5 MB, não 30.
 
-E as **imagens dos deploys** acumulam se nada as limpar —
-`firebase functions:artifacts:setpolicy --days=3`.
+E as **imagens dos deploys** acumulam se nada as limpar. ⚠️ O comando
+precisa da REGIÃO — sem ela aponta para `us-central1`, que está vazio, e
+devolve sucesso na mesma:
+
+```bash
+firebase functions:artifacts:setpolicy --location=europe-west1 --days=3 --project=gym-sas
+```
 
 Verificado: **341 testes Flutter** (7 novos em
 `test/infrastructure/cost_queries_test.dart`, que é onde estas duas
@@ -5884,9 +7613,23 @@ período de testes — a remoção é um comando, não há desculpa.
 
 ### Estado final
 
-**316 testes Flutter** · **301 contra o Emulator Suite** · `dart
-format` limpo · `flutter analyze --fatal-infos` sem problemas · build e
-lint das Cloud Functions · build de produção a compilar.
+**436 testes Flutter** · **370 contra o Emulator Suite** · `dart format` limpo · `flutter analyze
+--fatal-infos` sem problemas · build e lint das Cloud Functions · build
+de produção (wasm) a compilar e a correr num browser.
+
+⚠️ A build de produção é `--wasm`. O `flutter_bootstrap.js` deste
+projeto é próprio (traz o ecrã de arranque), e é gerado a partir de
+`web/flutter_bootstrap.js` com substituição de marcas — por isso vale a
+pena confirmar que o resultado é JavaScript válido antes de publicar:
+
+```bash
+node --check build/web/flutter_bootstrap.js
+```
+
+(O Emulator Suite exige o seed corrido primeiro — o
+`smoke-fluxo-completo` procura as contas do Leo e da Rita e falha sem
+elas. Corre os dois na mesma sessão:
+`firebase emulators:exec --project=demo-gym-saas-dev --only firestore,functions,auth,storage "npm --prefix firebase/scripts run seed && npm --prefix firebase/tests test"`.)
 
 ## Próximo passo
 
@@ -5900,13 +7643,150 @@ limiting em Cloud Functions sensíveis, testes de isolamento entre
 tenants corridos de novo antes de um cliente real, e monitorização de
 custos por tenant.
 
-**Por fazer antes de qualquer deploy** (arrasta-se desde a Fase 9 e não
-é opcional): `firebase deploy --only firestore:indexes` (índices novos
-de `bookings(memberId,status)`, `paymentRecords(year,month)` e
-`sessionOccurrences(status,startAt)`) e
-`firebase deploy --only firestore:rules` (regras apertadas de
-`staff`/`tenants`/`paymentRecords`). Em emulador funciona sem isto; em
-produção, as queries falham e as regras antigas continuam em vigor.
+## Publicar — a sequência, e como saber que correu
+
+> Esta secção substitui as listas de "por publicar" que estavam
+> espalhadas pelo resto do documento. Se houver conflito, é esta que
+> vale.
+
+### O problema que isto resolve
+
+`firebase deploy` diz "sucesso" quando publica **o que lhe pediste** —
+não quando publica tudo o que era preciso. Publicar as funções e esquecer
+os índices dá dois sucessos e uma app partida, e não há nada no terminal
+que o denuncie.
+
+Foi exatamente o que aconteceu: a certa altura o projeto tinha os índices
+de um dia, as funções de outro e o site de um terceiro. Descobrir isso
+obrigou a comparar tudo à mão, contra o projeto real.
+
+### Primeiro: perguntar em que pé estamos
+
+```bash
+npm --prefix firebase/functions run build
+node firebase/scripts/check-deploy.mjs --project=gym-sas --tenant=nxt_performance_studio
+```
+
+Não escreve nada, pode correr as vezes que quiseres, e responde à
+pergunta toda: o que está publicado, o que falta, e o comando para cada
+coisa que falta. Precisa de `gcloud auth application-default login` uma
+vez.
+
+Onde pode, verifica **comportamento** e não configuração — porque a
+pergunta não é "o ficheiro foi enviado?" mas "a app funciona?":
+
+* **Funções** — compara o build local com o que está publicado, e avisa
+  de funções publicadas que já não existem no código (continuam
+  chamáveis, e a custar arranques a frio).
+* **Índices** — compara a declaração e depois **corre as queries** que
+  dependem deles. Um índice declarado e ainda a construir é
+  indistinguível de um publicado se olhares só para a lista; a diferença
+  só se vê a correr a query.
+* **Regras** — lê sem sessão o que deve ser público **e** tenta ler sem
+  sessão o que não deve. As duas juntas provam que as regras novas estão
+  em vigor e que a abertura da vitrina não alastrou.
+* **Site** — busca o `index.html` publicado e procura o ecrã de arranque
+  e a build wasm.
+* **Passos de correr uma vez** — catálogo, campo dos lembretes, vitrina,
+  informação do estúdio, conta de revisão.
+
+### Depois: a ordem, que não é arbitrária
+
+**1. Regras e índices primeiro.** Os índices demoram minutos a
+*construir*, e uma app nova a bater num índice que ainda não existe
+falha em produção.
+
+```bash
+firebase deploy --only firestore:rules,firestore:indexes,storage --project=gym-sas
+```
+
+**2. Funções.**
+
+```bash
+firebase deploy --only functions --project=gym-sas
+```
+
+**3. Esperar que os índices fiquem prontos.** Volta a correr o
+`check-deploy`: a secção 3 corre as queries a sério e só passa a verde
+quando eles acabaram mesmo de construir.
+
+**4. Os passos que se correm uma vez** — depois das funções, não antes.
+O do lembrete corrige as aulas que já existem; as novas só nascem com o
+campo depois de o cron novo estar publicado.
+
+```bash
+node firebase/scripts/seed-content.mjs --project=gym-sas --tenant=nxt_performance_studio --only=exercicios --yes
+node firebase/scripts/migrate-exercise-category.mjs --project=gym-sas --tenant=nxt_performance_studio --yes
+node firebase/scripts/backfill-reminder-field.mjs --project=gym-sas --tenant=nxt_performance_studio --yes
+node firebase/scripts/seed-review-account.mjs --project=gym-sas --tenant=nxt_performance_studio --yes
+```
+
+Os dois primeiros parecem o mesmo e não são. O seed reescreve os 61
+exercícios do **catálogo**, que têm ids determinísticos. Os exercícios
+que o estúdio criou **pela app** têm ids aleatórios, o seed não sabe que
+existem, e são os únicos que podem ter ficado com o campo antigo
+(`muscleGroup` em vez de `category`) — ficam fora dos filtros por
+categoria, que é onde as pessoas os vão procurar.
+
+Isto esteve errado no próprio verificador: ele marcava o problema e
+mandava correr o seed. Correr o comando sugerido, vê-lo dizer "✓ 61
+exercícios" e o verificador continuar vermelho é a forma mais rápida de
+ensinar alguém a desconfiar do verificador. Todos os scripts com
+`--yes` dizem primeiro o que iam fazer se o omitires.
+
+E, uma vez por projeto, a política de limpeza das imagens de deploy —
+**com a região**, senão aponta para `us-central1`, que está vazio, e
+devolve sucesso à mesma:
+
+```bash
+firebase functions:artifacts:setpolicy --location=europe-west1 --days=3 --project=gym-sas
+```
+
+**5. O site por último**, quando tudo o resto já está de pé.
+
+```bash
+flutter build web --release --wasm -t lib/main_production.dart
+```
+
+```bash
+node --check build/web/flutter_bootstrap.js
+```
+
+```bash
+firebase deploy --only hosting --project=gym-sas
+```
+
+O `node --check` não é paranóia: o `flutter_bootstrap.js` deste projeto é
+gerado a partir de `web/flutter_bootstrap.js` com substituição de marcas,
+e já houve uma vez em que o resultado não era JavaScript válido.
+
+**6. Na app, como Gestor**, abre **Gestão › Informação pública** e
+preenche o que faltar — sobretudo a política de privacidade. E em
+**Aulas/Horários**, "Gerar agora", para a vitrina ter mapa de aulas sem
+esperar pelo cron das 03:00.
+
+**7. Correr o `check-deploy` outra vez.** Verde é a definição de "está
+publicado".
+
+### O que o verificador não cobre
+
+* **As regras do Storage.** Publicam-se no passo 1, mas não há forma de
+  as distinguir das antigas de fora: os dois conjuntos recusam um
+  anónimo, que é o único ângulo que um script sem sessão tem. Confirma-se
+  a sério enviando uma foto de perfil pela app.
+* **O que está por commitar.** O `firebase deploy` publica a árvore de
+  trabalho, não o que está em git — publicar não protege de perder.
+* **Aulas futuras para lá das 500 primeiras.** O limite existe porque
+  isto se paga por leitura, mas o verificador passou a dizer quando
+  trunca em vez de dar um ✓ sobre o que não viu. (A verificação dos
+  exercícios tinha o mesmo defeito com um limite de 50 e um catálogo de
+  63 — treze nunca eram olhados. Esse limite desapareceu: um catálogo é
+  pequeno e isto corre raramente.)
+* **Que o conteúdo das funções publicadas é o do código local.** A
+  secção 1 compara **nomes**. Uma função cujo interior mudou continua a
+  aparecer como publicada — foi o caso das mudanças de contenção desta
+  ronda. Na dúvida, publica; `firebase deploy --only functions` é
+  idempotente.
 
 Sugestões abertas de fases anteriores continuam por decidir: revisitar
 se o Instrutor deve poder criar/gerir as suas próprias séries (Fase

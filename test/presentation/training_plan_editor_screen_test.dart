@@ -139,7 +139,7 @@ void main() {
     id: 'exercise_1',
     name: 'Agachamento com barra',
     description: '',
-    muscleGroup: 'Pernas',
+    category: 'Pernas',
   );
   const entry = TrainingPlanEntry(
     id: 'entry_1',

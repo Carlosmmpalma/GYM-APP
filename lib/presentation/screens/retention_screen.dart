@@ -192,6 +192,10 @@ class _AtRiskTile extends ConsumerWidget {
       },
       child: Row(
         children: [
+          // Iniciais com cor, não foto: `MemberAtRisk` vem da Cloud
+          // Function de retenção e não traz o caminho da foto. Numa
+          // lista de análise a cara não acrescenta nada — quem a lê
+          // está a olhar para números, não a reconhecer pessoas.
           Avatar(member.name),
           const SizedBox(width: 12),
           Expanded(

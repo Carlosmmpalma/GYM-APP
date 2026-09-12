@@ -10,6 +10,7 @@ import '../../domain/entities/load_history_entry.dart';
 import '../../domain/entities/training_plan_entry.dart';
 import '../../domain/entities/workout_session.dart';
 import 'design_system.dart';
+import '../screens/exercise_video_screen.dart';
 
 /// O registo de UM exercício dentro de uma sessão a decorrer.
 ///
@@ -96,6 +97,22 @@ class _ExerciseLoggerState extends ConsumerState<ExerciseLogger> {
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
+              // O vídeo só existia em "O meu plano". Mas o momento em
+              // que alguém precisa de rever a execução é ESTE — a meio
+              // do treino, antes da série — e daqui obrigava a sair do
+              // treino, ir ao plano, encontrar o exercício e voltar.
+              if (widget.exercise?.hasVideo ?? false)
+                IconButton(
+                  tooltip: 'Ver vídeo demonstrativo',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.play_circle_outline, size: 20),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          ExerciseVideoScreen(exercise: widget.exercise!),
+                    ),
+                  ),
+                ),
               Pill(
                 '${widget.done.length}/$target',
                 tone: widget.done.length >= target

@@ -15,6 +15,7 @@ import 'firebase_providers.dart';
 import 'tenant_context_providers.dart';
 import '../../infrastructure/firebase/firebase_catalogue_admin_repository.dart';
 import '../../repositories/catalogue_admin_repository.dart';
+import 'admin_providers.dart';
 
 final catalogueAdminRepositoryProvider =
     Provider<CatalogueAdminRepository>((ref) {
@@ -38,6 +39,16 @@ final memberRepositoryProvider = Provider<MemberRepository>((ref) {
 
 final plansProvider = StreamProvider<List<Plan>>((ref) {
   return ref.watch(planRepositoryProvider).watchPlans();
+});
+
+/// Só o NÚMERO de membros ativos, para o painel do Gestor.
+///
+/// Ver `MemberRepository.countActiveMembers`: o painel é o primeiro
+/// ecrã que um Gestor vê, e mostrava dois números lendo as coleções
+/// inteiras. Quem for depois a Gestão › Membros paga a lista nessa
+/// altura, que é quando ela serve para alguma coisa.
+final activeMemberCountProvider = FutureProvider.autoDispose<int>((ref) {
+  return ref.watch(memberRepositoryProvider).countActiveMembers();
 });
 
 final membersProvider = StreamProvider<List<MemberSummary>>((ref) {
@@ -205,6 +216,43 @@ final planExclusiveGroupsProvider =
 /// acima: nenhum ecrã anterior precisava disto, por isso não existia
 /// nenhum provider que já desse a lista de membros filtrada por
 /// elegibilidade a um serviço.
+/// Os alunos que o utilizador atual deve ver.
+///
+/// O Gestor vê todos — é ele que gere o estúdio. Um **Instrutor** passa
+/// a ver só os alunos que contrataram algum dos serviços que ele
+/// leciona (`staff.serviceIds`).
+///
+/// Não existe no domínio uma relação "aluno → instrutor": um aluno
+/// contrata um SERVIÇO, e o instrutor leciona serviços. Isso é o que
+/// define "os meus alunos", e é a leitura mais próxima do que o mockup
+/// pedia ("só alunos com serviço na tua modalidade") sem inventar uma
+/// atribuição que ninguém faria à mão.
+///
+/// ⚠️ **Isto é âmbito, não segurança.** As Security Rules deixam
+/// qualquer Instrutor ler qualquer membro do tenant (`members`, `allow
+/// read: if isInstructor(...)`). Filtrar aqui tira o ruído e evita o
+/// acesso acidental; não impede o deliberado. Tornar isto uma barreira
+/// a sério obrigaria a denormalizar os serviços contratados no
+/// documento do membro, para a Rule os poder comparar sem um `get()`
+/// por documento — assinalado, não escondido.
+final visibleMembersProvider = StreamProvider<List<MemberSummary>>((ref) {
+  final appUser = ref.watch(currentAppUserProvider).valueOrNull;
+  final members = ref.watch(membersProvider).valueOrNull ?? const [];
+
+  if (appUser == null) return Stream.value(const <MemberSummary>[]);
+  if (appUser.isManager) return Stream.value(members);
+
+  final me = (ref.watch(staffProvider).valueOrNull ?? const [])
+      .where((s) => s.uid == appUser.uid)
+      .firstOrNull;
+  final myServices = me?.serviceIds ?? const <String>{};
+
+  return ref
+      .watch(subscriptionRepositoryProvider)
+      .watchEligibleMemberIdsForServices(myServices)
+      .map((ids) => members.where((m) => ids.contains(m.uid)).toList());
+});
+
 final eligibleMembersProvider = StreamProvider.autoDispose
     .family<List<MemberSummary>, String>((ref, serviceId) {
   final eligibleIdsAsync = ref

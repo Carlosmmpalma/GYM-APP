@@ -9,6 +9,28 @@ export type BookingTxResult =
   | { kind: 'not-found' }
   | { kind: 'usage-limit'; used: number; limit: number };
 
+/// A transação desistiu por contenção, e não por uma razão de negócio.
+///
+/// O Firestore devolve `ABORTED` (código 10) quando alguém lhe mexeu no
+/// documento entre a leitura e a escrita mais vezes do que as tentativas
+/// permitidas, e `DEADLINE_EXCEEDED` (4) quando passou o tempo a tentar.
+/// Qualquer um dos dois quer dizer a mesma coisa a quem está do outro
+/// lado: **não é não, é agora não**.
+///
+/// Distinguir isto importa porque a resposta é diferente. Um "não tens
+/// plano" é definitivo; um "está muita gente a marcar" resolve-se com
+/// outro toque, e só se a pessoa souber disso.
+export function isContentionError(error: unknown): boolean {
+  const codigo = (error as { code?: unknown } | null)?.code;
+  if (codigo === 10 || codigo === 4) return true;
+  if (typeof codigo === 'string') {
+    return codigo === 'aborted' || codigo === 'deadline-exceeded';
+  }
+  const mensagem = (error as { message?: unknown } | null)?.message;
+  return typeof mensagem === 'string'
+    && /too much contention|ABORTED|DEADLINE_EXCEEDED/i.test(mensagem);
+}
+
 export interface EligibilityInfo {
   planId: string;
   isLimited: boolean;
@@ -149,6 +171,52 @@ export async function runBookingTransaction(
   const { start: periodStart, end: periodEnd } = isoWeekRange(startAt);
   const usageRef = tenantRef.collection('usage').doc(`${memberId}_${serviceId}_${period}`);
 
+  // `maxAttempts` acima do valor por omissão (5).
+  //
+  // Todas as marcações da MESMA aula disputam o mesmo documento — é lá
+  // que vive o `activeBookingCount`. Medido contra o emulador, com
+  // transações a disputar um documento:
+  //
+  //   30 em simultâneo, 12 lugares, 3 rondas cada
+  //   (`firebase/scripts/contention-probe.mjs`):
+  //
+  //    5 (por omissão)  2 rondas limpas de 3, 12,8–20,8 s.
+  //                     Na que falhou: TRÊS aceites e nove lugares
+  //                     vazios — não "uma ou duas", um colapso.
+  //   10               3 de 3, 7,6–12,5 s. Mais nove rondas depois,
+  //                     nunca perdeu ninguém.
+  //   15               3 de 3, mas 12,3–18,4 s — PIOR do que 10.
+  //                     Mais tentativas são mais transações a disputar
+  //                     o mesmo documento ao mesmo tempo, e a disputa
+  //                     alimenta-se a si própria.
+  //
+  // A perda é intermitente, e é esse o problema: apresenta-se ao aluno
+  // como "não foi possível marcar" numa aula que ainda tinha lugares, e
+  // ele não tenta outra vez. Um estúdio que abre as marcações a uma hora
+  // certa tem exatamente este padrão — toda a gente toca no mesmo
+  // minuto.
+  //
+  // Um aviso, porque me enganei aqui: cheguei a atribuir a esta mudança
+  // a correção de um teste que expirava na suite completa. Passou uma
+  // vez, dei por resolvido, e falhou logo a seguir. Era outra coisa —
+  // paralelismo dos ficheiros de teste contra um emulador que serializa
+  // (ver `firebase/tests/vitest.config.ts`). O valor 10 defende-se
+  // sozinho pelos números acima; não precisa daquele crédito, e tê-lo
+  // aceite quase fez passar por resolvido um problema diferente.
+  //
+  // O custo é latência para quem calha ficar no fim da fila. É um custo
+  // limitado por desenho: quem chega depois de a aula encher é recusado
+  // por CAPACIDADE, o que é uma resposta imediata e não uma repetição —
+  // por isso o número de transações a disputar de facto o documento
+  // nunca passa muito da lotação (aqui, doze).
+  //
+  // Isto não resolve contenção infinita: nada resolve, num contador
+  // exato dentro de um documento. Resolve a ordem de grandeza deste
+  // estúdio, que é a que interessa.
+  //
+  // ⚠️ Os tempos acima são do emulador, que corre num processo só. Valem
+  // para comparar as duas configurações entre si, não para prever o que
+  // um telemóvel vai sentir.
   return firestore.runTransaction<BookingTxResult>(async (tx) => {
     // Todas as leituras antes de qualquer escrita (regra do Firestore).
     const occSnap = await tx.get(occurrenceRef);
@@ -226,7 +294,7 @@ export async function runBookingTransaction(
     }
 
     return { kind: 'booked' };
-  });
+  }, { maxAttempts: 10 });
 }
 
 export interface ReleasePlan {

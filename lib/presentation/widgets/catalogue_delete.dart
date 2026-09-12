@@ -69,6 +69,8 @@ Future<bool> confirmAndDeleteCatalogueEntry(
     CatalogueKind.series => 'a série de aulas',
     CatalogueKind.staff => 'esta conta',
     CatalogueKind.occurrence => 'esta aula',
+    CatalogueKind.exerciseCategory => 'esta categoria',
+    CatalogueKind.freeTrainingWeek => 'a grelha desta semana',
   };
 
   final confirmed = await confirmDestructiveAction(

@@ -26,7 +26,34 @@ class MemberSummary extends Equatable {
     this.currentPaymentStatus,
     this.currentPaymentPeriod,
     this.consent = const MemberConsent(),
+    this.photoPath,
+    this.photoUrl,
+    this.photoUpdatedAt,
   });
+
+  /// Caminho no Storage da foto de perfil, já reduzida.
+  ///
+  /// Escrito pela Cloud Function `resizeAvatar` — e só depois de o
+  /// ficheiro existir. É esse o sinal de que a foto está pronta: a
+  /// escrita antes disso dava um avatar partido no intervalo entre o
+  /// envio e a redução.
+  final String? photoPath;
+
+  /// O URL pronto a mostrar, escrito pela mesma função.
+  ///
+  /// Existe para o cliente não ter de chamar `getDownloadURL()` — que é
+  /// um pedido de rede por pessoa, e numa lista de cinquenta são
+  /// cinquenta. O [photoPath] continua ao lado porque é o que identifica
+  /// o ficheiro a apagar; este é o que se mostra.
+  final String? photoUrl;
+
+  /// Quando a foto mudou.
+  ///
+  /// Já não serve para furar a cache — disso trata o token novo dentro
+  /// do [photoUrl], que muda o URL a cada envio. Fica porque é a
+  /// resposta a "desde quando é esta a foto", que a ficha do aluno
+  /// mostra.
+  final int? photoUpdatedAt;
 
   final String uid;
   final String memberNumber;
@@ -109,5 +136,8 @@ class MemberSummary extends Equatable {
         emergencyContact,
         currentPaymentStatus,
         currentPaymentPeriod,
+        photoPath,
+        photoUrl,
+        photoUpdatedAt,
       ];
 }

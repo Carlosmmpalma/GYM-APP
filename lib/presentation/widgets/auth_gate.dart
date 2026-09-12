@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../application/providers/payment_providers.dart';
+import '../../application/providers/gate_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
-import '../../application/providers/privacy_providers.dart';
 import '../screens/account_blocked_screen.dart';
 import '../screens/consent_screen.dart';
 import '../screens/force_password_change_screen.dart';
 import '../screens/home_screen.dart';
-import '../screens/login_screen.dart';
+import '../screens/studio_showcase_screen.dart';
 import 'design_system.dart';
 
 /// Decide qual ecrã mostrar consoante o estado de autenticação
@@ -27,66 +26,49 @@ class AuthGate extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final appUserAsync = ref.watch(currentAppUserProvider);
+    // UMA espera, não três.
+    //
+    // Isto encadeava as verificações: password temporária, depois
+    // consentimento, depois mensalidade — cada uma só arrancava quando a
+    // anterior respondesse, e cada uma com o seu ecrã de espera. Eram
+    // três idas ao servidor em fila entre autenticar e ver a app, todas
+    // as vezes, logo a seguir a o utilizador já ter esperado pela app
+    // inteira a descarregar.
+    //
+    // Nenhuma dependia do resultado das outras — estavam em série só
+    // porque estavam escritas umas dentro das outras. Ver
+    // `gateScreenProvider`, que as resolve ao mesmo tempo.
+    final screenAsync = ref.watch(gateScreenProvider);
+    final appUser = ref.watch(currentAppUserProvider).valueOrNull;
 
-    return appUserAsync.when(
+    return screenAsync.when(
       loading: () => const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       ),
       error: (error, stack) => _GateError(
         error: error,
-        message: 'Não foi possível confirmar a tua sessão.',
-        onRetry: () => ref.invalidate(currentAppUserProvider),
+        message: 'Não foi possível confirmar o estado da tua conta.',
+        onRetry: () => ref.invalidate(gateScreenProvider),
       ),
-      data: (appUser) {
-        if (appUser == null) {
-          return const LoginScreen();
-        }
-
-        final hasTemporaryPasswordAsync =
-            ref.watch(hasTemporaryPasswordProvider);
-        return hasTemporaryPasswordAsync.when(
-          loading: () => const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          ),
-          error: (error, stack) => _GateError(
-            error: error,
-            message: 'Não foi possível verificar o estado da tua conta.',
-            onRetry: () => ref.invalidate(hasTemporaryPasswordProvider),
-          ),
-          data: (hasTemporaryPassword) {
-            if (hasTemporaryPassword) {
-              return ForcePasswordChangeScreen(user: appUser);
-            }
-
-            // RGPD (Fase 11) — antes de qualquer ecrã da app, o
-            // consentimento da versão em vigor tem de estar registado.
-            // Fica DEPOIS da troca de password temporária (não faz
-            // sentido pedir consentimento a quem ainda não controla a
-            // própria conta) e ANTES do bloqueio por mensalidade: quem
-            // está em atraso continua a ter direito a decidir sobre os
-            // seus dados.
-            final needsConsentAsync = ref.watch(needsConsentProvider);
-            if (needsConsentAsync.valueOrNull == true) {
-              return const ConsentScreen();
-            }
-
-            final blockedAsync = ref.watch(isBlockedForOverduePaymentProvider);
-            return blockedAsync.when(
-              loading: () => const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              ),
-              error: (error, stack) => _GateError(
-                error: error,
-                message: 'Não foi possível verificar a tua mensalidade.',
-                onRetry: () =>
-                    ref.invalidate(isBlockedForOverduePaymentProvider),
-              ),
-              data: (blocked) =>
-                  blocked ? const AccountBlockedScreen() : const HomeScreen(),
-            );
-          },
-        );
+      data: (screen) => switch (screen) {
+        // Sem sessão, a app abre na VITRINA e não no formulário de
+        // login — que fica a um toque, dentro dela. Ver
+        // `StudioShowcaseScreen`: quem instala a app antes de se
+        // inscrever tinha uma porta fechada e sem placa.
+        //
+        // Não custa um toque a quem já é membro: a sessão do Firebase
+        // sobrevive a fechar a app, por isso isto só aparece no
+        // primeiro arranque e depois de sair.
+        GateScreen.login => const StudioShowcaseScreen(),
+        // O `appUser` vem do mesmo stream que o provider já leu; se
+        // estiver `null` aqui, a sessão caiu entretanto e o login é a
+        // resposta certa.
+        GateScreen.forcePasswordChange => appUser == null
+            ? const StudioShowcaseScreen()
+            : ForcePasswordChangeScreen(user: appUser),
+        GateScreen.consent => const ConsentScreen(),
+        GateScreen.blocked => const AccountBlockedScreen(),
+        GateScreen.home => const HomeScreen(),
       },
     );
   }

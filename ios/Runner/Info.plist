@@ -24,6 +24,20 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Seletor de fotos (file_picker).
+
+	     Sem isto, o iOS mata a app no instante em que o seletor abre — e,
+	     antes disso, o App Store Connect recusa o upload com
+	     ITMS-90683 "Missing Purpose String in Info.plist", porque o
+	     binário do plugin referencia UIImagePickerController. É uma
+	     rejeição automática, antes de qualquer pessoa ver a app.
+
+	     Só esta chave: o file_picker abre a biblioteca de fotos
+	     (DKImagePickerControllerSourceTypePhoto) e nunca a câmara nem o
+	     microfone. Declarar permissões que não se usam é convidar
+	     perguntas na revisão. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Para escolheres a tua foto de perfil, ou o vídeo de demonstração de um exercício.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

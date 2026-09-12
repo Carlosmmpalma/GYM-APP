@@ -15,6 +15,8 @@ const inputSchema = z.object({
     'series',
     'staff',
     'occurrence',
+    'exerciseCategory',
+    'freeTrainingWeek',
   ]),
   id: z.string().min(1),
 });
@@ -69,7 +71,10 @@ export const deleteCatalogueEntry = onCall(async (request) => {
   // criar e editar (`firestore.rules`); poder eliminar da mesma é
   // coerente. Tudo o resto — o que se vende, quem dá aulas — continua
   // exclusivo do Gestor.
-  const caller = kind === 'exercise' ? requireManagerOrInstructor(request) : requireManager(request);
+  const caller =
+    kind === 'exercise' || kind === 'exerciseCategory'
+      ? requireManagerOrInstructor(request)
+      : requireManager(request);
 
   const firestore = getFirestore();
   const tenantRef = firestore.collection('tenants').doc(caller.tenantId);
@@ -82,6 +87,8 @@ export const deleteCatalogueEntry = onCall(async (request) => {
     series: 'sessionSeries',
     staff: 'staff',
     occurrence: 'sessionOccurrences',
+    exerciseCategory: 'exerciseCategories',
+    freeTrainingWeek: 'freeTrainingSchedules',
   }[kind];
   const docRef = tenantRef.collection(collection).doc(id);
   const snapshot = await docRef.get();
@@ -173,6 +180,40 @@ export const deleteCatalogueEntry = onCall(async (request) => {
     if (recorded > 0) blockers.push(`${recorded} registo(s) de carga no histórico`);
   }
 
+  if (kind === 'freeTrainingWeek') {
+    // A grelha da semana é um documento com blocos por baixo, e cada
+    // bloco tem as suas marcações. Três razões para isto viver aqui e
+    // não numa escrita direta do cliente:
+    //
+    //   1. `freeTrainingSchedules` é `write: false` nas Rules — o
+    //      cliente nunca pôde apagar o documento da semana.
+    //   2. `slots/{id}/bookings` também é `write: false`, por isso
+    //      apagar os blocos pelo cliente deixava as marcações órfãs.
+    //   3. O id da semana é o próprio `weekId` (`2026-08-24`): gerar a
+    //      semana outra vez recria o documento com o MESMO id, e as
+    //      órfãs voltavam agarradas a ele. Mesma armadilha das aulas
+    //      geradas por série.
+    const slots = await docRef.collection('slots').get();
+    const occupied = slots.docs.filter(
+      (doc) => ((doc.get('activeBookingCount') as number | undefined) ?? 0) > 0,
+    ).length;
+    if (occupied > 0) {
+      blockers.push(`${occupied} bloco(s) com alunos inscritos`);
+    }
+  }
+
+  if (kind === 'exerciseCategory') {
+    // Os exercícios guardam o TEXTO da categoria, não o id (ver
+    // `exercise_category.dart` do lado do Flutter, e a razão: os ecrãs
+    // do aluno mostram-no e resolver uma referência custaria leituras
+    // num caminho optimizado para as evitar). Por isso a contagem é
+    // pelo nome, não pelo documento.
+    const name = (snapshot.get('name') as string | undefined) ?? '';
+    await count(tenantRef.collection('exercises').where('category', '==', name), (n) =>
+      `${n} exercício(s) nesta categoria`,
+    );
+  }
+
   if (kind === 'series') {
     // Uma série gera ocorrências, e são elas que têm marcações. Apagar
     // a série deixava-as sem origem — e a app mostra "parte da série
@@ -261,7 +302,7 @@ export const deleteCatalogueEntry = onCall(async (request) => {
   // invisíveis na consola e voltavam a aparecer se algo recriasse o
   // documento com o mesmo id. `bookings` e `waitlist` são `write:
   // false` nas Rules, por isso isto só se pode fazer aqui.
-  if (kind === 'occurrence') {
+  if (kind === 'occurrence' || kind === 'freeTrainingWeek') {
     await firestore.recursiveDelete(docRef);
     return { deleted: true };
   }

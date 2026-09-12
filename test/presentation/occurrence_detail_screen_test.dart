@@ -331,12 +331,15 @@ void main() {
     expect(find.text('Membro member_1'), findsOneWidget);
     expect(find.text('Membro member_2'), findsOneWidget);
 
-    expect(find.byTooltip('Presente'), findsNWidgets(2));
+    // Tocar na LINHA marca presença. Era um `IconButton` entre dois
+    // ícones pequenos; passou a ser o gesto mais fácil do ecrã, porque
+    // é o que se faz nove em cada dez vezes.
+    //
     // A lista de inscritos ficou abaixo da dobra quando o ecrã ganhou o
     // botão de treinar com a turma.
-    await tester.ensureVisible(find.byTooltip('Presente').first);
+    await tester.ensureVisible(find.text('Membro member_1'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Presente').first);
+    await tester.tap(find.text('Membro member_1'));
     await tester.pumpAndSettle();
 
     final attendanceDoc = await firestore
@@ -375,7 +378,11 @@ void main() {
       attendance.docs.every((d) => d.data()['status'] == 'attended'),
       isTrue,
     );
-    expect(find.text('Presenças registadas para todos.'), findsOneWidget);
+    // A contagem fica, mesmo com a chamada completa: "2 presentes" é o
+    // registo do que aconteceu, não um aviso que se apaga quando o
+    // trabalho acaba.
+    expect(find.text('2 presentes'), findsOneWidget);
+    expect(find.text('Marcar todos como presentes'), findsNothing);
   });
 
   testWidgets('não sobrescreve quem já foi marcado como falta', (tester) async {
@@ -386,9 +393,13 @@ void main() {
     await tester.pumpWidget(buildApp(firestore));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.byTooltip('Faltou').first);
+    // A falta é a exceção, e vive no menu da linha — não num segundo
+    // ícone sempre visível ao lado do primeiro.
+    await tester.ensureVisible(find.byTooltip('Mais ações').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Faltou').first);
+    await tester.tap(find.byTooltip('Mais ações').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Faltou'));
     await tester.pumpAndSettle();
 
     expect(find.text('Marcar os restantes 1 como presentes'), findsOneWidget);
@@ -407,6 +418,56 @@ void main() {
         .toList()
       ..sort();
     expect(statuses, ['attended', 'no_show']);
+  });
+
+  testWidgets('o estado de cada inscrito está escrito, não só colorido',
+      (tester) async {
+    // Cor sozinha não é informação para quem não distingue verde de
+    // vermelho — e são exatamente esses os dois tons que este ecrã usa.
+    // A palavra vai no subtítulo da linha.
+    final firestore = await seedFirestore(capacity: 3);
+    await tester.pumpWidget(buildApp(firestore));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Por marcar'), findsNWidgets(2));
+
+    await tester.ensureVisible(find.text('Membro member_1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Membro member_1'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Presente'), findsOneWidget);
+    expect(find.textContaining('Por marcar'), findsOneWidget);
+  });
+
+  testWidgets('tocar outra vez em quem está presente limpa o registo',
+      (tester) async {
+    // Um toque errado num nome desfaz-se pelo mesmo gesto que o causou.
+    // Sem isto, a única saída era trocar por outra afirmação — marcar
+    // falta a alguém que veio — e uma falta entra nas contas de
+    // retenção como se fosse verdade.
+    final firestore = await seedFirestore(capacity: 3);
+    await tester.pumpWidget(buildApp(firestore));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Membro member_1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Membro member_1'));
+    await tester.pumpAndSettle();
+
+    final registos = firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('sessionOccurrences')
+        .doc(_occurrenceId)
+        .collection('attendance');
+    expect((await registos.get()).docs.length, 1);
+
+    await tester.tap(find.text('Membro member_1'));
+    await tester.pumpAndSettle();
+
+    expect((await registos.get()).docs.length, 0);
+    expect(find.textContaining('Por marcar'), findsNWidgets(2));
   });
 
   testWidgets(

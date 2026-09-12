@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../repositories/auth_repository.dart';
 import '../../core/utils/firebase_error_text.dart';
 import '../widgets/design_system.dart';
+import '../widgets/privacy_policy_link.dart';
 
 /// UC01 — login por nº de sócio + password (não email) para o Aluno,
 /// tal como o mockup (nxt-studio-screens.html) mostra. Staff faz login
@@ -54,8 +55,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         memberNumber: _memberNumberController.text,
         password: _passwordController.text,
       );
-      // Não navegamos manualmente: currentAppUserProvider vai emitir o
-      // novo estado e o AuthGate troca de ecrã sozinho.
+      // O `AuthGate` troca de ecrã sozinho quando o
+      // `currentAppUserProvider` emitir — mas só troca o que está DEBAIXO
+      // deste ecrã.
+      //
+      // Desde que a app passou a abrir na vitrina, este formulário é
+      // EMPILHADO por cima do gate em vez de ser o conteúdo dele. Sem
+      // esta linha, autenticar com sucesso deixava o utilizador a olhar
+      // para o formulário preenchido: o gate já mostrava o ecrã
+      // principal, por baixo, e ninguém tirava o login de cima. Ficava
+      // com o aspeto exato de um login que não funcionou.
+      //
+      // `canPop` porque este ecrã também é usado sem estar empilhado
+      // (fluxos antigos e testes) — aí não há nada para tirar.
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     } on InvalidCredentialsException catch (e) {
       setState(() => _errorMessage = e.toString());
     } catch (e) {
@@ -237,6 +252,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.dim, fontSize: 12),
                       ),
+                      // Também aqui, e não só na vitrina: este é o ecrã
+                      // onde quem revê a app na App Store procura a
+                      // política, e quem hesita antes de entrar não devia
+                      // ter de voltar atrás para a ler.
+                      const PrivacyPolicyLink(),
                     ],
                   ),
                 ),

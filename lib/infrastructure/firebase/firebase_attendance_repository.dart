@@ -55,4 +55,12 @@ class FirebaseAttendanceRepository implements AttendanceRepository {
       'recordedAt': FieldValue.serverTimestamp(),
     });
   }
+
+  @override
+  Future<void> clearAttendance({
+    required String occurrenceId,
+    required String memberId,
+  }) async {
+    await _attendance(occurrenceId).doc(memberId).delete();
+  }
 }

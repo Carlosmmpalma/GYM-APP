@@ -129,6 +129,26 @@ class FirebaseSubscriptionRepository implements SubscriptionRepository {
   }
 
   @override
+  Stream<Set<String>> watchEligibleMemberIdsForServices(
+    Set<String> serviceIds,
+  ) {
+    // Sem serviços atribuídos não há alunos — e perguntar ao servidor
+    // por uma lista vazia devolveria um erro do `array-contains-any`.
+    if (serviceIds.isEmpty) return Stream.value(const <String>{});
+
+    return _subscriptions
+        .where('status', isEqualTo: 'active')
+        .where('activeServiceIds',
+            arrayContainsAny: serviceIds.take(30).toList())
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => doc.data()['memberId'] as String)
+              .toSet(),
+        );
+  }
+
+  @override
   Future<void> updateSubscriptionStatus({
     required String subscriptionId,
     required SubscriptionStatus status,

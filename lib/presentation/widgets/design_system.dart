@@ -136,6 +136,23 @@ class Avatar extends StatelessWidget {
   final String name;
   final double size;
 
+  /// O par de cores desta pessoa.
+  ///
+  /// Derivado do nome, com uma soma das unidades de código e não com
+  /// `hashCode`: o `hashCode` das strings em Dart não é garantido
+  /// estável entre versões nem plataformas, e um avatar que muda de cor
+  /// entre a web e o telemóvel — ou depois de uma atualização — deixa de
+  /// servir para reconhecer alguém.
+  static (Color, Color) colorsOf(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return AppColors.avatarPalette.first;
+    var sum = 0;
+    for (final unit in trimmed.toLowerCase().codeUnits) {
+      sum = (sum + unit) % 100000;
+    }
+    return AppColors.avatarPalette[sum % AppColors.avatarPalette.length];
+  }
+
   /// Primeira letra do primeiro e do último nome ("Rita Ferreira" → "RF").
   /// Um nome só devolve uma inicial; vazio devolve "?" em vez de rebentar.
   static String initialsOf(String name) {
@@ -157,12 +174,12 @@ class Avatar extends StatelessWidget {
           width: size,
           height: size,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [AppColors.red, AppColors.redDeep],
+              colors: [colorsOf(name).$1, colorsOf(name).$2],
             ),
           ),
           // O círculo tem tamanho fixo; com o texto do sistema em 200%

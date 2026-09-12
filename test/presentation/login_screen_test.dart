@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_saas/application/providers/tenant_context_providers.dart';
 import 'package:gym_saas/core/config/tenant_app_config.dart';
+import 'package:gym_saas/domain/entities/studio_info.dart';
 import 'package:gym_saas/domain/entities/app_user.dart';
 import 'package:gym_saas/presentation/screens/login_screen.dart';
 import 'package:gym_saas/repositories/auth_repository.dart';
@@ -113,5 +114,50 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Número de sócio ou password inválidos.'), findsOneWidget);
+  });
+
+  testWidgets('mostra a política de privacidade', (tester) async {
+    // Este é o ecrã onde quem revê a app na App Store procura a
+    // política — e quem hesita antes de entrar não devia ter de voltar
+    // à vitrina para a ler.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          tenantAppConfigProvider
+              .overrideWithValue(TenantAppConfig.development),
+          authRepositoryProvider.overrideWithValue(_FakeAuthRepository()),
+          studioInfoProvider.overrideWith(
+            (ref) async => const StudioInfo(
+              privacyPolicyUrl: 'https://exemplo.test/privacidade',
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: LoginScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ler a política de privacidade'), findsOneWidget);
+  });
+
+  testWidgets('a política está lá mesmo sem o estúdio publicar nenhuma',
+      (tester) async {
+    // A política vive dentro da app, versionada — não depende de alguém
+    // ter publicado o documento noutro sítio e colado o endereço. Antes
+    // dependia, e até lá não havia política nenhuma para ler.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          tenantAppConfigProvider
+              .overrideWithValue(TenantAppConfig.development),
+          authRepositoryProvider.overrideWithValue(_FakeAuthRepository()),
+          studioInfoProvider.overrideWith((ref) async => const StudioInfo()),
+        ],
+        child: const MaterialApp(home: LoginScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ler a política de privacidade'), findsOneWidget);
   });
 }

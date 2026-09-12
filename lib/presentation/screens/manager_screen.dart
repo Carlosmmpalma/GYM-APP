@@ -16,6 +16,8 @@ import 'manage_users_screen.dart';
 import 'retention_screen.dart';
 import 'send_notification_screen.dart';
 import 'tenant_settings_screen.dart';
+import 'manage_exercise_categories_screen.dart';
+import 'studio_info_screen.dart';
 
 /// Hub do Gestor. Até à Fase 10 era uma lista de 14 cards sem nenhuma
 /// ordem — "Serviços" antes de "Planos" (quando um Plano é feito DE
@@ -143,10 +145,25 @@ class ManagerScreen extends StatelessWidget {
               screen: ExerciseLibraryScreen(),
             ),
             _Item(
+              icon: Icons.sell_outlined,
+              title: 'Categorias de exercícios',
+              subtitle: 'Como a biblioteca fica arrumada — Pernas, '
+                  'Mobilidade, Hyrox…',
+              screen: ManageExerciseCategoriesScreen(),
+            ),
+            _Item(
               icon: Icons.notifications_outlined,
               title: 'Notificar um membro',
               subtitle: 'Enviar uma mensagem push a um aluno',
               screen: SendNotificationScreen(),
+            ),
+            _Item(
+              icon: Icons.storefront_outlined,
+              title: 'Informação pública',
+              subtitle: 'Morada, contactos, horário e política de '
+                  'privacidade — o que a app mostra a quem ainda não tem '
+                  'conta',
+              screen: StudioInfoScreen(),
             ),
             _Item(
               icon: Icons.settings_outlined,

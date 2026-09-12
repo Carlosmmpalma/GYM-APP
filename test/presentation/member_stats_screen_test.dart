@@ -21,13 +21,13 @@ const _exercises = [
     id: 'ex_supino',
     name: 'Supino plano',
     description: '',
-    muscleGroup: 'Peito',
+    category: 'Peito',
   ),
   Exercise(
     id: 'ex_agachamento',
     name: 'Agachamento',
     description: '',
-    muscleGroup: 'Pernas',
+    category: 'Pernas',
   ),
 ];
 

@@ -3,6 +3,18 @@ import '../domain/entities/member_summary.dart';
 /// Fase 3 — lista mínima de membros do tenant, usada pelo ecrã de
 /// atribuição de Plan/Subscription (Gestor).
 abstract class MemberRepository {
+  /// Quantos membros ativos há, sem trazer nenhum.
+  ///
+  /// O painel do Gestor mostrava "412 ativos" lendo os 412 documentos.
+  /// A agregação `count()` é faturada como UMA leitura por cada mil
+  /// documentos contados, por isso o mesmo número passa a custar 1 em
+  /// vez de 412 — e, mais importante, deixa de crescer com o ginásio.
+  ///
+  /// É uma leitura única e não um stream: o painel é um resumo, e o
+  /// Firestore não sabe observar uma agregação. Reentrar no ecrã
+  /// recalcula.
+  Future<int> countActiveMembers();
+
   Stream<List<MemberSummary>> watchMembers();
 
   /// UC02 — o próprio membro a ver o seu perfil (`MyProfileScreen`).

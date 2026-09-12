@@ -1,4 +1,5 @@
 import { getAuth } from 'firebase-admin/auth';
+import { getStorage } from 'firebase-admin/storage';
 import {
   getFirestore,
   FieldValue,
@@ -156,9 +157,21 @@ export const deleteMemberData =
       fcmTokens: FieldValue.delete(),
       currentPaymentStatus: FieldValue.delete(),
       currentPaymentPeriod: FieldValue.delete(),
+      photoPath: FieldValue.delete(),
+      photoUpdatedAt: FieldValue.delete(),
     },
     { merge: true },
   );
+
+  // A foto de perfil. Este apagamento só tocava no Firestore, e enquanto
+  // no Storage só viviam vídeos de exercícios — que não são de ninguém —
+  // isso era inofensivo. Com fotos de pessoas deixou de ser: apagar
+  // alguém ao abrigo do RGPD e deixar-lhe a cara no bucket é
+  // exatamente o que a lei não permite.
+  const [avatarFiles] = await getStorage()
+    .bucket()
+    .getFiles({ prefix: `tenants/${caller.tenantId}/avatars/${memberId}/` });
+  await Promise.all(avatarFiles.map((file) => file.delete().catch(() => undefined)));
 
   // Último passo: a identidade. Depois disto o membro não consegue
   // autenticar-se. Fica no fim para que uma falha a meio não deixe uma
@@ -177,6 +190,7 @@ export const deleteMemberData =
       attendance,
       usage,
       subscriptions,
+      avatarFiles: avatarFiles.length,
     },
     // Não apagados por obrigação legal de retenção — ver docstring.
     anonymizedPaymentRecords: paymentSnapshot.size,

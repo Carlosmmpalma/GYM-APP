@@ -5,6 +5,7 @@ import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/entities/session_occurrence.dart';
+import '../widgets/today_classes.dart';
 
 /// UC25 — "Visão global": resumo do estado do ginásio para o Gestor,
 /// sem ter de entrar em cada ecrã de gestão individualmente. Versão
@@ -19,8 +20,14 @@ class GestorDashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final membersAsync = ref.watch(membersProvider);
-    final seriesAsync = ref.watch(seriesProvider);
+    // Contagens agregadas, não as listas: este é o primeiro ecrã que um
+    // Gestor vê, e mostrar "412 ativos" lendo 412 documentos era pagar
+    // a lista toda para desenhar um número. Ver
+    // `MemberRepository.countActiveMembers`.
+    final membersAsync = ref.watch(activeMemberCountProvider);
+    final seriesAsync = ref.watch(activeSeriesCountProvider);
+    // Esta continua a ser a lista: a lotação prevista precisa mesmo da
+    // capacidade e das marcações de cada sessão, não de uma contagem.
     final occurrencesAsync = ref.watch(upcomingWeekOccurrencesProvider);
 
     // Fase 10 — sem `Scaffold`/`AppBar` próprios: passou a ser o corpo
@@ -28,6 +35,18 @@ class GestorDashboardScreen extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // As aulas de hoje à cabeça, com o estado da chamada.
+        //
+        // Os quatro cartões de número abaixo olham todos para a FRENTE
+        // — membros ativos, séries ativas, sessões dos próximos 7 dias,
+        // lotação prevista. Nenhum respondia à pergunta que um gestor
+        // faz ao fim do dia: "alguma chamada por fazer?". Para lá
+        // chegar eram quatro toques, por Aulas/Horários → série →
+        // ocorrência, e o estado só se via dentro de cada uma.
+        //
+        // Desaparece sozinha nos dias sem aulas, para não deixar um
+        // título vazio no topo do painel.
+        const TodayClasses(),
         Row(
           children: [
             Expanded(
@@ -37,8 +56,7 @@ class GestorDashboardScreen extends ConsumerWidget {
                 value: membersAsync.when(
                   loading: () => null,
                   error: (_, __) => null,
-                  data: (members) =>
-                      members.where((m) => m.active).length.toString(),
+                  data: (count) => count.toString(),
                 ),
               ),
             ),
@@ -50,8 +68,7 @@ class GestorDashboardScreen extends ConsumerWidget {
                 value: seriesAsync.when(
                   loading: () => null,
                   error: (_, __) => null,
-                  data: (series) =>
-                      series.where((s) => s.isActive).length.toString(),
+                  data: (count) => count.toString(),
                 ),
               ),
             ),

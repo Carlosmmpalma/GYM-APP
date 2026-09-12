@@ -325,65 +325,86 @@ class _ShortcutGrid extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Os quatro do mockup, pela mesma ordem.
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      childAspectRatio: 1.9,
-      children: [
-        _ShortcutCard(
-          icon: Icons.fitness_center,
-          label: 'O meu plano',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => MyTrainingPlanScreen(memberId: memberId),
-            ),
+    //
+    // Era um `GridView.count` com `childAspectRatio: 1.9`. Uma razão
+    // fixa deriva a ALTURA da largura — e a altura de que estes cartões
+    // precisam não vem da largura, vem do tamanho de letra do sistema,
+    // que o utilizador escolhe. Estourava por 4,8 px num iPhone SE e
+    // 8,8 num Android de 360 já com o texto normal; com o texto a 1.3×
+    // faltavam 43 px e a 2.0× faltavam 115.
+    //
+    // Duas linhas de dois, com a altura a vir do conteúdo. O
+    // `IntrinsicHeight` é o que mantém os dois cartões de cada linha do
+    // mesmo tamanho — sem ele, "Minhas marcações" (que parte em duas
+    // linhas antes de "Avaliações") deixava o vizinho mais baixo.
+    final atalhos = [
+      _ShortcutCard(
+        icon: Icons.fitness_center,
+        label: 'O meu plano',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MyTrainingPlanScreen(memberId: memberId),
           ),
         ),
-        _ShortcutCard(
-          icon: Icons.calendar_month_outlined,
-          label: 'Marcar treino',
-          onTap: () => onOpenTab == null
-              ? Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => Scaffold(
-                      appBar: AppBar(title: const Text('Marcar treino')),
-                      body: const BookTrainingScreen(),
-                    ),
+      ),
+      _ShortcutCard(
+        icon: Icons.calendar_month_outlined,
+        label: 'Marcar treino',
+        onTap: () => onOpenTab == null
+            ? Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('Marcar treino')),
+                    body: const BookTrainingScreen(),
                   ),
-                )
-              : onOpenTab!(1),
-        ),
-        _ShortcutCard(
-          icon: Icons.assignment_outlined,
-          label: 'Avaliações',
-          onTap: () async {
-            final member =
-                await ref.read(memberProfileProvider(memberId).future);
-            if (member == null || !context.mounted) return;
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => AssessmentListScreen(member: member),
-              ),
-            );
-          },
-        ),
-        _ShortcutCard(
-          icon: Icons.event_available_outlined,
-          label: 'Minhas marcações',
-          onTap: () => onOpenTab == null
-              ? Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => Scaffold(
-                      appBar: AppBar(title: const Text('Minhas marcações')),
-                      body: const MyBookingsScreen(),
-                    ),
+                ),
+              )
+            : onOpenTab!(1),
+      ),
+      _ShortcutCard(
+        icon: Icons.assignment_outlined,
+        label: 'Avaliações',
+        onTap: () async {
+          final member = await ref.read(memberProfileProvider(memberId).future);
+          if (member == null || !context.mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AssessmentListScreen(member: member),
+            ),
+          );
+        },
+      ),
+      _ShortcutCard(
+        icon: Icons.event_available_outlined,
+        label: 'Minhas marcações',
+        onTap: () => onOpenTab == null
+            ? Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('Minhas marcações')),
+                    body: const MyBookingsScreen(),
                   ),
-                )
-              : onOpenTab!(3),
-        ),
+                ),
+              )
+            : onOpenTab!(3),
+      ),
+    ];
+
+    return Column(
+      children: [
+        for (var linha = 0; linha < atalhos.length; linha += 2) ...[
+          if (linha > 0) const SizedBox(height: 8),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: atalhos[linha]),
+                const SizedBox(width: 8),
+                Expanded(child: atalhos[linha + 1]),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

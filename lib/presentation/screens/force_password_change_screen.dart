@@ -66,59 +66,68 @@ class _ForcePasswordChangeScreenState
         title: const Text('Define a tua nova password'),
         automaticallyImplyLeading: false,
       ),
+      // Este é um formulário de password: o teclado está SEMPRE aberto
+      // enquanto alguém o usa, e o teclado tira 291 dos 667 pontos de um
+      // iPhone SE. Sem rolamento faltavam 52 px — e o que ficava de fora
+      // era o botão de confirmar.
+      //
+      // É o primeiro ecrã de qualquer sócio novo, a seguir ao primeiro
+      // login. Estar preso aqui é estar preso fora da app.
       body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'A tua password atual é temporária. Define uma nova '
-                    'antes de continuar.',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  TextFormField(
-                    controller: _newPasswordController,
-                    decoration:
-                        const InputDecoration(labelText: 'Nova password'),
-                    obscureText: true,
-                    validator: (value) => (value == null || value.length < 8)
-                        ? 'Mínimo de 8 caracteres'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _confirmPasswordController,
-                    decoration:
-                        const InputDecoration(labelText: 'Confirmar password'),
-                    obscureText: true,
-                    validator: (value) => value != _newPasswordController.text
-                        ? 'As passwords não coincidem'
-                        : null,
-                    onFieldSubmitted: (_) => _submit(),
-                  ),
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: _isSubmitting ? null : _submit,
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Guardar e continuar'),
-                  ),
-                  if (_errorMessage != null) ...[
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'A tua password atual é temporária. Define uma nova '
+                      'antes de continuar.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    TextFormField(
+                      controller: _newPasswordController,
+                      decoration:
+                          const InputDecoration(labelText: 'Nova password'),
+                      obscureText: true,
+                      validator: (value) => (value == null || value.length < 8)
+                          ? 'Mínimo de 8 caracteres'
+                          : null,
+                    ),
                     const SizedBox(height: 16),
-                    AppBanner(text: _errorMessage!, tone: PillTone.danger),
+                    TextFormField(
+                      controller: _confirmPasswordController,
+                      decoration: const InputDecoration(
+                          labelText: 'Confirmar password'),
+                      obscureText: true,
+                      validator: (value) => value != _newPasswordController.text
+                          ? 'As passwords não coincidem'
+                          : null,
+                      onFieldSubmitted: (_) => _submit(),
+                    ),
+                    const SizedBox(height: 24),
+                    FilledButton(
+                      onPressed: _isSubmitting ? null : _submit,
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Guardar e continuar'),
+                    ),
+                    if (_errorMessage != null) ...[
+                      const SizedBox(height: 16),
+                      AppBanner(text: _errorMessage!, tone: PillTone.danger),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),

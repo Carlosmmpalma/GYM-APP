@@ -34,9 +34,10 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 // da série, quando não se lembra da execução. Uma linha, o essencial,
 // e o erro mais comum.
 //
-// `grupo` tem de ser um dos 8 valores do dropdown em
-// `exercise_form_screen.dart` — se não for, o exercício existe mas
-// desaparece dos filtros da biblioteca.
+// `grupo` é a CATEGORIA do exercício. Deixou de haver uma lista fixa no
+// código: o estúdio cria as suas em Gestão › Categorias de exercícios.
+// Estes valores servem de ponto de partida, e o ecrã de categorias
+// oferece importá-los quando ainda não existe nenhuma definida.
 // =====================================================================
 
 const EXERCICIOS = [
@@ -367,13 +368,13 @@ async function commitInChunks(rows, apply) {
 
 if (escolhidas.includes('exercicios')) {
   const collection = tenantRef.collection('exercises');
-  await commitInChunks(EXERCICIOS, (batch, [id, name, muscleGroup, description]) => {
+  await commitInChunks(EXERCICIOS, (batch, [id, name, grupo, description]) => {
     batch.set(
       collection.doc(`ex_${id}`),
       {
         name,
         description,
-        muscleGroup,
+        category: grupo,
         // Não mexemos no vídeo: se alguém já tiver carregado um pela
         // app, correr o script outra vez não o pode apagar.
         createdAt: FieldValue.serverTimestamp(),

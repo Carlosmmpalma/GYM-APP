@@ -12,6 +12,7 @@ import '../widgets/design_system.dart';
 import 'create_user_screen.dart';
 import 'member_detail_screen.dart';
 import 'staff_detail_screen.dart';
+import '../widgets/person_avatar.dart';
 
 /// Fase 10 (UC22/UC23/UC24) — "Utilizadores": uma lista só, como no
 /// mockup `Functional/nxt-studio-screens.html`.
@@ -93,6 +94,7 @@ class _ManageUsersScreenState extends ConsumerState<ManageUsersScreen> {
           _UserRow(
             name: m.name,
             subtitle: 'Aluno · Nº ${m.memberNumber}',
+            photoUrl: m.photoUrl,
             tone: _memberTone(m, now),
             status: _memberStatus(m, now),
             onTap: () => Navigator.of(context).push(
@@ -104,6 +106,7 @@ class _ManageUsersScreenState extends ConsumerState<ManageUsersScreen> {
           _UserRow(
             name: s.name,
             subtitle: _staffSubtitle(s, modalityNames),
+            photoUrl: s.photoUrl,
             tone: s.active ? PillTone.ok : PillTone.neutral,
             status: s.active ? 'Ativo' : 'Inativo',
             onTap: () => Navigator.of(context).push(
@@ -226,10 +229,15 @@ class _UserRow {
     required this.tone,
     required this.status,
     required this.onTap,
+    this.photoUrl,
   });
 
   final String name;
   final String subtitle;
+
+  /// A foto de perfil, quando existe. Numa lista de cinquenta pessoas é
+  /// o que permite encontrar alguém sem ler nome a nome.
+  final String? photoUrl;
   final PillTone tone;
   final String status;
   final VoidCallback onTap;
@@ -240,7 +248,10 @@ class _UserRow {
 
   Widget build() => Card(
         child: ListTile(
-          leading: Avatar(name),
+          leading: PersonAvatar(
+            name: name,
+            photoUrl: photoUrl,
+          ),
           title: Text(name),
           subtitle: Text(subtitle),
           trailing: Pill(status, tone: tone),

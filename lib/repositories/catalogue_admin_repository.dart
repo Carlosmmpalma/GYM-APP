@@ -6,7 +6,9 @@ enum CatalogueKind {
   exercise('exercise'),
   series('series'),
   staff('staff'),
-  occurrence('occurrence');
+  occurrence('occurrence'),
+  exerciseCategory('exerciseCategory'),
+  freeTrainingWeek('freeTrainingWeek');
 
   const CatalogueKind(this.wireName);
 

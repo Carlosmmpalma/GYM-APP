@@ -18,7 +18,12 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Marcações, planos de treino e gestão do NXT Performance Studio.">
+  <!-- Sem isto o browser pinta a barra de estado clara por cima de uma app
+       que só tem modo escuro. -->
+  <meta name="theme-color" content="#0B0B0C">
+  <meta name="color-scheme" content="dark">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -31,15 +36,148 @@
 
   <title>NXT Performance Studio</title>
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    Ecrã de arranque.
+
+    Antes daqui não havia nada: o `<body>` tinha só o script do Flutter, e
+    entre tocar no link e a app pintar o primeiro pixel o utilizador via
+    BRANCO. Nesse intervalo o browser tem de descarregar vários megabytes,
+    compilar o motor gráfico, arrancar o Flutter e inicializar sete SDKs do
+    Firebase. Em localhost isso são milissegundos; num telemóvel com dados
+    móveis são segundos — e um ecrã branco durante segundos não se lê como
+    "está a carregar", lê-se como "não funciona".
+
+    É tudo CSS embutido de propósito: qualquer ficheiro extra (uma folha de
+    estilos, o logótipo) seria mais um pedido de rede a acontecer
+    precisamente no momento que isto existe para tapar. O que se vê aparece
+    com o HTML, que já chegou.
+
+    Quem o tira é o `flutter_bootstrap.js`, depois de a app arrancar.
+  -->
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      /* AppColors.void_ — a mesma cor de fundo da app, para não haver um
+         salto de branco para preto quando o Flutter assume. */
+      background-color: #0B0B0C;
+    }
+
+    #splash {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      background-color: #0B0B0C;
+      /* Acima da app enquanto existe; o Flutter pinta por baixo e só se vê
+         quando isto sai. */
+      z-index: 9999;
+      opacity: 1;
+      transition: opacity 280ms ease-out;
+      /* Nunca apanha toques: se algo correr mal a esconder isto, mais vale
+         uma marca de água morta do que um ecrã que não responde. */
+      pointer-events: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   Helvetica, Arial, sans-serif;
+    }
+
+    #splash.splash--done {
+      opacity: 0;
+    }
+
+    /* O nome em texto e não o logótipo: o PNG é um pedido de rede, e este
+       ecrã existe para o intervalo em que ainda não há nenhum. */
+    #splash .nome {
+      color: #F3F1EC;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      /* O tracking empurra a última letra; sem isto fica descentrado. */
+      text-indent: 0.28em;
+    }
+
+    #splash .barra {
+      width: 132px;
+      height: 2px;
+      border-radius: 2px;
+      background-color: #1F1F23;
+      overflow: hidden;
+    }
+
+    /* Indeterminada de propósito: não sabemos a percentagem, e uma barra
+       que finge saber é pior do que uma que só diz "estou a trabalhar". */
+    #splash .barra::after {
+      content: "";
+      display: block;
+      width: 40%;
+      height: 100%;
+      border-radius: 2px;
+      /* AppColors.red */
+      background-color: #E11D2E;
+      animation: desliza 1.15s ease-in-out infinite;
+    }
+
+    @keyframes desliza {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+
+    /* Quem pediu menos movimento não leva uma animação em ciclo à cara. */
+    @media (prefers-reduced-motion: reduce) {
+      #splash .barra::after {
+        animation: none;
+        width: 100%;
+        opacity: 0.55;
+      }
+      #splash { transition: none; }
+    }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
+  <div id="splash">
+    <div class="nome">NXT Performance Studio</div>
+    <div class="barra"></div>
+  </div>
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
+  <script>
+    // Tirar o ecrã de arranque.
+    //
+    // Vive aqui, e não no `flutter_bootstrap.js`, porque um ecrã de
+    // arranque que não sai é PIOR do que não ter nenhum: fica por cima de
+    // uma app que está a funcionar e ninguém consegue tocar em nada. Por
+    // isso há dois gatilhos independentes, e nenhum depende do outro.
+    (function () {
+      var saiu = false;
+      window.__removerSplash = function () {
+        if (saiu) return;
+        saiu = true;
+        var splash = document.getElementById('splash');
+        if (!splash) return;
+        splash.classList.add('splash--done');
+        window.setTimeout(function () { splash.remove(); }, 320);
+      };
+
+      // 1. O caminho normal: o `flutter_bootstrap.js` chama isto assim que
+      //    a app arranca.
+      //
+      // 2. A rede de segurança. Se ao fim de 20 segundos a app não deu
+      //    sinal, alguma coisa correu mal — e a resposta certa é mostrar o
+      //    que houver por baixo, não continuar a tapá-lo. Vinte segundos é
+      //    muito para um arranque e pouco para uma pessoa desistir.
+      window.setTimeout(window.__removerSplash, 20000);
+    })();
+  </script>
+
+  <!--
+    O `flutter_bootstrap.js` deste projeto é próprio (ver
+    `web/flutter_bootstrap.js`) — é ele que chama `__removerSplash` quando
+    a app já está a correr.
   -->
   <script src="flutter_bootstrap.js" async></script>
 </body>

@@ -5,9 +5,11 @@ import '../../domain/entities/staff_private_profile.dart';
 import '../../domain/entities/staff_summary.dart';
 import '../../infrastructure/firebase/firebase_retention_repository.dart';
 import '../../infrastructure/firebase/firebase_staff_repository.dart';
+import '../../infrastructure/firebase/firebase_studio_admin_repository.dart';
 import '../../infrastructure/firebase/firebase_user_provisioning_repository.dart';
 import '../../repositories/retention_repository.dart';
 import '../../repositories/staff_repository.dart';
+import '../../repositories/studio_admin_repository.dart';
 import '../../repositories/user_provisioning_repository.dart';
 import 'firebase_providers.dart';
 import 'tenant_context_providers.dart';
@@ -56,4 +58,12 @@ final retentionOverviewProvider = FutureProvider.autoDispose
         windowDays: args.windowDays,
         riskWeeks: args.riskWeeks,
       );
+});
+
+/// Escrever a informação pública do estúdio (morada, contactos, horário,
+/// política de privacidade). A leitura vive em `studioInfoProvider`, que
+/// funciona sem sessão — ver `StudioAdminRepository` sobre porque as
+/// duas estão separadas.
+final studioAdminRepositoryProvider = Provider<StudioAdminRepository>((ref) {
+  return FirebaseStudioAdminRepository(ref.watch(functionsProvider));
 });

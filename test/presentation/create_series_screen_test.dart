@@ -141,7 +141,7 @@ void main() {
     // Defaults do ecrã já são "Semanal, fixa" + segunda-feira + 18:00
     // + 60 minutos — exatamente a série semeada.
     await pickService(tester);
-    expect(find.textContaining('Conflito de horário'), findsNothing);
+    expect(find.textContaining('já tem'), findsNothing);
 
     await pickInstructor(tester);
 
@@ -152,12 +152,15 @@ void main() {
     // não uma escolha de ninguém. Quem tivesse uma aula nesse horário
     // via o aviso em todas as criações seguintes, e um aviso que
     // aparece sempre deixa de ser lido.
-    expect(find.textContaining('Conflito de horário'), findsNothing);
+    expect(find.textContaining('já tem'), findsNothing);
 
     // A partir do momento em que o horário é uma escolha, avisa.
     await pickDayOfWeek(tester, 'Segunda');
-    expect(find.textContaining('Conflito de horário'), findsOneWidget);
-    expect(find.textContaining('Segunda 18:00'), findsOneWidget);
+    expect(find.textContaining('já tem uma aula a esta hora'), findsOneWidget);
+    // E mostra o dia inteiro, não só a colisão: é assim que o Gestor
+    // escolhe uma hora livre sem sair do ecrã.
+    expect(find.textContaining('O que ele já tem'), findsOneWidget);
+    expect(find.textContaining('18:00–19:00'), findsOneWidget);
   });
 
   testWidgets('mexer no horário sem conflito real continua sem avisar',
@@ -188,7 +191,7 @@ void main() {
     await pickInstructor(tester);
     await pickDayOfWeek(tester, 'Quarta');
 
-    expect(find.textContaining('Conflito de horário'), findsNothing);
+    expect(find.textContaining('já tem'), findsNothing);
   });
 
   testWidgets(
@@ -224,7 +227,7 @@ void main() {
     await pickInstructor(tester);
 
     // Sem tocar no horário — fica em segunda/18:00, o slot ocupado.
-    expect(find.textContaining('Conflito de horário'), findsNothing);
+    expect(find.textContaining('já tem'), findsNothing);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Criar'));
     await tester.pumpAndSettle();
@@ -271,7 +274,7 @@ void main() {
     await tester.pumpAndSettle();
     await pickService(tester);
 
-    expect(find.textContaining('Conflito de horário'), findsNothing);
+    expect(find.textContaining('já tem'), findsNothing);
   });
 
   testWidgets(
@@ -301,9 +304,9 @@ void main() {
     await pickService(tester);
     await tester.tap(find.text('Só esta data'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Conflito de horário'), findsNothing);
+    expect(find.textContaining('já tem'), findsNothing);
 
     await pickInstructor(tester);
-    expect(find.textContaining('Conflito de horário'), findsOneWidget);
+    expect(find.textContaining('já tem uma aula a esta hora'), findsOneWidget);
   });
 }

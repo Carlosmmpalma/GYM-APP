@@ -32,7 +32,7 @@ void main() {
             .set({
           'name': 'Exercício $i',
           'description': '',
-          'muscleGroup': 'Core',
+          'category': 'Core',
         });
       }
     }

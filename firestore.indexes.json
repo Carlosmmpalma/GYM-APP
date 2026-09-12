@@ -207,6 +207,24 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "sessionOccurrences",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "reminderSentAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -284,6 +302,36 @@
           "queryScope": "COLLECTION_GROUP"
         }
       ]
+    },
+    {
+      "collectionGroup": "workoutSessions",
+      "fieldPath": "sets",
+      "ttl": false,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "workoutSessions",
+      "fieldPath": "notes",
+      "ttl": false,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "members",
+      "fieldPath": "fcmTokens",
+      "ttl": false,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "staff",
+      "fieldPath": "fcmTokens",
+      "ttl": false,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "exercises",
+      "fieldPath": "description",
+      "ttl": false,
+      "indexes": []
     }
   ]
 }

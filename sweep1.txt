@@ -1,0 +1,6 @@
+lib\presentation\screens\add_plan_entry_screen.dart:114  final recordedBy = ref.read(currentAppUserProvider).valueOrNull?.uid ?? '';
+lib\presentation\screens\assessment_form_screen.dart:149  final staffUid = ref.read(currentAppUserProvider).valueOrNull?.uid ?? '';
+lib\presentation\screens\assign_subscription_screen.dart:376  final plans = ref.read(plansProvider).valueOrNull ?? const <Plan>[];
+lib\presentation\widgets\exercise_logger.dart:238  final performedBy = ref.read(currentAppUserProvider).valueOrNull?.uid;
+lib\presentation\widgets\exercise_logger.dart:277  final performedBy = ref.read(currentAppUserProvider).valueOrNull?.uid;
+lib\presentation\widgets\start_workout_button.dart:164  final performedBy = ref.read(currentAppUserProvider).valueOrNull?.uid;

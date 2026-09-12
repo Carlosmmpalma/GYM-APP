@@ -153,6 +153,10 @@ class FirebaseSessionOccurrenceRepository
       'capacity': capacity,
       'status': 'scheduled',
       'activeBookingCount': 0,
+      // Explicitamente `null`, e não ausente — ver a mesma nota em
+      // `generateRecurringOccurrences.ts`. Sem isto, uma aula avulsa
+      // nunca receberia lembrete.
+      'reminderSentAt': null,
       'createdAt': FieldValue.serverTimestamp(),
     });
     return ref.id;
@@ -167,9 +171,17 @@ class FirebaseSessionOccurrenceRepository
     String? instructorId,
     String? modalityId,
   }) async {
-    await _occurrences.doc(occurrenceId).update({
-      'startAt': Timestamp.fromDate(startAt),
-      'endAt': Timestamp.fromDate(endAt),
+    // Cloud Function e não escrita direta: mudar a hora de uma aula tem
+    // de arrastar consigo as marcações que já lá estão. Cada uma guarda
+    // uma cópia da data e a semana em que foi contada para o limite
+    // semanal — sem isso, mover uma aula para outra semana deixava a
+    // utilização na semana errada e o limite do plano deixava de valer.
+    // Ver `updateOccurrenceSchedule.ts`; as Security Rules já não deixam
+    // o cliente tocar na `startAt`.
+    await _functions.httpsCallable('updateOccurrenceSchedule').call<void>({
+      'occurrenceId': occurrenceId,
+      'startAt': startAt.toUtc().toIso8601String(),
+      'endAt': endAt.toUtc().toIso8601String(),
       'capacity': capacity,
       'instructorId': instructorId,
       'modalityId': modalityId,

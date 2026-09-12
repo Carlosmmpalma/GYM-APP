@@ -9,6 +9,7 @@ import '../../domain/entities/member_summary.dart';
 import '../../domain/entities/payment_record.dart';
 import '../widgets/design_system.dart';
 import '../widgets/privacy_section.dart';
+import '../widgets/person_avatar.dart';
 
 /// UC02 — "Perfil": o próprio membro vê o número de sócio (gerido pelo
 /// Gestor, UC22) e edita só o telefone/email de contacto. Nome/nº de
@@ -114,7 +115,22 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
             children: [
               Row(
                 children: [
-                  Avatar(member.name, size: 44),
+                  Column(
+                    children: [
+                      // Sem botão para mudar a foto, e é deliberado: a
+                      // foto de perfil é do ESTÚDIO, não do aluno. É a
+                      // cara que o instrutor vê na tira da turma para
+                      // reconhecer quem tem à frente, e por isso quem a
+                      // põe e quem a tira é quem gere o estúdio — na
+                      // ficha do aluno. As Security Rules dizem o mesmo,
+                      // não só esta ausência de botão.
+                      PersonAvatar(
+                        name: member.name,
+                        photoUrl: member.photoUrl,
+                        size: 44,
+                      ),
+                    ],
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(

@@ -257,8 +257,7 @@ class _OccurrenceTile extends ConsumerWidget {
       await ref.read(sessionOccurrenceRepositoryProvider).updateOccurrence(
             occurrenceId: occurrence.id,
             startAt: result.startAt,
-            endAt: result.startAt
-                .add(occurrence.endAt.difference(occurrence.startAt)),
+            endAt: result.endAt,
             capacity: result.capacity,
             instructorId: occurrence.instructorId,
             modalityId: occurrence.modalityId,

@@ -17,6 +17,30 @@ abstract class StorageRepository {
     required String contentType,
   });
 
+  /// Envia a foto de perfil de alguém, tal como ela vem.
+  ///
+  /// Não é redimensionada aqui: é a Cloud Function `resizeAvatar` que a
+  /// reduz e apaga o original. Foi decisão de produto manter isso do
+  /// lado do servidor — a garantia de que nada grande chega a ser
+  /// servido deixa de depender de a app estar atualizada.
+  ///
+  /// Não devolve caminho nenhum: o que a app passa a conhecer é o
+  /// `photoPath` que a função escreve no documento da pessoa, e só
+  /// depois de o ficheiro reduzido existir.
+  Future<void> uploadAvatar({
+    required String userId,
+    required Uint8List bytes,
+    required String fileName,
+  });
+
+  /// Remove a foto de perfil de alguém.
+  ///
+  /// Apaga o ficheiro E limpa o `photoPath` no documento da pessoa. As
+  /// duas coisas: sem a segunda a app continuava a pedir um ficheiro que
+  /// já não existe e o avatar ficava partido; sem a primeira ficava a
+  /// cara de alguém no bucket depois de a pessoa a mandar tirar.
+  Future<void> deleteAvatar(String userId);
+
   Future<String> getDownloadUrl(String path);
 
   Future<void> deleteFile(String path);

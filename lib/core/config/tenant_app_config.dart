@@ -35,6 +35,19 @@ class TenantAppConfig {
   /// [displayName] em texto.
   final String? logoAsset;
 
+  // Aqui viveram, durante meia tarde, a morada do estúdio, os contactos,
+  // o horário e o URL da política de privacidade. O argumento era o
+  // mesmo de [displayName]: aparecem antes de haver sessão, e sem sessão
+  // não se lê nada do tenant.
+  //
+  // O argumento era verdadeiro e deixou de ser um impedimento assim que
+  // a vitrina passou a ler de `tenants/{t}/public/…`, que é público. E
+  // aqui era pior por uma razão prática: mudar o telefone do ginásio
+  // obrigava a um developer, uma build nova e uma revisão da App Store.
+  //
+  // Passaram para `StudioInfo`, editável pelo Gestor em
+  // Gestão › Informação pública.
+
   static const TenantAppConfig development = TenantAppConfig(
     tenantId: 'nxt_performance_studio',
     displayName: 'NXT Performance Studio',

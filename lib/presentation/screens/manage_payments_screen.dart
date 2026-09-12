@@ -10,6 +10,7 @@ import '../../domain/entities/payment_record.dart';
 import '../../core/utils/search_text.dart';
 import '../widgets/status_pills.dart';
 import '../widgets/design_system.dart';
+import '../widgets/period_navigator.dart';
 import 'payment_history_screen.dart';
 
 /// Fase 9 (UC27 fechado) — "Mensalidades — mês atual" (mockup):
@@ -101,8 +102,21 @@ class _ManagePaymentsScreenState extends ConsumerState<ManagePaymentsScreen> {
               ? member.currentMonthStatus(now)
               : pastRecords[member.uid]?.status;
 
-          int countOf(_PaymentFilter filter) =>
-              relevant.where((m) => _matches(statusOf(m), filter)).length;
+          // Uma passagem, não quatro. `countOf` percorria a lista toda
+          // por cada chip, e é chamado a cada `setState` da caixa de
+          // pesquisa — ou seja, quatro varreduras de todos os sócios a
+          // cada tecla.
+          final counts = <_PaymentFilter, int>{
+            for (final filter in _PaymentFilter.values) filter: 0,
+          };
+          for (final member in relevant) {
+            final status = statusOf(member);
+            for (final filter in _PaymentFilter.values) {
+              if (_matches(status, filter)) {
+                counts[filter] = counts[filter]! + 1;
+              }
+            }
+          }
 
           final visible = relevant.where((member) {
             if (_statusFilter != null &&
@@ -115,109 +129,107 @@ class _ManagePaymentsScreenState extends ConsumerState<ManagePaymentsScreen> {
             );
           }).toList();
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    tooltip: 'Mês anterior',
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: () => setState(
-                        () => _month = DateTime(_month.year, _month.month - 1)),
-                  ),
-                  Text(
-                    paymentMonthLabel(_month.month, _month.year),
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  IconButton(
-                    tooltip: 'Mês seguinte',
-                    // Não há mensalidades do futuro para marcar: deixar
-                    // avançar seria oferecer meses vazios para sempre.
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: _isCurrentMonth
-                        ? null
-                        : () => setState(() =>
-                            _month = DateTime(_month.year, _month.month + 1)),
-                  ),
-                ],
-              ),
-              if (!_isCurrentMonth)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      TextButton.icon(
-                        onPressed: () => setState(() => _month = DateTime(
-                            DateTime.now().year, DateTime.now().month)),
-                        icon: const Icon(Icons.today_outlined, size: 16),
-                        label: const Text('Voltar ao mês atual'),
-                      ),
-                    ],
-                  ),
+          // `ListView.builder` e não `ListView(children: [...])`: com
+          // quinhentos sócios, a segunda forma construía quinhentas
+          // linhas — incluindo as que estão fora do ecrã — a cada tecla
+          // escrita na pesquisa. O cabeçalho é o primeiro item da mesma
+          // lista para continuar a deslizar com ela.
+          final header = [
+            PeriodNavigator(
+              label: paymentMonthLabel(_month.month, _month.year),
+              tooltipAnterior: 'Mês anterior',
+              tooltipSeguinte: 'Mês seguinte',
+              onAnterior: () => setState(
+                  () => _month = DateTime(_month.year, _month.month - 1)),
+              // Não há mensalidades do futuro para marcar: deixar
+              // avançar seria oferecer meses vazios para sempre.
+              onSeguinte: _isCurrentMonth
+                  ? null
+                  : () => setState(
+                      () => _month = DateTime(_month.year, _month.month + 1)),
+            ),
+            if (!_isCurrentMonth)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => setState(() => _month =
+                          DateTime(DateTime.now().year, DateTime.now().month)),
+                      icon: const Icon(Icons.today_outlined, size: 16),
+                      label: const Text('Voltar ao mês atual'),
+                    ),
+                  ],
                 ),
-              const SizedBox(height: 4),
-              const Text(
-                'Registo manual, sem gateway de pagamento — histórico '
-                'completo por membro através do ícone de histórico.',
-                style: TextStyle(fontSize: 12),
               ),
-              const SizedBox(height: 12),
-              SearchField(
-                hintText: 'Procurar por nome ou nº de sócio',
-                onChanged: (value) => setState(() => _query = value),
+            const SizedBox(height: 4),
+            const Text(
+              'Registo manual, sem gateway de pagamento — histórico '
+              'completo por membro através do ícone de histórico.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            SearchField(
+              hintText: 'Procurar por nome ou nº de sócio',
+              onChanged: (value) => setState(() => _query = value),
+            ),
+            const SizedBox(height: 10),
+            // A contagem em cada chip é o que torna este ecrã útil de
+            // relance: "Em atraso (3)" responde à pergunta antes de se
+            // tocar em nada.
+            FilterChipsRow<_PaymentFilter>(
+              allCount: relevant.length,
+              selected: _statusFilter,
+              onSelected: (value) => setState(() => _statusFilter = value),
+              options: [
+                (
+                  _PaymentFilter.overdue,
+                  'Em atraso',
+                  counts[_PaymentFilter.overdue]!
+                ),
+                (
+                  _PaymentFilter.noRecord,
+                  'Sem registo',
+                  counts[_PaymentFilter.noRecord]!
+                ),
+                (_PaymentFilter.paid, 'Pagas', counts[_PaymentFilter.paid]!),
+                (
+                  _PaymentFilter.paidLate,
+                  'Com atraso',
+                  counts[_PaymentFilter.paidLate]!
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (visible.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 24),
+                child: EmptyState(
+                  icon: Icons.search_off,
+                  title: 'Nada encontrado',
+                  message: _query.isEmpty
+                      ? 'Nenhum membro ativo neste estado.'
+                      : 'Nenhum membro corresponde a "$_query".',
+                ),
               ),
-              const SizedBox(height: 10),
-              // A contagem em cada chip é o que torna este ecrã útil de
-              // relance: "Em atraso (3)" responde à pergunta antes de se
-              // tocar em nada.
-              FilterChipsRow<_PaymentFilter>(
-                allCount: relevant.length,
-                selected: _statusFilter,
-                onSelected: (value) => setState(() => _statusFilter = value),
-                options: [
-                  (
-                    _PaymentFilter.overdue,
-                    'Em atraso',
-                    countOf(_PaymentFilter.overdue)
-                  ),
-                  (
-                    _PaymentFilter.noRecord,
-                    'Sem registo',
-                    countOf(_PaymentFilter.noRecord)
-                  ),
-                  (_PaymentFilter.paid, 'Pagas', countOf(_PaymentFilter.paid)),
-                  (
-                    _PaymentFilter.paidLate,
-                    'Com atraso',
-                    countOf(_PaymentFilter.paidLate)
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (visible.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 24),
-                  child: EmptyState(
-                    icon: Icons.search_off,
-                    title: 'Nada encontrado',
-                    message: _query.isEmpty
-                        ? 'Nenhum membro ativo neste estado.'
-                        : 'Nenhum membro corresponde a "$_query".',
-                  ),
-                )
-              else
-                for (final member in visible) ...[
-                  _PaymentRow(
-                    member: member,
-                    month: _month,
-                    status: statusOf(member),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-            ],
+          ];
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: header.length + visible.length,
+            itemBuilder: (context, index) {
+              if (index < header.length) return header[index];
+              final member = visible[index - header.length];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _PaymentRow(
+                  member: member,
+                  month: _month,
+                  status: statusOf(member),
+                ),
+              );
+            },
           );
         },
       ),
@@ -259,26 +271,47 @@ class _PaymentRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // O pill ao lado do nome deixa de caber quando o utilizador sobe o
+    // tamanho de letra do sistema: "Pago com atraso" a 1.3× passa 27 px
+    // da linha, e a 2.0× passa 148. Espremer não resolve — a 2.0×
+    // simplesmente não há largura para um nome e um estado lado a lado
+    // num telemóvel.
+    //
+    // Acima de ~1.3× o estado passa para baixo do nº de sócio, onde tem
+    // a linha toda. Fica mais alto, que é o que o utilizador pediu ao
+    // escolher letra grande.
+    final letraGrande = MediaQuery.textScalerOf(context).scale(14) > 18;
+    final historico = IconButton(
+      tooltip: 'Histórico de mensalidades',
+      icon: const Icon(Icons.history),
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PaymentHistoryScreen(member: member),
+        ),
+      ),
+    );
+
     return Card(
       child: ListTile(
         title: Text(member.name),
-        subtitle: Text('Nº de sócio ${member.memberNumber}'),
+        subtitle: letraGrande
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Nº de sócio ${member.memberNumber}'),
+                  const SizedBox(height: 6),
+                  PaymentStatusPill(status),
+                ],
+              )
+            : Text('Nº de sócio ${member.memberNumber}'),
         onTap: () => _markStatus(context, ref),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            PaymentStatusPill(status),
-            IconButton(
-              tooltip: 'Histórico de mensalidades',
-              icon: const Icon(Icons.history),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => PaymentHistoryScreen(member: member),
-                ),
+        trailing: letraGrande
+            ? historico
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [PaymentStatusPill(status), historico],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -36,7 +36,7 @@ jobs:
       # aqui garante que o caminho de produção não parte sem ninguém
       # dar por isso até ao dia do deploy.
       - name: Build de produção (web)
-        run: flutter build web --release -t lib/main_production.dart
+        run: flutter build web --release --wasm -t lib/main_production.dart
 
       # integration_test/ (contra o emulador a sério) não corre aqui —
       # precisa de um device/simulador, não só do SDK. Ver README.md.

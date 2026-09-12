@@ -13,11 +13,13 @@ import '../../domain/entities/modality.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/staff_summary.dart';
 import '../widgets/design_system.dart';
+import '../widgets/today_classes.dart';
 import 'exercise_library_screen.dart';
 import 'instructor_calendar_screen.dart';
 import 'instructor_students_screen.dart';
 import 'send_notification_screen.dart';
 import 'create_series_screen.dart';
+import '../widgets/person_avatar.dart';
 
 /// Fase 8 (auditoria funcional, mockup "Início — Dashboard do
 /// instrutor") — até aqui um Instrutor PURO (sem `Role.manager` e sem
@@ -41,7 +43,7 @@ class InstructorHomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final staffAsync = ref.watch(staffProvider);
-    final membersAsync = ref.watch(membersProvider);
+    final membersAsync = ref.watch(visibleMembersProvider);
     final modalitiesAsync = ref.watch(modalitiesProvider);
 
     final now = DateTime.now();
@@ -63,23 +65,23 @@ class InstructorHomeScreen extends ConsumerWidget {
 
     // "Sessões hoje" — só as do próprio instrutor, mesmo filtro que
     // `InstructorCalendarScreen` aplica quando aberto por um Instrutor.
-    final todayCount =
-        (occurrencesAsync.valueOrNull ?? const <SessionOccurrence>[])
-            .where((o) =>
-                o.instructorId == appUser.uid &&
-                o.status == SessionOccurrenceStatus.scheduled &&
-                o.startAt.year == now.year &&
-                o.startAt.month == now.month &&
-                o.startAt.day == now.day)
-            .length;
+    final todayOccurrences = (occurrencesAsync.valueOrNull ??
+            const <SessionOccurrence>[])
+        .where((o) =>
+            o.instructorId == appUser.uid &&
+            o.status == SessionOccurrenceStatus.scheduled &&
+            o.startAt.year == now.year &&
+            o.startAt.month == now.month &&
+            o.startAt.day == now.day)
+        .toList()
+      ..sort((a, b) => a.startAt.compareTo(b.startAt));
+    final todayCount = todayOccurrences.length;
 
-    // "Alunos ativos" — o mockup diz "só alunos com serviço na tua
-    // modalidade", mas o âmbito por modalidade (UC28) nunca foi
-    // modelado como restrição real: `InstructorStudentsScreen` (Fase 8)
-    // já lista TODOS os alunos ativos do tenant, e as Security Rules
-    // permitem-no. Esta contagem reflete o que o ecrã de facto mostra,
-    // em vez de prometer um filtro que não existe — mesma lacuna, já
-    // assinalada, não uma nova.
+    // "Alunos ativos" — os DELE, não os do estúdio todo. O mockup pedia
+    // "só alunos com serviço na tua modalidade" e durante muito tempo
+    // isto contava (e o ecrã listava) toda a gente, porque o âmbito
+    // nunca tinha sido modelado. Passou a ser: os alunos com subscrição
+    // ativa a um serviço que ele leciona.
     final activeMembers =
         (membersAsync.valueOrNull ?? const []).where((m) => m.active).length;
 
@@ -94,7 +96,11 @@ class InstructorHomeScreen extends ConsumerWidget {
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              Avatar(me?.name ?? '', size: 44),
+              PersonAvatar(
+                name: me?.name ?? '',
+                photoUrl: me?.photoUrl,
+                size: 44,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -131,6 +137,10 @@ class InstructorHomeScreen extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 12),
+        // As aulas de hoje, com o estado da chamada e um toque para a
+        // fazer. Ver `TodayClasses` — o painel do Gestor mostra a mesma
+        // lista, sem o filtro por instrutor.
+        TodayClasses(instructorId: appUser.uid),
         // Fase 11 — o Instrutor passou a criar as suas próprias aulas.
         // Antes tinha de pedir ao Gestor para lhe montar o horário,
         // mesmo sabendo as suas horas melhor do que ninguém.
@@ -152,8 +162,31 @@ class InstructorHomeScreen extends ConsumerWidget {
                     modalityIds: {},
                   ),
                 );
-            if (me == null || me.serviceIds.isEmpty) {
-              return const SizedBox.shrink();
+            if (me == null) return const SizedBox.shrink();
+
+            // Sem serviços atribuídos o atalho DESAPARECIA, e o
+            // instrutor ficava a olhar para um ecrã onde criar uma aula
+            // simplesmente não existia — sem nada a dizer que lhe
+            // faltava uma configuração que ele nem pode fazer.
+            //
+            // As Security Rules exigem que a aula seja de um serviço do
+            // instrutor (`instructorOwnsSession`), por isso o atalho
+            // continua inativo; o que muda é passar a dizer porquê e a
+            // quem pedir.
+            if (me.serviceIds.isEmpty) {
+              return const Column(
+                children: [
+                  _Shortcut(
+                    icon: Icons.add_circle_outline,
+                    title: 'Criar aula',
+                    subtitle: 'Precisas de ter serviços atribuídos. Pede ao '
+                        'Gestor para te associar os que lecionas '
+                        '(Gestão › Utilizadores › o teu perfil).',
+                    onTap: null,
+                  ),
+                  SizedBox(height: 8),
+                ],
+              );
             }
             return Column(
               children: [
@@ -250,7 +283,11 @@ class _Shortcut extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+
+  /// `null` = o atalho aparece mas não leva a lado nenhum. É como se
+  /// mostra que a ação existe e o que falta para a poder usar, em vez
+  /// de a esconder e deixar a pergunta no ar.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -274,7 +311,10 @@ class _Shortcut extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, size: 18, color: AppColors.dim),
+          if (onTap != null)
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.dim)
+          else
+            const Icon(Icons.lock_outline, size: 16, color: AppColors.dim),
         ],
       ),
     );

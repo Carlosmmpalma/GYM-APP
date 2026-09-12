@@ -22,7 +22,7 @@ import {
   initializeTestEnvironment,
   RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { getBytes, ref, uploadBytes } from 'firebase/storage';
+import { deleteObject, getBytes, ref, uploadBytes } from 'firebase/storage';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -54,6 +54,10 @@ function contextFor(uid: string, tenantId: string, roles: string[]) {
 
 const videoBytes = new Uint8Array([1, 2, 3, 4]);
 const videoPath = `tenants/${TENANT_A}/exercises/exercise_1/video`;
+
+const photoBytes = new Uint8Array([1, 2, 3, 4]);
+const avatarOf = (tenantId: string, userId: string) =>
+  `tenants/${tenantId}/avatars/${userId}/original.jpg`;
 
 describe('Storage Rules — vídeo de exercícios (Fase 8, UC15 fechado)', () => {
   it('um Instrutor CONSEGUE carregar um vídeo (contentType video/*)', async () => {
@@ -113,5 +117,113 @@ describe('Storage Rules — vídeo de exercícios (Fase 8, UC15 fechado)', () =>
     await assertFails(
       uploadBytes(ref(storage, videoPath), videoBytes, { contentType: 'video/mp4' }),
     );
+  });
+});
+
+// Fotos de perfil. A regra é a mesma para aluno e staff — o avatar é a
+// mesma coisa nos dois casos — e por isso o que a separa é o dono do
+// caminho, não o papel de quem escreve.
+describe('Storage Rules — foto de perfil', () => {
+  it('a própria pessoa NÃO consegue mudar a sua foto', async () => {
+    // Mudou: já foi permitido. A foto de perfil é do estúdio e não da
+    // pessoa — é a cara que o instrutor vê na tira da turma para
+    // reconhecer quem tem à frente. Um aluno a trocá-la por um desenho
+    // qualquer não está a personalizar o perfil dele, está a estragar a
+    // ferramenta de outra pessoa.
+    const storage = contextFor('member_a1', TENANT_A, ['member']).storage();
+    await assertFails(
+      uploadBytes(ref(storage, avatarOf(TENANT_A, 'member_a1')), photoBytes, {
+        contentType: 'image/jpeg',
+      }),
+    );
+  });
+
+  it('nem a apagar', async () => {
+    const storage = contextFor('member_a1', TENANT_A, ['member']).storage();
+    await assertFails(
+      deleteObject(ref(storage, avatarOf(TENANT_A, 'member_a1'))),
+    );
+  });
+
+  it('o Gestor CONSEGUE mudar a foto de um aluno (é ele quem gere as fichas)',
+    async () => {
+      const storage = contextFor('manager_a', TENANT_A, ['manager']).storage();
+      await assertSucceeds(
+        uploadBytes(ref(storage, avatarOf(TENANT_A, 'member_a1')), photoBytes, {
+          contentType: 'image/jpeg',
+        }),
+      );
+    },
+  );
+
+  it('um aluno NÃO consegue mudar a foto de outro aluno', async () => {
+    const storage = contextFor('member_a2', TENANT_A, ['member']).storage();
+    await assertFails(
+      uploadBytes(ref(storage, avatarOf(TENANT_A, 'member_a1')), photoBytes, {
+        contentType: 'image/jpeg',
+      }),
+    );
+  });
+
+  it('um Instrutor NÃO consegue mudar a foto de um aluno', async () => {
+    // Deliberado: o instrutor pode carregar vídeos da biblioteca, que
+    // são do estúdio, mas a cara de alguém não é conteúdo do estúdio.
+    const storage = contextFor('instructor_a', TENANT_A, ['instructor']).storage();
+    await assertFails(
+      uploadBytes(ref(storage, avatarOf(TENANT_A, 'member_a1')), photoBytes, {
+        contentType: 'image/jpeg',
+      }),
+    );
+  });
+
+  it('rejeita um ficheiro que não seja imagem', async () => {
+    const storage = contextFor('member_a1', TENANT_A, ['member']).storage();
+    await assertFails(
+      uploadBytes(ref(storage, avatarOf(TENANT_A, 'member_a1')), photoBytes, {
+        contentType: 'application/pdf',
+      }),
+    );
+  });
+
+  it('alguém de OUTRO tenant não escreve na sua própria pasta dentro do tenant A',
+    async () => {
+      // O uid é único em toda a instalação: sem o `belongsToTenant`, a
+      // regra do "próprio" dava-o por bom em qualquer tenant e a foto
+      // passava a ser servida no tenant A.
+      const storage = contextFor('member_a1', TENANT_B, ['member']).storage();
+      await assertFails(
+        uploadBytes(ref(storage, avatarOf(TENANT_A, 'member_a1')), photoBytes, {
+          contentType: 'image/jpeg',
+        }),
+      );
+    },
+  );
+
+  it('um membro do tenant CONSEGUE ler o avatar de outro (aparece nas listas)',
+    async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await uploadBytes(
+          ref(context.storage(), avatarOf(TENANT_A, 'member_a1')),
+          photoBytes,
+          { contentType: 'image/jpeg' },
+        );
+      });
+
+      const storage = contextFor('member_a2', TENANT_A, ['member']).storage();
+      await assertSucceeds(getBytes(ref(storage, avatarOf(TENANT_A, 'member_a1'))));
+    },
+  );
+
+  it('um utilizador de OUTRO tenant NÃO consegue ler o avatar', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await uploadBytes(
+        ref(context.storage(), avatarOf(TENANT_A, 'member_a1')),
+        photoBytes,
+        { contentType: 'image/jpeg' },
+      );
+    });
+
+    const storage = contextFor('member_b1', TENANT_B, ['member']).storage();
+    await assertFails(getBytes(ref(storage, avatarOf(TENANT_A, 'member_a1'))));
   });
 });

@@ -5,6 +5,7 @@ import 'application/providers/firebase_providers.dart';
 import 'application/providers/tenant_context_providers.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/widgets/auth_gate.dart';
+import 'presentation/widgets/data_health_banner.dart';
 
 class GymSaasApp extends ConsumerWidget {
   const GymSaasApp({super.key});
@@ -30,12 +31,17 @@ class GymSaasApp extends ConsumerWidget {
       // ninguém dava por isso. A fita é o aviso que falta: se aparecer
       // no site do estúdio, foi publicada a build errada.
       builder: (context, child) {
-        if (environment.isProduction || child == null) return child!;
+        if (child == null) return const SizedBox.shrink();
+        // O aviso de leitura falhada envolve TUDO, incluindo os ecrãs
+        // que nunca trataram o erro — que são a maioria. Ver
+        // `DataHealthBanner`.
+        final comAviso = DataHealthBanner(child: child);
+        if (environment.isProduction) return comAviso;
         return Banner(
           message: environment.label.toUpperCase(),
           location: BannerLocation.topEnd,
           color: Colors.deepOrange,
-          child: child,
+          child: comAviso,
         );
       },
       // Fase 10 — tema escuro do mockup (ver `core/theme/app_theme.dart`).

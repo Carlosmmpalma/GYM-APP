@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 
 import '../../core/utils/iso_week.dart';
 import 'exercise.dart';
+import 'training_plan_entry.dart';
 import 'workout_session.dart';
 
 /// Estatísticas de treino de UM aluno, calculadas a partir do que ele
@@ -203,7 +204,7 @@ MemberStats computeMemberStats({
   final setsByMuscleGroup = <String, int>{};
   for (final session in inWindow) {
     for (final set in session.sets) {
-      final group = exercisesById[set.exerciseId]?.muscleGroup;
+      final group = exercisesById[set.exerciseId]?.category;
       final key = (group == null || group.isEmpty) ? 'Sem grupo' : group;
       setsByMuscleGroup[key] = (setsByMuscleGroup[key] ?? 0) + 1;
     }
@@ -344,4 +345,48 @@ List<ExerciseStrength> _strength(
     return b.totalSets.compareTo(a.totalSets);
   });
   return result;
+}
+
+/// A ordem por que uma turma percorre os exercícios.
+///
+/// Numa aula de grupo o instrutor chama o exercício e toda a gente o
+/// faz — mas neste estúdio cada aluno tem o SEU plano, por isso não
+/// existe uma lista da aula. Esta função constrói uma: junta os planos
+/// de quem está na sala e ordena os exercícios por onde aparecem.
+///
+/// Ordena pela posição MAIS BAIXA em que o exercício aparece em algum
+/// plano, e não pela média: se o agachamento é o primeiro exercício de
+/// três alunos e o quinto de um, continua a ser por onde a aula começa.
+/// Empates desfazem-se pelo número de alunos que o têm — o que mais
+/// gente faz vem primeiro, porque é onde a turma se junta.
+///
+/// Evita inventar um conceito de "plano da aula" que não existe no
+/// domínio: a lista sai do que os alunos já têm prescrito, e muda
+/// sozinha quando os planos mudam.
+List<String> groupExerciseOrder(
+  Map<String, List<TrainingPlanEntry>> plansByMember,
+) {
+  final firstPosition = <String, int>{};
+  final howMany = <String, int>{};
+
+  for (final entries in plansByMember.values) {
+    for (final entry in entries) {
+      final current = firstPosition[entry.exerciseId];
+      if (current == null || entry.position < current) {
+        firstPosition[entry.exerciseId] = entry.position;
+      }
+      howMany[entry.exerciseId] = (howMany[entry.exerciseId] ?? 0) + 1;
+    }
+  }
+
+  final ids = firstPosition.keys.toList();
+  ids.sort((a, b) {
+    final byPosition = firstPosition[a]!.compareTo(firstPosition[b]!);
+    if (byPosition != 0) return byPosition;
+    final byCount = howMany[b]!.compareTo(howMany[a]!);
+    if (byCount != 0) return byCount;
+    // Último critério só para a ordem ser estável entre reconstruções.
+    return a.compareTo(b);
+  });
+  return ids;
 }

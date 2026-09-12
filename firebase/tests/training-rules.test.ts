@@ -397,4 +397,36 @@ describe('Security Rules — exercises (Fase 8, UC15 fechado: "partilhada por to
       }),
     );
   });
+
+  it('um Instrutor CONSEGUE gerir as categorias da biblioteca', async () => {
+    // A lista de categorias estava escrita no código. Agora é do
+    // estúdio — e quem cria exercícios é quem precisa de os arrumar,
+    // por isso a escrita acompanha a da própria biblioteca em vez de
+    // ser Manager-only como `services`/`plans`.
+    const db = contextFor('instructor_a', TENANT_A, ['instructor']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/exerciseCategories/cat_nova`).set({
+        name: 'Mobilidade',
+        active: true,
+      }),
+    );
+  });
+
+  it('um membro NÃO consegue mexer nas categorias', async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertFails(
+      db.doc(`tenants/${TENANT_A}/exerciseCategories/cat_do_membro`).set({
+        name: 'A minha',
+        active: true,
+      }),
+    );
+  });
+
+  it('um membro CONSEGUE ler as categorias (vê-as ao lado do exercício)',
+      async () => {
+    const db = contextFor('member_a1', TENANT_A, ['member']).firestore();
+    await assertSucceeds(
+      db.doc(`tenants/${TENANT_A}/exerciseCategories/qualquer`).get(),
+    );
+  });
 });

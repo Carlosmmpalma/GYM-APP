@@ -14,7 +14,7 @@ class Exercise extends Equatable {
     required this.id,
     required this.name,
     required this.description,
-    required this.muscleGroup,
+    required this.category,
     this.videoPath,
   });
 
@@ -22,14 +22,28 @@ class Exercise extends Equatable {
   final String name;
   final String description;
 
-  /// Texto livre restrito pela UI a um dropdown fechado (ex.:
-  /// "Pernas"/"Costas"/"Full body"/"Hyrox" — mesmo espírito de
-  /// `forcaMS` em `Assessment`, não um enum persistido).
-  final String muscleGroup;
+  /// Como o estúdio arruma a biblioteca — ver [ExerciseCategory].
+  ///
+  /// Chamava-se `muscleGroup` e vinha de um dropdown fechado no código.
+  /// Duas coisas mudaram: a lista passou a ser do estúdio, e o nome
+  /// passou a "categoria" porque "Hyrox" nunca foi um músculo — a
+  /// palavra tinha ficado pequena antes de alguém dar por isso.
+  ///
+  /// O campo antigo não é lido: a biblioteca em produção é a que o
+  /// `seed-content.mjs` semeou, e uma nova passagem do seed reescreve
+  /// os 61 exercícios com o campo novo. Sem utilizadores reais ainda,
+  /// não valia a pena carregar uma leitura dupla para sempre.
+  ///
+  /// Guarda o TEXTO, não uma referência: os ecrãs do aluno mostram-no
+  /// ao lado do exercício, e resolver um id custaria leituras num
+  /// caminho que foi optimizado precisamente para as evitar. O preço é
+  /// que renomear uma categoria tem de propagar — ver
+  /// `ExerciseCategoryRepository.rename`.
+  final String category;
   final String? videoPath;
 
   bool get hasVideo => videoPath != null;
 
   @override
-  List<Object?> get props => [id, name, description, muscleGroup, videoPath];
+  List<Object?> get props => [id, name, description, category, videoPath];
 }

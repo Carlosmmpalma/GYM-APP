@@ -8,7 +8,7 @@ void main() {
         id: 'ex_1',
         name: 'Agachamento com barra',
         description: '',
-        muscleGroup: 'Pernas',
+        category: 'Pernas',
         videoPath: 'tenants/t1/exercises/ex_1/video',
       );
       expect(exercise.hasVideo, isTrue);
@@ -19,7 +19,7 @@ void main() {
         id: 'ex_1',
         name: 'Kettlebell Swing',
         description: '',
-        muscleGroup: 'Full body',
+        category: 'Full body',
       );
       expect(exercise.hasVideo, isFalse);
     });
@@ -31,25 +31,25 @@ void main() {
         id: 'ex_1',
         name: 'Sled Push',
         description: 'Empurrar o trenó',
-        muscleGroup: 'Hyrox',
+        category: 'Hyrox',
       );
       const b = Exercise(
         id: 'ex_1',
         name: 'Sled Push',
         description: 'Empurrar o trenó',
-        muscleGroup: 'Hyrox',
+        category: 'Hyrox',
       );
       expect(a, equals(b));
     });
 
     test('videoPath diferente torna-os diferentes', () {
       const a = Exercise(
-          id: 'ex_1', name: 'Sled Push', description: '', muscleGroup: 'Hyrox');
+          id: 'ex_1', name: 'Sled Push', description: '', category: 'Hyrox');
       const b = Exercise(
         id: 'ex_1',
         name: 'Sled Push',
         description: '',
-        muscleGroup: 'Hyrox',
+        category: 'Hyrox',
         videoPath: 'tenants/t1/exercises/ex_1/video',
       );
       expect(a, isNot(equals(b)));

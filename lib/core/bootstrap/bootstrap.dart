@@ -19,6 +19,7 @@ import '../../infrastructure/config/firebase_options_development.dart';
 import '../../infrastructure/config/firebase_options_production.dart';
 import '../../infrastructure/config/firebase_options_staging.dart';
 import '../config/environment.dart';
+import '../observability/data_health.dart';
 import '../config/tenant_app_config.dart';
 
 /// Ativa o App Check com o provider certo para a plataforma e o
@@ -28,13 +29,35 @@ import '../config/tenant_app_config.dart';
 /// desligado no servidor — falhar aqui seria trocar um risco de abuso
 /// por uma app que não abre.
 Future<void> _activateAppCheck(EnvironmentConfig config) async {
+  // Sem chave reCAPTCHA, NÃO se ativa na web — e isto foi um bug a
+  // sério, encontrado a testar a app a correr.
+  //
+  // Estava aqui `ReCaptchaV3Provider('debug')`, na ideia de que "debug"
+  // fosse um modo. Não é: aquela string é passada ao reCAPTCHA como
+  // chave de site, e não existe nenhuma chave chamada "debug". O
+  // resultado era um erro por cada tentativa de obter um token —
+  // dezenas por minuto — e o SDK do Auth a tropeçar neles:
+  //
+  //   @firebase/auth: Error while retrieving App Check token:
+  //   FirebaseError: AppCheck: ReCAPTCHA error. (appCheck/recaptcha-error)
+  //
+  // Com o login a falhar por causa disso. Proteção nenhuma, e a estorvar.
+  //
+  // Não ativar é honesto: o App Check só protege depois de existir uma
+  // chave e de o `enforcement` ser ligado na consola. Até lá, ativá-lo
+  // com uma chave inventada dá a ilusão de proteção e o custo de a não
+  // ter.
+  if (kIsWeb && config.recaptchaSiteKey == null) {
+    debugPrint(
+      'App Check não ativado na web: falta a chave reCAPTCHA (ver README).',
+    );
+    return;
+  }
+
   try {
     await FirebaseAppCheck.instance.activate(
-      // Web em produção precisa de uma reCAPTCHA v3 site key gerada na
-      // Firebase Console; até existir, fica o debug provider, que só
-      // funciona com tokens registados à mão. Ver checklist do README.
       webProvider: config.recaptchaSiteKey == null
-          ? ReCaptchaV3Provider('debug')
+          ? null
           : ReCaptchaV3Provider(config.recaptchaSiteKey!),
       androidProvider: config.environment.isProduction
           ? AndroidProvider.playIntegrity
@@ -182,6 +205,10 @@ Future<void> bootstrap(Environment environment) async {
   runZonedGuarded(
     () => runApp(
       ProviderScope(
+        // Ouve os erros de TODOS os providers num sítio só — ver
+        // `DataHealthObserver`. Sem isto, uma falha de leitura desenha-se
+        // como um estúdio vazio e ninguém fica a saber de nada.
+        observers: [DataHealthObserver()],
         overrides: [
           environmentConfigProvider.overrideWithValue(config),
           tenantAppConfigProvider.overrideWithValue(tenantAppConfig),

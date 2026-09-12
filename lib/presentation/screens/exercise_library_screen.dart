@@ -27,7 +27,7 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
   /// quem cria o exercício (ver `Exercise.muscleGroup`). Por isso os
   /// filtros são construídos a partir do que existe, e não de uma lista
   /// fixa que ficaria desatualizada.
-  String? _muscleGroup;
+  String? _category;
 
   @override
   Widget build(BuildContext context) {
@@ -62,19 +62,18 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
           }
           final groups = <String, int>{};
           for (final exercise in exercises) {
-            final group = exercise.muscleGroup.trim();
+            final group = exercise.category.trim();
             if (group.isEmpty) continue;
             groups[group] = (groups[group] ?? 0) + 1;
           }
           final sortedGroups = groups.keys.toList()..sort();
 
           final visible = exercises.where((exercise) {
-            if (_muscleGroup != null &&
-                exercise.muscleGroup.trim() != _muscleGroup) {
+            if (_category != null && exercise.category.trim() != _category) {
               return false;
             }
             return searchMatchesAny(
-              [exercise.name, exercise.description, exercise.muscleGroup],
+              [exercise.name, exercise.description, exercise.category],
               _query,
             );
           }).toList();
@@ -93,9 +92,9 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
                       const SizedBox(height: 10),
                       FilterChipsRow<String>(
                         allCount: exercises.length,
-                        selected: _muscleGroup,
+                        selected: _category,
                         onSelected: (value) =>
-                            setState(() => _muscleGroup = value),
+                            setState(() => _category = value),
                         options: [
                           for (final group in sortedGroups)
                             (group, group, groups[group]!),
@@ -134,7 +133,7 @@ class _ExerciseLibraryScreenState extends ConsumerState<ExerciseLibraryScreen> {
         return Card(
           child: ListTile(
             title: Text(exercise.name),
-            subtitle: Text('Grupo muscular: ${exercise.muscleGroup}'),
+            subtitle: Text('Categoria: ${exercise.category}'),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [

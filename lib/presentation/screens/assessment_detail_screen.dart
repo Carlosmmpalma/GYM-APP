@@ -116,11 +116,32 @@ class AssessmentDetailScreen extends ConsumerWidget {
   Widget _row(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
+      // Uma linha etiqueta/valor com `spaceBetween` e dois `Text` sem
+      // constrangimento nenhum. Etiquetas como "Percentagem de massa
+      // gorda" ou "Perímetro abdominal" passavam a largura de TODOS os
+      // telemóveis — 23 px num Pixel 7 e 75 num Android de 360, já com
+      // o tamanho de letra normal.
+      //
+      // Os dois lados cedem, mas de formas diferentes. A etiqueta
+      // quebra em linhas (`Expanded`, que fica com o que sobrar). O
+      // valor também quebra — a 2.0× um valor sozinho chega a ocupar a
+      // largura toda — mas **nunca é cortado**: um peso com o fim
+      // truncado não é informação incompleta, é outro número, e num
+      // ecrã de avaliação física isso lê-se e acredita-se.
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: AppColors.mute)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+          Expanded(
+            child: Text(label, style: const TextStyle(color: AppColors.mute)),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ),
         ],
       ),
     );

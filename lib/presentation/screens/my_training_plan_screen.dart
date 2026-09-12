@@ -239,7 +239,28 @@ class _ExerciseRow extends StatelessWidget {
       onTap: () => _showActions(context),
       child: Row(
         children: [
-          const IconBox(Icons.play_arrow_rounded),
+          // O ▶ era decoração: aparecia em TODOS os exercícios,
+          // tivessem vídeo ou não, e tocar nele abria o mesmo menu que
+          // tocar em qualquer outro sítio da linha. Um aluno que via um
+          // play e não chegava a vídeo nenhum concluía, com razão, que
+          // a app estava partida.
+          //
+          // Agora só há play onde há vídeo, e leva lá diretamente.
+          if (exercise?.hasVideo ?? false)
+            Tooltip(
+              message: 'Ver vídeo demonstrativo',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(9),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ExerciseVideoScreen(exercise: exercise!),
+                  ),
+                ),
+                child: const IconBox(Icons.play_arrow_rounded),
+              ),
+            )
+          else
+            const IconBox(Icons.fitness_center_outlined),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -282,19 +303,9 @@ class _ExerciseRow extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (exercise?.hasVideo ?? false)
-              ListTile(
-                leading: const Icon(Icons.play_circle_outline),
-                title: const Text('Ver vídeo demonstrativo'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ExerciseVideoScreen(exercise: exercise!),
-                    ),
-                  );
-                },
-              ),
+            // O vídeo saiu daqui: passou a ser o ▶ da própria linha.
+            // Escondido atrás de um toque numa linha que não dizia ter
+            // vídeo, ninguém lhe chegava.
             ListTile(
               leading: const Icon(Icons.show_chart),
               title: const Text('Ver evolução da carga'),

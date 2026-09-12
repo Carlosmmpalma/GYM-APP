@@ -16,12 +16,13 @@ import '../../domain/entities/modality.dart';
 import '../../domain/entities/service.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/staff_summary.dart';
+import '../widgets/attendance_status.dart';
 import '../widgets/design_system.dart';
+import '../widgets/period_navigator.dart';
 import 'free_training_slot_detail_screen.dart';
 import 'occurrence_detail_screen.dart';
 
 final _timeFormat = DateFormat('HH:mm', 'pt_PT');
-final _weekRangeFormat = DateFormat('d MMM', 'pt_PT');
 const _weekdayLabels = {
   DateTime.monday: 'Seg',
   DateTime.tuesday: 'Ter',
@@ -98,27 +99,13 @@ class _InstructorCalendarScreenState
       ),
       body: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                tooltip: 'Semana anterior',
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () => setState(() => _weekAnchor =
-                    _weekAnchor.subtract(const Duration(days: 7))),
-              ),
-              Text(
-                '${_weekRangeFormat.format(weekRange.start)} – '
-                '${_weekRangeFormat.format(weekRange.end)}',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              IconButton(
-                tooltip: 'Semana seguinte',
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () => setState(() =>
-                    _weekAnchor = _weekAnchor.add(const Duration(days: 7))),
-              ),
-            ],
+          WeekNavigator(
+            inicio: weekRange.start,
+            fim: weekRange.end,
+            onAnterior: () => setState(() =>
+                _weekAnchor = _weekAnchor.subtract(const Duration(days: 7))),
+            onSeguinte: () => setState(
+                () => _weekAnchor = _weekAnchor.add(const Duration(days: 7))),
           ),
           // Fase 10 — `PillTabs` em vez de sete `ChoiceChip` esticados
           // por `Expanded`: com "Seg".."Dom" a caber num ecrã de telefone
@@ -201,7 +188,18 @@ class _InstructorCalendarScreenState
                                 staffByUid[occurrence.instructorId]?.name ?? '',
                             ].where((p) => p.isNotEmpty).toList(),
                           ),
-                          trailing: const Icon(Icons.chevron_right),
+                          // O crachá responde "já marquei a chamada
+                          // desta?" sem abrir a aula. Custa uma leitura
+                          // da subcoleção por aula — e o calendário
+                          // mostra UM dia de cada vez, por isso são
+                          // poucas.
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AttendanceBadge(occurrence: occurrence),
+                              const Icon(Icons.chevron_right),
+                            ],
+                          ),
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => OccurrenceDetailScreen(

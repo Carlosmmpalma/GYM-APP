@@ -9,23 +9,15 @@ import '../../domain/entities/free_training_schedule.dart';
 import '../../domain/entities/free_training_slot.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../widgets/design_system.dart';
+import '../widgets/period_navigator.dart';
 import 'free_training_slot_detail_screen.dart';
-import '../../repositories/free_training_repository.dart';
 import '../widgets/catalogue_delete.dart';
-
-/// Um bloco tem de acabar depois de começar.
-///
-/// Parece óbvio e não estava a ser verificado em lado nenhum: em
-/// produção apareceram blocos das 08:10 às 08:00. Um seletor de hora
-/// não impede ninguém de escolher ao contrário, e o resultado é um
-/// horário com duração negativa que a app mostra tal e qual.
-@visibleForTesting
-bool endsAfterStart(TimeOfDay start, TimeOfDay end) =>
-    end.hour * 60 + end.minute > start.hour * 60 + start.minute;
+import '../../core/utils/time_range.dart';
+import '../widgets/time_range_field.dart';
+import '../../repositories/catalogue_admin_repository.dart';
 
 final _dayFormat = DateFormat('EEE, d MMM', 'pt_PT');
 final _timeFormat = DateFormat('HH:mm', 'pt_PT');
-final _weekRangeFormat = DateFormat('d MMM', 'pt_PT');
 const _weekdayLabels = {
   DateTime.monday: 'Seg',
   DateTime.tuesday: 'Ter',
@@ -90,27 +82,13 @@ class _ManageFreeTrainingScreenState
       ),
       body: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                tooltip: 'Semana anterior',
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () => setState(() => _weekAnchor =
-                    _weekAnchor.subtract(const Duration(days: 7))),
-              ),
-              Text(
-                '${_weekRangeFormat.format(weekRange.start)} – '
-                '${_weekRangeFormat.format(weekRange.end)}',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              IconButton(
-                tooltip: 'Semana seguinte',
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () => setState(() =>
-                    _weekAnchor = _weekAnchor.add(const Duration(days: 7))),
-              ),
-            ],
+          WeekNavigator(
+            inicio: weekRange.start,
+            fim: weekRange.end,
+            onAnterior: () => setState(() =>
+                _weekAnchor = _weekAnchor.subtract(const Duration(days: 7))),
+            onSeguinte: () => setState(
+                () => _weekAnchor = _weekAnchor.add(const Duration(days: 7))),
           ),
           Expanded(
             child: scheduleAsync.when(
@@ -135,49 +113,22 @@ class _ManageFreeTrainingScreenState
 
   /// A sugestão automática copia a semana anterior. Quando copia mal —
   /// ou quando se gerou a semana errada — a única saída era apagar
-  /// bloco a bloco, e depois de publicada nem isso.
+  /// bloco a bloco.
+  ///
+  /// Passa pela Cloud Function e não por escrita direta: o documento da
+  /// semana é `write: false` nas Rules (foi por isso que a primeira
+  /// versão disto nunca chegou a funcionar), e as marcações dos blocos
+  /// também — apagar pelo cliente deixava-as órfãs, agarradas a um
+  /// `weekId` que volta a existir assim que a semana for gerada outra
+  /// vez.
   Future<void> _deleteWeek(String weekId) async {
-    final confirmed = await confirmDestructiveAction(
+    await confirmAndDeleteCatalogueEntry(
       context,
-      title: 'Eliminar a grelha desta semana?',
-      consequence: 'Todos os blocos desta semana desaparecem. Se já '
-          'estiver publicada, os alunos deixam de ver treino livre nesta '
-          'semana. Podes voltar a gerá-la a partir da semana anterior.',
-      confirmLabel: 'Eliminar semana',
+      ref,
+      kind: CatalogueKind.freeTrainingWeek,
+      id: weekId,
+      name: 'a grelha desta semana',
     );
-    if (!confirmed || !mounted) return;
-
-    try {
-      await ref.read(freeTrainingRepositoryProvider).deleteSchedule(weekId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Grelha eliminada.')),
-      );
-    } on ScheduleHasBookingsException catch (e) {
-      // Nada foi apagado — a verificação corre antes da escrita, de
-      // propósito: uma grelha meio apagada é pior do que qualquer um
-      // dos dois estados inteiros.
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.slotsWithBookings == 1
-                ? 'Não dá: 1 bloco tem alunos inscritos. Avisa-os e '
-                    'cancela as reservas primeiro.'
-                : 'Não dá: ${e.slotsWithBookings} blocos têm alunos '
-                    'inscritos. Avisa-os e cancela as reservas primeiro.',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(userFacingError(e,
-              fallback: 'Não foi possível eliminar a grelha.')),
-        ),
-      );
-    }
   }
 
   Future<void> _suggest() async {
@@ -591,41 +542,24 @@ class _EditSlotDialogState extends State<_EditSlotDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Hora de início'),
-            trailing: Text(_start.format(context)),
-            onTap: () async {
-              final picked =
-                  await showTimePicker(context: context, initialTime: _start);
-              if (picked != null) setState(() => _start = picked);
-            },
+          // A mesma peça do formulário de aulas: atalhos para as
+          // durações do costume, a duração à vista, e o aviso quando as
+          // horas estão ao contrário.
+          TimeRangeField(
+            compact: true,
+            start: _start,
+            end: _end,
+            onChanged: (start, end) => setState(() {
+              _start = start;
+              _end = end;
+            }),
           ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Hora de fim'),
-            trailing: Text(_end.format(context)),
-            onTap: () async {
-              final picked =
-                  await showTimePicker(context: context, initialTime: _end);
-              if (picked != null) setState(() => _end = picked);
-            },
-          ),
+          const SizedBox(height: 8),
           TextField(
             controller: _capacityController,
             decoration: const InputDecoration(labelText: 'Capacidade'),
             keyboardType: TextInputType.number,
           ),
-          if (!endsAfterStart(_start, _end)) ...[
-            const SizedBox(height: 8),
-            // Botão desativado sem dizer porquê é o que faz alguém
-            // perguntar "porque não consigo gravar?".
-            Text(
-              'A hora de fim tem de ser depois da de início.',
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.error, fontSize: 12),
-            ),
-          ],
         ],
       ),
       actions: [
@@ -715,25 +649,14 @@ class _AddSlotBlockDialogState extends ConsumerState<_AddSlotBlockDialog> {
                   .toList(),
             ),
             const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Hora de início'),
-              trailing: Text(_start.format(context)),
-              onTap: () async {
-                final picked =
-                    await showTimePicker(context: context, initialTime: _start);
-                if (picked != null) setState(() => _start = picked);
-              },
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Hora de fim'),
-              trailing: Text(_end.format(context)),
-              onTap: () async {
-                final picked =
-                    await showTimePicker(context: context, initialTime: _end);
-                if (picked != null) setState(() => _end = picked);
-              },
+            TimeRangeField(
+              compact: true,
+              start: _start,
+              end: _end,
+              onChanged: (start, end) => setState(() {
+                _start = start;
+                _end = end;
+              }),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -746,14 +669,6 @@ class _AddSlotBlockDialogState extends ConsumerState<_AddSlotBlockDialog> {
             // semana. Um bloco de treino livre é sempre do serviço de
             // treino livre do estúdio; não há escolha nenhuma para
             // fazer, e oferecê-la só criava a hipótese de a errar.
-            if (!endsAfterStart(_start, _end)) ...[
-              const SizedBox(height: 8),
-              Text(
-                'A hora de fim tem de ser depois da de início.',
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.error, fontSize: 12),
-              ),
-            ],
           ],
         ),
       ),

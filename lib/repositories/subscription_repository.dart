@@ -61,4 +61,16 @@ abstract class SubscriptionRepository {
   /// a mesma regra que já bloqueava a marcação, aplicada agora à
   /// pesquisa em vez de só ao bloquear depois de escolhido.
   Stream<Set<String>> watchEligibleMemberIds(String serviceId);
+
+  /// Os membros com subscrição ativa a QUALQUER um destes serviços.
+  ///
+  /// É como se define "os alunos deste instrutor": os que contrataram
+  /// algum dos serviços que ele leciona (`staff.serviceIds`). Não há
+  /// outra relação no domínio — um aluno não é atribuído a um
+  /// instrutor, contrata um serviço.
+  ///
+  /// Uma query só, com `array-contains-any` (máximo 30 valores, que é
+  /// muito mais serviços do que um estúdio tem). Uma por serviço eram
+  /// N listeners para responder à mesma pergunta.
+  Stream<Set<String>> watchEligibleMemberIdsForServices(Set<String> serviceIds);
 }

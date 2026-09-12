@@ -79,8 +79,7 @@ class _AddPlanEntryScreenState extends ConsumerState<AddPlanEntryScreen> {
                     return Card(
                       child: ListTile(
                         title: Text(exercise.name),
-                        subtitle:
-                            Text('Grupo muscular: ${exercise.muscleGroup}'),
+                        subtitle: Text('Categoria: ${exercise.category}'),
                         trailing: IconButton(
                           tooltip: 'Adicionar ao plano',
                           icon: const Icon(Icons.add_circle_outline),

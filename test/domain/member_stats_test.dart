@@ -10,19 +10,19 @@ const _exercises = {
     id: 'ex_supino',
     name: 'Supino plano',
     description: '',
-    muscleGroup: 'Peito',
+    category: 'Peito',
   ),
   'ex_agachamento': Exercise(
     id: 'ex_agachamento',
     name: 'Agachamento',
     description: '',
-    muscleGroup: 'Pernas',
+    category: 'Pernas',
   ),
   'ex_prancha': Exercise(
     id: 'ex_prancha',
     name: 'Prancha',
     description: '',
-    muscleGroup: 'Core',
+    category: 'Core',
   ),
 };
 

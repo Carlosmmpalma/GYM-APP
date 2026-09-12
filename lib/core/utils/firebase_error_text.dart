@@ -36,6 +36,14 @@ String? describeFirebaseError(Object error) {
     'permission-denied' =>
       'Não tens permissão para ver ou fazer isto. Se achas que devias '
           'ter, fala com o estúdio.',
+    // Contenção, não recusa. `createBooking` devolve isto quando muita
+    // gente marca a MESMA aula ao mesmo tempo e a transação desiste — a
+    // aula pode ter lugares, e a pessoa tem de saber que vale a pena
+    // tocar outra vez. A mensagem do servidor já o diz; repeti-la é
+    // melhor do que inventar uma frase por cima.
+    'aborted' when _isReadable(_messageOf(error)) => _messageOf(error)!,
+    'aborted' =>
+      'Está muita gente a fazer isto ao mesmo tempo. Tenta outra vez.',
     'unauthenticated' => 'A tua sessão expirou. Entra outra vez.',
     'not-found' => 'Isto já não existe — pode ter sido apagado entretanto.',
 

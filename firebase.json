@@ -45,7 +45,8 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "**/*.symbols"
     ],
     "rewrites": [
       {
@@ -73,7 +74,7 @@
         ]
       },
       {
-        "source": "/main.dart.js",
+        "source": "/@(main.dart.js|main.dart.wasm|main.dart.mjs)",
         "headers": [
           {
             "key": "Cache-Control",

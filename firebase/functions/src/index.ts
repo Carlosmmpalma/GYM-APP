@@ -54,6 +54,7 @@ export { createStaff } from './createStaff';
 // Fase 3 — Planos, serviços e subscriptions.
 export { createSubscription } from './createSubscription';
 export { deleteCatalogueEntry } from './deleteCatalogueEntry';
+export { resizeAvatar, clearAvatarOnDelete } from './resizeAvatar';
 
 // Fase 4 — Usage tracking e limite semanal. createBooking/cancelBooking
 // substituem as transações client-side da Fase 2 (ver nota de
@@ -82,6 +83,14 @@ export { removeMembersFromOccurrence } from './removeMembersFromOccurrence';
 export { cancelOccurrenceForStudio } from './cancelOccurrenceForStudio';
 export { deactivateInstructor } from './deactivateInstructor';
 export { rescheduleBooking } from './rescheduleBooking';
+
+// Varredura de funcionalidades — mudar a hora de uma aula era uma
+// escrita direta do cliente que só tocava no documento da aula. As
+// marcações guardam uma cópia da data e a semana em que foram contadas,
+// e o limite semanal vive num documento por semana: mover uma aula para
+// outra semana deixava a utilização na semana errada e devolvia ao aluno
+// a semana de destino inteira.
+export { updateOccurrenceSchedule } from './updateOccurrenceSchedule';
 export { sendNotification } from './sendNotification';
 
 // Pedido pelo Carlo depois de testar "Criar utilizador" — dados
@@ -129,6 +138,12 @@ export { updateStaffRoles } from './updateStaffRoles';
 // tirada na criação da subscrição e nunca mais atualizada. Ver
 // `syncPlanSubscriptions.ts`.
 export { syncPlanSubscriptions } from './syncPlanSubscriptions';
+
+// Preparação para as lojas — a informação pública do estúdio (morada,
+// contactos, horário, política de privacidade), que alimenta a vitrina
+// que a app mostra a quem ainda não tem conta. Vive num caminho que se
+// lê sem sessão, e por isso a escrita passa por aqui e não pelo cliente.
+export { updateStudioInfo } from './updateStudioInfo';
 
 // Fase 11 — lista de espera. A app impõe capacidade por desenho, logo
 // aulas cheias são o normal; sem fila, um cancelamento deixava um lugar

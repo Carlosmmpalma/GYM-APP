@@ -9,17 +9,6 @@ import '../../domain/entities/exercise.dart';
 import '../../core/theme/app_colors.dart';
 import '../widgets/design_system.dart';
 
-const _muscleGroups = [
-  'Pernas',
-  'Costas',
-  'Peito',
-  'Ombros',
-  'Braços',
-  'Core',
-  'Full body',
-  'Hyrox',
-];
-
 /// Fase 8 (UC15 fechado) — "Novo exercício"/editar: nome, descrição,
 /// grupo muscular, vídeo demonstrativo (opcional). O upload em si fica
 /// isolado em `StorageRepository` (Platform Foundation §19) — este
@@ -39,8 +28,11 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
       TextEditingController(text: widget.exercise?.name ?? '');
   late final _descriptionController =
       TextEditingController(text: widget.exercise?.description ?? '');
-  late String _muscleGroup =
-      widget.exercise?.muscleGroup ?? _muscleGroups.first;
+
+  /// `null` = ainda não escolhida. Começa no que o exercício já tinha.
+  late String? _category = widget.exercise?.category.trim().isEmpty ?? true
+      ? null
+      : widget.exercise!.category;
 
   bool _saving = false;
   bool _uploadingVideo = false;
@@ -63,6 +55,13 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    // O `DropdownButtonFormField` não faz parte do `Form`, por isso a
+    // validação acima não o cobre. Sem isto, gravar sem escolher
+    // rebentava num `null!`.
+    if (_category == null) {
+      setState(() => _error = 'Escolhe uma categoria para este exercício.');
+      return;
+    }
 
     setState(() {
       _saving = true;
@@ -75,14 +74,14 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
           exerciseId: widget.exercise!.id,
           name: _nameController.text.trim(),
           description: _descriptionController.text.trim(),
-          muscleGroup: _muscleGroup,
+          category: _category!,
         );
         await _uploadPendingVideo(widget.exercise!.id);
       } else {
         final exerciseId = await repository.createExercise(
           name: _nameController.text.trim(),
           description: _descriptionController.text.trim(),
-          muscleGroup: _muscleGroup,
+          category: _category!,
         );
         // O exercício já existe: agora sim o vídeo tem onde ficar.
         await _uploadPendingVideo(exerciseId);
@@ -221,13 +220,9 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
                 maxLines: 3,
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _muscleGroup,
-                decoration: const InputDecoration(labelText: 'Grupo muscular'),
-                items: _muscleGroups
-                    .map((g) => DropdownMenuItem(value: g, child: Text(g)))
-                    .toList(),
-                onChanged: (v) => setState(() => _muscleGroup = v!),
+              _CategoryField(
+                selected: _category,
+                onChanged: (value) => setState(() => _category = value),
               ),
               const SizedBox(height: 16),
               // Fase 11 — escolher o vídeo já não exige que o exercício
@@ -319,6 +314,176 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// O seletor de categoria.
+///
+/// Era um dropdown com oito valores escritos no código. Um estúdio que
+/// quisesse "Mobilidade" ou "Aquecimento" tinha de pedir a um
+/// programador — o mesmo erro que `Service`, `Plan` e `Modality` já
+/// evitavam desde o início.
+///
+/// Dois casos que a lista fixa nunca teve de resolver:
+///
+///  * **Não há categorias nenhumas.** Em vez de um dropdown vazio (que
+///    não explica nada), diz onde se criam e deixa criar a primeira
+///    sem sair do formulário.
+///  * **A categoria deste exercício já não está na lista** — foi
+///    desativada, ou o exercício é anterior à gestão de categorias.
+///    Aparece na mesma, marcada, para não desaparecer em silêncio ao
+///    gravar.
+class _CategoryField extends ConsumerWidget {
+  const _CategoryField({required this.selected, required this.onChanged});
+
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final categoriesAsync = ref.watch(exerciseCategoriesProvider);
+    final categories = categoriesAsync.valueOrNull ?? const [];
+
+    final names = [
+      for (final category in categories)
+        if (category.active) category.name,
+    ];
+    // A que já está escolhida entra sempre, mesmo que já não seja
+    // oferecida: gravar um exercício não pode ser a forma de lhe
+    // apagar a categoria sem ninguém pedir.
+    if (selected != null && !names.contains(selected)) {
+      names.insert(0, selected!);
+    }
+
+    if (categoriesAsync.isLoading && names.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: LinearProgressIndicator(),
+      );
+    }
+
+    if (names.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Ainda não há categorias para arrumar os exercícios '
+                '(Pernas, Costas, Mobilidade — o que fizer sentido aqui).',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: () => _createInline(context, ref),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Criar a primeira'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<String>(
+            isExpanded: true,
+            initialValue: selected,
+            decoration: const InputDecoration(labelText: 'Categoria'),
+            items: names
+                .map((name) => DropdownMenuItem(value: name, child: Text(name)))
+                .toList(),
+            onChanged: onChanged,
+          ),
+        ),
+        IconButton(
+          tooltip: 'Nova categoria',
+          icon: const Icon(Icons.add),
+          onPressed: () => _createInline(context, ref),
+        ),
+      ],
+    );
+  }
+
+  /// Criar sem sair daqui.
+  ///
+  /// Obrigar a abandonar o exercício a meio, ir a outro ecrã e voltar é
+  /// a diferença entre a lista ser gerível e ninguém lhe mexer.
+  Future<void> _createInline(BuildContext context, WidgetRef ref) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => const _NewCategoryDialog(),
+    );
+    if (name == null || name.trim().isEmpty) return;
+
+    try {
+      await ref
+          .read(exerciseCategoryRepositoryProvider)
+          .createCategory(name: name);
+      onChanged(name.trim());
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userFacingError(e,
+              fallback: 'Não foi possível criar a categoria.')),
+        ),
+      );
+    }
+  }
+}
+
+class _NewCategoryDialog extends StatefulWidget {
+  const _NewCategoryDialog();
+
+  @override
+  State<_NewCategoryDialog> createState() => _NewCategoryDialogState();
+}
+
+class _NewCategoryDialogState extends State<_NewCategoryDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nova categoria'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Nome',
+          hintText: 'Pernas, Mobilidade, Hyrox…',
+        ),
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (value) => value.trim().isEmpty
+            ? null
+            : Navigator.of(context).pop(value.trim()),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _controller.text.trim().isEmpty
+              ? null
+              : () => Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Criar'),
+        ),
+      ],
     );
   }
 }

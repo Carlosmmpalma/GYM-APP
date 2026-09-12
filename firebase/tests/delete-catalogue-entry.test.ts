@@ -110,6 +110,8 @@ beforeEach(async () => {
     'sessionSeries',
     'sessionOccurrences',
     'exercises',
+    'exerciseCategories',
+    'freeTrainingSchedules',
     'members',
   ]) {
     const snap = await db.collection(`tenants/${TENANT_ID}/${collection}`).get();
@@ -482,6 +484,112 @@ describe('deleteCatalogueEntry', () => {
         'a série que a gera (voltaria a ser criada esta noite)',
       );
     }
+  });
+
+  it('elimina uma categoria de exercícios que ninguém usa', async () => {
+    await db.doc(`tenants/${TENANT_ID}/exerciseCategories/cat_orfa`).set({
+      name: 'Categoria a mais',
+      active: true,
+    });
+
+    await del(managerFunctions, 'exerciseCategory', 'cat_orfa');
+
+    expect(
+      (await db.doc(`tenants/${TENANT_ID}/exerciseCategories/cat_orfa`).get()).exists,
+    ).toBe(false);
+  });
+
+  it('recusa uma categoria com exercícios, contando pelo NOME', async () => {
+    // Os exercícios guardam o texto da categoria, não o id — para não
+    // custarem uma leitura extra nos ecrãs do aluno. A contagem tem de
+    // seguir a mesma regra.
+    await db.doc(`tenants/${TENANT_ID}/exerciseCategories/cat_pernas`).set({
+      name: 'Pernas',
+      active: true,
+    });
+    await db.doc(`tenants/${TENANT_ID}/exercises/ex_agachamento`).set({
+      name: 'Agachamento',
+      description: '',
+      category: 'Pernas',
+    });
+
+    try {
+      await del(managerFunctions, 'exerciseCategory', 'cat_pernas');
+      expect.unreachable('devia ter recusado');
+    } catch (error) {
+      const details = (error as { details?: { blockers?: string[] } }).details;
+      expect(details?.blockers).toContain('1 exercício(s) nesta categoria');
+    }
+  });
+
+  it('o Instrutor também gere as categorias', async () => {
+    // Quem cria exercícios é quem precisa de os arrumar. Obrigar a
+    // pedir ao Gestor recriava o bloqueio que isto veio resolver.
+    await db.doc(`tenants/${TENANT_ID}/exerciseCategories/cat_do_instrutor`).set({
+      name: 'Criada pelo instrutor',
+      active: true,
+    });
+
+    await del(instructorFunctions, 'exerciseCategory', 'cat_do_instrutor');
+
+    expect(
+      (await db.doc(`tenants/${TENANT_ID}/exerciseCategories/cat_do_instrutor`).get())
+        .exists,
+    ).toBe(false);
+  });
+
+  it('elimina a grelha de uma semana, com blocos e marcações', async () => {
+    // A primeira versão disto era escrita direta do cliente e NUNCA
+    // funcionou: `freeTrainingSchedules` é `write: false` nas Rules, o
+    // batch falhava no documento-pai e não apagava nada.
+    const week = `tenants/${TENANT_ID}/freeTrainingSchedules/2026-08-24`;
+    await db.doc(week).set({ status: 'published' });
+    await db.doc(`${week}/slots/slot_1`).set({
+      serviceId: 'svc',
+      capacity: 10,
+      activeBookingCount: 0,
+    });
+    // Marcação cancelada: `activeBookingCount` é 0 mas o documento
+    // fica. Apagar só o pai deixava-o órfão — e o id da semana é
+    // determinístico, por isso voltava a aparecer se a semana fosse
+    // gerada outra vez.
+    await db
+      .doc(`${week}/slots/slot_1/bookings/aluno_1`)
+      .set({ memberId: 'aluno_1', status: 'cancelled' });
+
+    await del(managerFunctions, 'freeTrainingWeek', '2026-08-24');
+
+    expect((await db.doc(week).get()).exists).toBe(false);
+    const slots = await db.collection(`${week}/slots`).get();
+    const bookings = await db.collection(`${week}/slots/slot_1/bookings`).get();
+    expect(slots.empty).toBe(true);
+    expect(bookings.empty).toBe(true);
+  });
+
+  it('recusa uma semana com blocos ocupados', async () => {
+    const week = `tenants/${TENANT_ID}/freeTrainingSchedules/2026-09-07`;
+    await db.doc(week).set({ status: 'published' });
+    await db.doc(`${week}/slots/slot_cheio`).set({
+      serviceId: 'svc',
+      capacity: 10,
+      activeBookingCount: 2,
+    });
+    await db.doc(`${week}/slots/slot_vazio`).set({
+      serviceId: 'svc',
+      capacity: 10,
+      activeBookingCount: 0,
+    });
+
+    try {
+      await del(managerFunctions, 'freeTrainingWeek', '2026-09-07');
+      expect.unreachable('devia ter recusado');
+    } catch (error) {
+      const details = (error as { details?: { blockers?: string[] } }).details;
+      expect(details?.blockers).toContain('1 bloco(s) com alunos inscritos');
+    }
+
+    // E nada foi apagado — nem o bloco vazio.
+    expect((await db.collection(`${week}/slots`).get()).size).toBe(2);
   });
 
   it('um instrutor não pode eliminar nada', async () => {

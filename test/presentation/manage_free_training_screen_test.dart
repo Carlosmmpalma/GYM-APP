@@ -16,6 +16,8 @@ import 'package:gym_saas/domain/entities/service.dart';
 import 'package:gym_saas/presentation/screens/manage_free_training_screen.dart';
 import 'package:gym_saas/repositories/free_training_repository.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:gym_saas/application/providers/plan_providers.dart';
+import 'package:gym_saas/repositories/catalogue_admin_repository.dart';
 
 const _tenantId = 'tenant_test';
 
@@ -29,6 +31,18 @@ const _tenantId = 'tenant_test';
 /// primeira vez, nunca as mutações seguintes (ao contrário de um
 /// `FakeFirebaseFirestore` real, cujo `snapshots()` já é reativo por
 /// natureza).
+class _FakeCatalogueAdminRepository implements CatalogueAdminRepository {
+  ({CatalogueKind kind, String id})? lastDelete;
+
+  @override
+  Future<void> delete({
+    required CatalogueKind kind,
+    required String id,
+  }) async {
+    lastDelete = (kind: kind, id: id);
+  }
+}
+
 class _FakeFreeTrainingRepository implements FreeTrainingRepository {
   FreeTrainingSchedule? _schedule;
   final List<FreeTrainingSlot> slots = [];
@@ -156,21 +170,6 @@ class _FakeFreeTrainingRepository implements FreeTrainingRepository {
       throw UnimplementedError();
 
   @override
-  Future<void> deleteSchedule(String weekId) async {
-    if (scheduleDeletionBlockedBy != null) {
-      throw ScheduleHasBookingsException(scheduleDeletionBlockedBy!);
-    }
-    deletedScheduleWeekId = weekId;
-    slots.clear();
-    _emitSlots();
-    // O setter já emite para o stream.
-    schedule = null;
-  }
-
-  String? deletedScheduleWeekId;
-  int? scheduleDeletionBlockedBy;
-
-  @override
   Future<int> retargetSlots({
     required String weekId,
     required String serviceId,
@@ -246,7 +245,10 @@ void main() {
   }
 
   Widget buildApp(
-      FakeFirebaseFirestore firestore, _FakeFreeTrainingRepository repository) {
+    FakeFirebaseFirestore firestore,
+    _FakeFreeTrainingRepository repository, {
+    CatalogueAdminRepository? catalogueAdmin,
+  }) {
     return ProviderScope(
       overrides: [
         tenantAppConfigProvider.overrideWithValue(
@@ -254,6 +256,8 @@ void main() {
         ),
         firestoreProvider.overrideWithValue(firestore),
         freeTrainingRepositoryProvider.overrideWithValue(repository),
+        if (catalogueAdmin != null)
+          catalogueAdminRepositoryProvider.overrideWithValue(catalogueAdmin),
       ],
       child: const MaterialApp(home: ManageFreeTrainingScreen()),
     );
@@ -389,8 +393,12 @@ void main() {
     expect(find.text('Ligar ao serviço atual'), findsNothing);
   });
 
-  testWidgets('eliminar a semana pede confirmação e chama o repositório',
-      (tester) async {
+  testWidgets('eliminar a semana passa pela Cloud Function', (tester) async {
+    // A primeira versão disto escrevia direto no Firestore e NUNCA
+    // funcionou: `freeTrainingSchedules` é `write: false` nas Rules, o
+    // batch falhava no documento-pai e não apagava nada. Passou para
+    // `deleteCatalogueEntry`, que também limpa os blocos e as
+    // marcações — que o cliente nunca poderia tocar.
     final firestore = await seedFirestore();
     final repository = _FakeFreeTrainingRepository()
       ..schedule = FreeTrainingSchedule(
@@ -398,8 +406,11 @@ void main() {
         weekStart: DateTime.now(),
         status: FreeTrainingScheduleStatus.draft,
       );
+    final catalogue = _FakeCatalogueAdminRepository();
 
-    await tester.pumpWidget(buildApp(firestore, repository));
+    await tester.pumpWidget(
+      buildApp(firestore, repository, catalogueAdmin: catalogue),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(weekMenu());
@@ -407,40 +418,12 @@ void main() {
     await tester.tap(find.text('Eliminar esta semana'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Eliminar a grelha desta semana?'), findsOneWidget);
-    expect(repository.deletedScheduleWeekId, isNull);
+    expect(catalogue.lastDelete, isNull, reason: 'confirma primeiro');
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Eliminar semana'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
     await tester.pumpAndSettle();
 
-    expect(repository.deletedScheduleWeekId, isNotNull);
-  });
-
-  testWidgets('com alunos inscritos, recusa e diz quantos blocos',
-      (tester) async {
-    // A verificação corre ANTES de apagar seja o que for: uma grelha
-    // meio apagada é pior do que qualquer um dos dois estados inteiros.
-    final firestore = await seedFirestore();
-    final repository = _FakeFreeTrainingRepository()
-      ..scheduleDeletionBlockedBy = 3
-      ..schedule = FreeTrainingSchedule(
-        weekId: 'week_1',
-        weekStart: DateTime.now(),
-        status: FreeTrainingScheduleStatus.published,
-      );
-
-    await tester.pumpWidget(buildApp(firestore, repository));
-    await tester.pumpAndSettle();
-
-    await tester.tap(weekMenu());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Eliminar esta semana'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Eliminar semana'));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('3 blocos têm alunos'), findsOneWidget);
-    expect(repository.deletedScheduleWeekId, isNull);
+    expect(catalogue.lastDelete?.kind, CatalogueKind.freeTrainingWeek);
   });
 
   testWidgets('numa semana publicada, um bloco VAZIO pode ser removido',

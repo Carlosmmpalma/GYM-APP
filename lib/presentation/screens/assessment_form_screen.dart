@@ -231,6 +231,7 @@ class _AssessmentFormScreenState extends ConsumerState<AssessmentFormScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
+        isExpanded: true,
         initialValue: value,
         decoration: InputDecoration(labelText: label),
         items: _forcaOptions

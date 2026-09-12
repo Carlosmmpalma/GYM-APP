@@ -16,6 +16,8 @@ import '../widgets/status_pills.dart';
 import '../widgets/personal_data_fields.dart';
 import '../widgets/manager_account_actions.dart';
 import 'assign_subscription_screen.dart';
+import '../widgets/avatar_upload_button.dart';
+import '../widgets/person_avatar.dart';
 
 /// Um serviço ao qual uma subscription dá acesso, já resolvido (id +
 /// nome) — usado só para o picker de "Recalcular utilização" abaixo
@@ -66,12 +68,31 @@ class MemberDetailScreen extends ConsumerWidget {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    'Nº de sócio: ${currentMember.memberNumber}',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  PersonAvatar(
+                    name: currentMember.name,
+                    photoUrl: currentMember.photoUrl,
+                    size: 48,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Nº de sócio: ${currentMember.memberNumber}',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        // O Gestor põe a foto por quem não a põe
+                        // sozinho — que vai ser a maior parte das
+                        // pessoas, sobretudo no primeiro mês.
+                        AvatarUploadButton(
+                          userId: currentMember.uid,
+                          hasPhoto: currentMember.photoPath != null,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

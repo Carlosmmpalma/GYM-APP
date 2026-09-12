@@ -81,6 +81,10 @@ async function createOccurrence(id: string, hours: number) {
       capacity: 10,
       status: 'scheduled',
       activeBookingCount: 1,
+      // Como a app o escreve — ver `generateRecurringOccurrences.ts`. O
+      // filtro dos lembretes é `reminderSentAt == null`, e o Firestore
+      // não encontra `== null` onde o campo não existe.
+      reminderSentAt: null,
     });
   await adminFirestore
     .doc(`tenants/${TENANT_ID}/sessionOccurrences/${id}/bookings/${MEMBER}`)
@@ -222,4 +226,35 @@ describe('Quem pode forçar o envio', () => {
       httpsCallable(memberFns, 'sendSessionRemindersNow')({}),
     ).rejects.toThrow();
   }, 30_000);
+
+});
+
+describe('A migração que esta otimização obriga', () => {
+  it('uma sessão SEM o campo `reminderSentAt` não é avisada', async () => {
+    // Não é um capricho do Firestore a castigar-nos: `== null` só
+    // encontra documentos onde o campo EXISTE e está a null. As
+    // ocorrências criadas antes desta otimização não o têm, e ficam
+    // invisíveis para a query — sem erro nenhum, só silêncio.
+    //
+    // Este teste existe para que isso seja uma decisão registada e não
+    // uma descoberta. Quem trata delas é
+    // `firebase/scripts/backfill-reminder-field.mjs`, que tem de correr
+    // uma vez depois do deploy.
+    const start = hoursFromNow(2);
+    await adminFirestore
+      .doc(`tenants/${TENANT_ID}/sessionOccurrences/occ_sem_campo`)
+      .set({
+        serviceId: SERVICE_ID,
+        startAt: Timestamp.fromDate(start),
+        endAt: Timestamp.fromDate(new Date(start.getTime() + 3600_000)),
+        capacity: 10,
+        status: 'scheduled',
+        activeBookingCount: 1,
+        // sem `reminderSentAt`
+      });
+
+    await httpsCallable(managerFns, 'sendSessionRemindersNow')({});
+
+    expect(await reminderSentAt('occ_sem_campo')).toBeNull();
+  });
 });
