@@ -34,3 +34,17 @@ firebase/functions/lib/
 # Dão acesso TOTAL ao projeto e não expiram — nunca no repositório.
 *firebase-adminsdk*.json
 service-account*.json
+# A chave de assinatura Android NUNCA entra no repositório.
+# Quem a tiver consegue publicar atualizações em nome do estúdio, e a
+# Google não a substitui se for perdida ou exposta.
+android/key.properties
+*.jks
+*.keystore
+
+# Segredos de publicação iOS. O `GoogleService-Info.plist` NÃO entra
+# aqui: é config de cliente, vai embebida no binário de qualquer
+# forma, e o equivalente Android (`google-services.json`) já está
+# versionado. Ignorá-lo só partia a build de quem clonasse.
+*.p8
+*.p12
+*.mobileprovision

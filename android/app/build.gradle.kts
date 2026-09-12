@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -34,11 +36,43 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        // A chave de assinatura vive FORA do repositório, em
+        // `android/key.properties`, e esse ficheiro está no
+        // `.gitignore`. Quem tiver a chave consegue publicar
+        // atualizações da app em nome do estúdio — não é um segredo
+        // como outro qualquer, é O segredo, e a Google não a substitui
+        // se for perdida ou exposta.
+        //
+        // Sem o ficheiro, a build de release continua a funcionar com a
+        // chave de debug (que é o que permite `flutter run --release`
+        // numa máquina qualquer). O que NÃO funciona é publicar: a Play
+        // Console recusa um pacote assinado em debug. É por isso que a
+        // verificação de `storeFile` existe aqui em baixo em vez de
+        // rebentar o build.
+        create("release") {
+            val propsFile = rootProject.file("key.properties")
+            if (propsFile.exists()) {
+                val props = Properties()
+                propsFile.inputStream().use { entrada -> props.load(entrada) }
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+                val caminho = props.getProperty("storeFile")
+                if (caminho != null) storeFile = file(caminho)
+                storePassword = props.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Se a chave de publicação não estiver presente, cai na de
+            // debug em vez de falhar — ver o comentário acima.
+            signingConfig = if (rootProject.file("key.properties").exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
