@@ -66,6 +66,23 @@ class FirebaseTenantRepository implements TenantRepository {
     }, SetOptions(merge: true));
   }
 
+  @override
+  Future<int> getBookingHorizonDays(String tenantId) async {
+    final snapshot = await _bookingPolicyDoc(tenantId).get();
+    if (!snapshot.exists) return 0;
+    return (snapshot.data()?['bookingHorizonDays'] as num? ?? 0).toInt();
+  }
+
+  @override
+  Future<void> setBookingHorizonDays({
+    required String tenantId,
+    required int days,
+  }) async {
+    await _bookingPolicyDoc(tenantId).set({
+      'bookingHorizonDays': days,
+    }, SetOptions(merge: true));
+  }
+
   DocumentReference<Map<String, dynamic>> _notificationPolicyDoc(
     String tenantId,
   ) =>

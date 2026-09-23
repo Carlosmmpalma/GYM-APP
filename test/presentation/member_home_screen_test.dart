@@ -169,7 +169,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('O meu plano'), findsOneWidget);
-    expect(find.text('Marcar treino'), findsOneWidget);
+    // O atalho passou a chamar-se "Aulas", igual ao separador para
+    // onde leva. Antes um dizia "Marcar treino" e o outro "Marcar", e
+    // o ecrã das aulas era o único sítio onde "treino" queria dizer
+    // "aula" — ao lado de um separador "Treino livre".
+    expect(find.text('Aulas'), findsOneWidget);
     expect(find.text('Avaliações'), findsOneWidget);
     expect(find.text('Minhas marcações'), findsOneWidget);
   });
@@ -183,7 +187,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Marcar treino'));
+    await tester.tap(find.text('Aulas'));
     expect(openedTab, 1);
 
     await tester.tap(find.text('Minhas marcações'));

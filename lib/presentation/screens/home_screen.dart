@@ -168,9 +168,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildMemberShell(AppUser appUser) {
+    // Os separadores são LUGARES, não ações.
+    //
+    // Eram "Marcar" e "Livre", com os títulos "Marcar treino" e "Treino
+    // livre". Três problemas de uma vez: "Marcar" não dizia o quê, o
+    // treino livre também é marcar, e "Marcar" ficava a três letras de
+    // "Marcações" — duas coisas opostas (fazer e consultar) com nomes
+    // quase iguais, a dois separadores de distância.
+    //
+    // Pior ainda nos títulos: "Marcar TREINO" era o ecrã das aulas, ao
+    // lado de "TREINO livre". A mesma palavra para as duas coisas que
+    // era preciso distinguir.
+    //
+    // Agora cada separador diz o que lá está: aulas, treino livre, e o
+    // que já marcaste. Marcar é o que se FAZ nos dois primeiros, não o
+    // nome de nenhum.
     const titles = [
       'Início',
-      'Marcar treino',
+      'Aulas',
       'Treino livre',
       'Minhas marcações',
     ];
@@ -248,13 +263,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             icon: Icon(Icons.home_outlined),
             label: 'Início',
           ),
+          // Os ícones também estavam trocados: o haltere — o símbolo de
+          // treinar sozinho — estava nas aulas de grupo, e uma figura de
+          // meditação no treino livre.
           NavigationDestination(
-            icon: Icon(Icons.fitness_center_outlined),
-            label: 'Marcar',
+            icon: Icon(Icons.groups_outlined),
+            label: 'Aulas',
           ),
           NavigationDestination(
-            icon: Icon(Icons.self_improvement_outlined),
-            label: 'Livre',
+            icon: Icon(Icons.fitness_center_outlined),
+            label: 'Treino livre',
           ),
           NavigationDestination(
             icon: Icon(Icons.event_available_outlined),

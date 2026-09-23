@@ -41,6 +41,20 @@ class _FreeTrainingScreenState extends ConsumerState<FreeTrainingScreen> {
     final weekRange = isoWeekRange(_weekAnchor);
     final memberId = ref.watch(currentAppUserProvider).valueOrNull?.uid;
     final scheduleAsync = ref.watch(freeTrainingScheduleProvider(weekId));
+    // A mesma janela do ecrã de marcar aulas. `0` = sem limite.
+    final horizonteDias =
+        ref.watch(bookingHorizonDaysProvider).valueOrNull ?? 0;
+    final limite = horizonteDias > 0
+        ? DateTime.now().add(Duration(days: horizonteDias))
+        : null;
+
+    // Navegar para uma semana inteiramente fora do horizonte levava a
+    // uma grelha cheia de blocos que o servidor ia recusar. A seta
+    // desliga-se quando a semana seguinte já não tem nada marcável.
+    final proximaSemana = isoWeekRange(
+      _weekAnchor.add(const Duration(days: 7)),
+    );
+    final podeAvancar = limite == null || !proximaSemana.start.isAfter(limite);
 
     return Column(
       children: [
@@ -49,8 +63,10 @@ class _FreeTrainingScreenState extends ConsumerState<FreeTrainingScreen> {
           fim: weekRange.end,
           onAnterior: () => setState(() =>
               _weekAnchor = _weekAnchor.subtract(const Duration(days: 7))),
-          onSeguinte: () => setState(
-              () => _weekAnchor = _weekAnchor.add(const Duration(days: 7))),
+          onSeguinte: podeAvancar
+              ? () => setState(
+                  () => _weekAnchor = _weekAnchor.add(const Duration(days: 7)))
+              : null,
         ),
         Expanded(
           child: scheduleAsync.when(

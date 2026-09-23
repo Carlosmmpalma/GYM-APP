@@ -10,10 +10,12 @@ import '../../application/providers/tenant_context_providers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/iso_week.dart';
 import '../../domain/entities/booking.dart';
+import '../../domain/entities/service.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/subscription.dart';
 import '../../repositories/waitlist_repository.dart';
 import '../widgets/design_system.dart';
+import '../widgets/weekly_allowance.dart';
 
 /// UC05/06/07 — "Marcar treino". Até à Fase 5 mostrava só as
 /// ocorrências de UM serviço ("o primeiro ativo" — `primaryServiceProvider`,
@@ -83,6 +85,12 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
     final servicesAsync = ref.watch(servicesProvider);
     final staffAsync = ref.watch(staffProvider);
     final modalitiesAsync = ref.watch(modalitiesProvider);
+    // `0` enquanto carrega, que é "sem limite" — mostrar tudo durante
+    // meio segundo e depois esconder metade é pior do que esperar, mas
+    // esta definição lê-se uma vez por sessão e vem da cache local
+    // quase sempre.
+    final horizonteDias =
+        ref.watch(bookingHorizonDaysProvider).valueOrNull ?? 0;
 
     return appUserAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -102,8 +110,15 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
             // aqui, com as vagas todas livres e um botão "Marcar"
             // desativado sem explicação nenhuma. Quem tinha marcação
             // nelas já foi notificado; para os outros, é ruído.
+            // Fora do horizonte não aparece. O servidor recusa na
+            // mesma (ver `createBooking.ts`) — esconder é o que evita
+            // que alguém tente; recusar é o que garante.
+            final limite = horizonteDias > 0
+                ? DateTime.now().add(Duration(days: horizonteDias))
+                : null;
             final occurrences = upcoming
                 .where((o) => o.status == SessionOccurrenceStatus.scheduled)
+                .where((o) => limite == null || !o.startAt.isAfter(limite))
                 .toList();
 
             // `eligible` é sempre não-nulo aqui: o `data` só corre
@@ -133,8 +148,11 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
                     'ginásio publicar o horário, aparecem aqui.',
               );
             }
-            final servicesById = {
-              for (final s in servicesAsync.valueOrNull ?? const []) s.id: s,
+            // Tipado de propósito: sem o `<Service>` o mapa inferia
+            // `Map<dynamic, dynamic>` a partir da lista vazia.
+            final servicesById = <String, Service>{
+              for (final s in servicesAsync.valueOrNull ?? const <Service>[])
+                s.id: s,
             };
             final staffByUid = {
               for (final s in staffAsync.valueOrNull ?? const []) s.uid: s,
@@ -170,6 +188,16 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
 
             return Column(
               children: [
+                // O que ainda pode marcar esta semana, antes do
+                // horário. O limite já era respeitado, mas só se via
+                // dentro do cartão de cada aula — para o saber, o aluno
+                // tinha de rolar até encontrar uma aula daquele
+                // serviço.
+                WeeklyAllowance(
+                  memberId: appUser.uid,
+                  serviceIds: eligible,
+                  servicesById: servicesById,
+                ),
                 if (tabModalities.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   PillTabs(
@@ -194,8 +222,14 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
                           // +1 pelo rodapé que alarga o horizonte.
+                          // Com um horizonte definido não há mais
+                          // semanas para pedir — o rodapé de "ver mais"
+                          // levaria a uma lista que não cresce.
                           itemCount: rows.length +
-                              (_weeksAhead < maxBookingWeeksAhead ? 1 : 0),
+                              (horizonteDias == 0 &&
+                                      _weeksAhead < maxBookingWeeksAhead
+                                  ? 1
+                                  : 0),
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 8),
                           itemBuilder: (context, index) {

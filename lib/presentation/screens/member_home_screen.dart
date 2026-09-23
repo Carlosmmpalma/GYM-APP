@@ -349,12 +349,12 @@ class _ShortcutGrid extends ConsumerWidget {
       ),
       _ShortcutCard(
         icon: Icons.calendar_month_outlined,
-        label: 'Marcar treino',
+        label: 'Aulas',
         onTap: () => onOpenTab == null
             ? Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('Marcar treino')),
+                    appBar: AppBar(title: const Text('Aulas')),
                     body: const BookTrainingScreen(),
                   ),
                 ),

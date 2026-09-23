@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../application/providers/admin_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/utils/firebase_error_text.dart';
 import '../../domain/entities/studio_info.dart';
+import '../widgets/async_action_button.dart';
 import '../widgets/design_system.dart';
 import '../widgets/unsaved_changes_guard.dart';
 
@@ -51,7 +51,6 @@ class _StudioInfoScreenState extends ConsumerState<StudioInfoScreen> {
     (_) => (days: TextEditingController(), hours: TextEditingController()),
   );
 
-  bool _busy = false;
   bool _loaded = false;
 
   /// O que estava guardado quando o ecrã abriu.
@@ -127,45 +126,31 @@ class _StudioInfoScreenState extends ConsumerState<StudioInfoScreen> {
 
   Future<void> _guardar() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    setState(() => _busy = true);
-    try {
-      await ref.read(studioAdminRepositoryProvider).updateStudioInfo(
-            StudioInfo(
-              address: _address.text.trim(),
-              phone: _phone.text.trim(),
-              email: _email.text.trim(),
-              mapsUrl: _mapsUrl.text.trim(),
-              privacyPolicyUrl: _policyUrl.text.trim(),
-              openingHours: [
-                for (final linha in _hours)
-                  OpeningHours(
-                    days: linha.days.text.trim(),
-                    hours: linha.hours.text.trim(),
-                  ),
-              ],
-            ),
-          );
-      ref.invalidate(studioInfoProvider);
-      if (!mounted) return;
-      // O que está no formulário passa a ser o que está guardado — senão
-      // o ecrã continuava a dizer que havia alterações depois de as ter
-      // gravado.
-      setState(() => _guardado = _noFormulario());
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Informação pública atualizada.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(e, fallback: 'Não foi possível guardar.'),
+    // Sem try/catch nem estado de ocupado: quem trata dos dois é o
+    // `AsyncActionButton`, que desativa enquanto corre e dá o visto no
+    // fim. O erro sobe e ele mostra-o.
+    await ref.read(studioAdminRepositoryProvider).updateStudioInfo(
+          StudioInfo(
+            address: _address.text.trim(),
+            phone: _phone.text.trim(),
+            email: _email.text.trim(),
+            mapsUrl: _mapsUrl.text.trim(),
+            privacyPolicyUrl: _policyUrl.text.trim(),
+            openingHours: [
+              for (final linha in _hours)
+                OpeningHours(
+                  days: linha.days.text.trim(),
+                  hours: linha.hours.text.trim(),
+                ),
+            ],
           ),
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+        );
+    ref.invalidate(studioInfoProvider);
+    if (!mounted) return;
+    // O que está no formulário passa a ser o que está guardado — senão
+    // o ecrã continuava a dizer que havia alterações depois de as ter
+    // gravado.
+    setState(() => _guardado = _noFormulario());
   }
 
   @override
@@ -315,9 +300,15 @@ class _StudioInfoScreenState extends ConsumerState<StudioInfoScreen> {
                     ),
                   ),
                 const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: _busy ? null : _guardar,
-                  child: Text(_busy ? 'A guardar…' : 'Guardar'),
+                // O "A guardar…" e o visto de "guardado" vivem no
+                // botão — ver `AsyncActionButton`. O SnackBar de
+                // "Informação pública atualizada" saiu com eles: aqui o
+                // resultado vê-se no próprio formulário, que fica com o
+                // que foi gravado.
+                AsyncActionButton(
+                  label: 'Guardar',
+                  expand: true,
+                  onPressed: _guardar,
                 ),
               ],
             ),

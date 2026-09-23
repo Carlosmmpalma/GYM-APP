@@ -173,6 +173,9 @@ class _EditOccurrenceDialogState extends State<_EditOccurrenceDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
+        // Síncrono de propósito: só fecha o diálogo com o resultado,
+        // e quem o abriu é que escreve. Um `AsyncActionButton` aqui
+        // seria um indicador de progresso para uma coisa instantânea.
         FilledButton(onPressed: _submit, child: const Text('Guardar')),
       ],
     );

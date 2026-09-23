@@ -5500,6 +5500,241 @@ sítio que não. Entra agora na matriz uma vez por perfil, porque a barra
 flutter test test/presentation/layout_matrix_test.dart
 ```
 
+### Botões que não diziam nada, e avisos a mais
+
+Reportado assim: *"não aparece nada a indicar que está em loading quando
+tocamos num botão, o que até permite tocar no botão mais que uma vez e
+pode criar problemas"*. Mais o aspeto: *"é estranho as mensagens de
+confirmação aparecerem como pop-ups de texto"*.
+
+#### A primeira medição estava errada
+
+Contei 23 ficheiros sem proteção. Procurava `_busy|_submitting|_saving`
+e o `send_notification_screen` usa `_sending`. Refiz: os botões
+principais — marcar aula, login, atribuir plano — **já estavam
+protegidos**, e a maioria do resto passa por diálogos, que fecham ao
+primeiro toque.
+
+Mas ficou um que prova o ponto por inteiro. `start_workout_button`
+chamava `startSession` sem guarda nenhuma: **dois toques criavam dois
+treinos** para a mesma pessoa, e o segundo ficava aberto para sempre
+porque o ecrã só mostra um. E "Terminar" no treino ativo fazia dois
+`pop`, levando o ecrã de baixo com ele.
+
+#### A guarda vive num sítio só
+
+A guarda são três linhas — um `bool`, um `setState` à entrada e outro no
+`finally`. Escrevê-la vinte vezes dá vinte oportunidades de esquecer o
+`finally`, e esquecê-lo deixa o botão **morto para sempre**, com o ecrã
+a parecer bloqueado sem dizer porquê. Há um teste só para esse caso.
+
+`AsyncActionButton` também fecha a janela entre o toque e o `setState`:
+um toque duplo rápido cabe num fotograma, por isso há uma segunda guarda
+dentro do próprio handler.
+
+#### A queixa dos pop-ups levou a uma resposta melhor do que mudar o CSS
+
+Contei **134 SnackBars: 87 erros, 47 confirmações.**
+
+Ia dar-lhes melhor aspeto. Mas a resposta não é embelezar o pop-up — é
+**não o mostrar**. Uma confirmação só é precisa quando o resultado *não
+se vê*; anunciar "Guardado" por cima de um ecrã que já mostra o que foi
+guardado é ruído, e ruído ensina a ignorar os avisos que importam.
+
+Por isso a confirmação foi para **dentro do botão**: a ação acaba, o
+ícone vira um visto durante um segundo e meio, e desaparece. Fica onde o
+dedo tocou.
+
+Os que ficam deixaram de parecer uma faixa do sistema colada por cima da
+app: flutuam, com cantos e o mesmo contorno dos cartões.
+
+#### E uma correção: exagerei no diagnóstico
+
+Disse "59 confirmações, muitas redundantes". Ao lê-las uma a uma, a
+maioria carrega informação que **não** está no ecrã — contagens ("3 de 5
+atribuídos"), avisos ("a pessoa vê a mudança no próximo login"), estados
+invisíveis ("a foto aparece dentro de instantes"). Redundantes a sério
+eram poucas, e essas saíram.
+
+O que encontrei de pior foi outra coisa: **validação mostrada como
+pop-up**. Dizia o que estava mal e desaparecia em quatro segundos —
+enquanto a pessoa ainda olhava para o formulário. As de formulário
+passaram para debaixo do campo errado, e somem quando ela começa a
+corrigir. "Nome e email válido são obrigatórios" virou um erro em cada
+campo, porque uma frase para dois campos obriga a adivinhar qual deles
+é.
+
+#### O que fica por fazer
+
+42 confirmações continuam lá, e a maior parte com razão. Restam umas
+sete "ação recusada" em diálogos e seletores — onde um toast é
+defensável, por não haver campo a que prender a mensagem. Não as mexi
+sem evidência de que estão erradas.
+
+### Separadores que eram verbos
+
+Na mesma conversa: *"será que faz sentido mudar o botão de marcar para
+aulas? Porque há um botão para treino livre que também é uma marcação"*.
+
+O aluno via **Início · Marcar · Livre · Marcações**. Três problemas de
+uma vez:
+
+* **"Marcar" não dizia o quê** — e o treino livre também é marcar.
+* **"Marcar" ficava a três letras de "Marcações"** — fazer e consultar,
+  com nomes quase iguais, a dois separadores de distância.
+* Pior nos títulos: o ecrã chamava-se **"Marcar TREINO"** e era o das
+  aulas, ao lado de **"TREINO livre"**. A mesma palavra para as duas
+  coisas que era preciso distinguir.
+
+Uma barra de navegação é um conjunto de **lugares**, não de ações.
+Passou a **Início · Aulas · Treino livre · Marcações**: cada separador
+diz o que lá está, e marcar é o que se faz nos dois primeiros.
+
+Os ícones também estavam trocados — o haltere, símbolo de treinar
+sozinho, estava nas aulas de grupo, e uma figura de meditação no treino
+livre.
+
+O atalho no ecrã inicial passou a dizer "Aulas" também: leva ao mesmo
+sítio, e antes um dizia "Marcar treino" e o outro "Marcar".
+
+### A janela de marcação, e o que o aluno ainda pode marcar
+
+Duas queixas, a mesma raiz: o aluno não sabia o que estava a olhar.
+
+#### Dois meses de horário para uma decisão sobre esta semana
+
+As séries geram ocorrências com **8 semanas** de antecedência, para o
+estúdio poder planear. O aluno via-as todas — o ecrã trazia duas semanas
+de início e tinha um rodapé "ver mais" que abria as oito.
+
+Não é só ruído. Marcar com dois meses de antecedência **ocupa uma vaga
+que mais ninguém pode usar**, para uma aula de que quem marcou já não se
+vai lembrar. Um horizonte curto é o que mantém as vagas a circular.
+
+`bookingHorizonDays` vive em `config/bookingPolicy`, ao lado de
+`minBookingNoticeMinutes` — são as duas pontas da mesma janela: não
+marcar demasiado em cima da hora, nem demasiado longe. Editável em
+Gestão › Definições. `0` = sem limite, que é o valor por omissão, para
+não mudar o comportamento de um estúdio que já use a app sem saber desta
+definição.
+
+Aplica-se às **aulas e ao treino livre**, e é validado nas **duas
+pontas**: o ecrã esconde o que está fora do horizonte, e o servidor
+recusa na mesma. Esconder não é impedir — um pedido direto à função
+continuava a passar, e é por isso que o teste está do lado do servidor.
+
+Detalhes que só aparecem a fazer: o rodapé "ver mais semanas" desaparece
+quando há horizonte (levaria a uma lista que não cresce), e a seta de
+semana seguinte do treino livre desliga-se quando a semana a seguir já
+não tem nada marcável.
+
+#### "Quantas aulas ainda posso marcar?"
+
+O limite semanal existia e era respeitado, mas só se via **dentro do
+cartão de cada aula**, em letra pequena, e só nas aulas daquele serviço.
+Para saber quantas sessões lhe sobravam, o aluno tinha de rolar até
+encontrar uma aula do serviço certo.
+
+E se o plano tivesse dois serviços com limites diferentes — o caso normal
+num pacote — não havia sítio nenhum onde os dois números aparecessem
+juntos.
+
+`WeeklyAllowance` põe-nos no topo do ecrã de marcar, antes do horário.
+Três decisões:
+
+* **Diz o que SOBRA, não o que foi gasto.** "Restam 2" responde à
+  pergunta; "1/3 usadas" obriga a fazer a conta, e a conta é feita com o
+  telemóvel na mão à porta do ginásio.
+* **Só os serviços com limite.** Uma linha a dizer "ilimitado" por cada
+  serviço sem limite empurra para baixo a única que tem informação.
+* **O cartão inteiro desaparece** quando não há limite nenhum. Um
+  "Esta semana" vazio lê-se como um erro de carregamento.
+
+Só a semana corrente, de propósito: um resumo que tentasse cobrir as
+seguintes teria de escolher qual mostrar, e a resposta certa muda
+conforme a aula em que se está a pensar — que é o que a linha dentro de
+cada cartão já resolve.
+
+### Um plano por membro, e a regra que faltava
+
+Reportado assim: *"eu atribuí um plano treino livre e ele passou para
+outro ecrã onde tinha que atribuir planos avulsos… não percebo o que é
+isto sequer"*. Disse duas vezes que não havia navegação nenhuma. **Estava
+errado das duas.**
+
+#### O que acontecia mesmo
+
+O ecrã não fechava depois de guardar. E como o grupo exclusivo passava a
+estar ocupado, a secção que a pessoa tinha acabado de usar **colapsava**
+numa linha cinzenta — restando a secção seguinte, "Planos avulsos", com
+um botão *Guardar* por baixo. A parte usada desaparecia e outra
+tomava-lhe o lugar. Em tudo o que importa, **era** outro ecrã.
+
+#### Três camadas de mecanismo à superfície
+
+`Service.exclusiveGroup` era uma etiqueta de **texto livre** que o Gestor
+tinha de escrever igual em dois serviços para os declarar alternativas.
+A ajuda do campo dizia: *"Serviços com o MESMO grupo tornam-se mutuamente
+exclusivos (UC26) — um membro nunca pode ter subscriptions ativas a dois
+deles"*. `UC26` é um documento de requisitos; `subscriptions` é uma
+coleção da base de dados. Escrever `Acompanhamento` num e
+`acompanhamento` noutro fazia-os não se ligarem, em silêncio.
+
+O grupo de um **plano** derivava dos serviços que ele embrulhava. Por
+isso "Hyrox Team" aparecia numa escolha única de acompanhamento — porque
+incluía "Treino livre" lá dentro. Nada no ecrã dizia isso.
+
+E "avulso" era um **falso amigo**: a app usa "sessão avulsa" noutro ecrã
+com o sentido normal (uma aula pontual fora da série semanal). Quem
+acabou de ver o primeiro lê o segundo como o conceito irmão.
+
+#### A decisão: um plano ativo por membro
+
+Não foi mudar o nome às coisas — foi tirar a pergunta.
+
+Sem dois planos ao mesmo tempo, **as duas regras de conflito deixam de
+ter objeto**: não há dois planos a dar o mesmo serviço, nem a dar
+serviços alternativos. E some um problema que ninguém tinha visto:
+`resolveEligibility` resolvia o limite semanal apanhando a **primeira**
+subscrição que desse aquele serviço (`.find()`), por isso dois planos com
+limites diferentes davam o limite que a base de dados calhasse devolver
+primeiro. Com um plano só não há nada para escolher.
+
+Atribuir um plano a quem já tem um **substitui** o anterior, numa escrita
+atómica, e devolve o nome do que saiu para o ecrã o poder dizer. Recusar
+obrigaria a dois passos para o que é um só gesto: mudar de plano.
+
+O ecrã passou a ser o que sempre quis ser — uma lista de planos, escolhe
+um, com o atual assinalado e o botão a dizer "Mudar de plano". E fecha
+quando o trabalho acaba.
+
+#### E a regra que nunca tinha sido escrita
+
+Procurei em toda a app: **não havia verificação nenhuma de horários
+sobrepostos**. Um aluno podia marcar duas aulas exatamente à mesma hora.
+
+A app impedia o que não devia e não impedia o que devia.
+
+`lib/overlap.ts` recusa marcar o que se cruze com outra marcação do
+próprio — aulas e treino livre, pelo mesmo caminho. Não assume durações:
+lê a sessão de cada candidata (que é o documento-pai da marcação) para
+saber quando acaba. A janela de busca alarga 6 horas para trás, senão
+marcar às 10h00 não via a aula das 09h30 que só acaba às 10h30. As
+fronteiras são exclusivas — duas aulas seguidas, uma a acabar e outra a
+começar à mesma hora, continuam a poder ser marcadas.
+
+É a única regra de combinação que a app impõe, e a única que não precisa
+de explicação nenhuma: ninguém está em dois sítios ao mesmo tempo.
+
+#### O seed acompanhou
+
+Os planos deixaram de ser peças para combinar e passaram a **pacotes
+completos** — quem quer sala e aulas compra o plano que traz as duas.
+É assim que um ginásio vende de qualquer forma: três ou quatro pacotes,
+não combinações arbitrárias. A lista cobre de propósito um plano sem
+limites, um com limite semanal, um com dois limites diferentes e um
+ilimitado, para se ver o efeito de cada um sem inventar dados.
+
 ### A chamada: de "está algures" a "está à frente"
 
 A presença já existia e funcionava. O que não existia era forma de

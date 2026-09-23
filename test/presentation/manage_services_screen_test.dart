@@ -117,9 +117,15 @@ void main() {
     expect(find.textContaining('Desativar'), findsOneWidget);
   });
 
-  testWidgets(
-      'Fase 8 (UC26 fechado) — criar um serviço com grupo exclusivo grava o campo',
-      (tester) async {
+  // O ecrã teve um segundo campo, "Grupo exclusivo (opcional)": texto
+  // livre onde o Gestor declarava que dois serviços eram alternativas
+  // um do outro, com uma ajuda que falava em `UC26` e em
+  // `subscriptions`. Escrever a palavra com maiúscula num e minúscula
+  // noutro fazia-os não se ligarem, em silêncio.
+  //
+  // Saiu com a passagem a um plano ativo por membro: sem dois planos ao
+  // mesmo tempo, não há combinações para proibir.
+  testWidgets('criar um serviço grava só o nome', (tester) async {
     final firestore = FakeFirebaseFirestore();
     await tester.pumpWidget(buildApp(firestore));
     await tester.pumpAndSettle();
@@ -127,11 +133,10 @@ void main() {
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
+    expect(find.textContaining('Grupo exclusivo'), findsNothing);
+
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Nome'), 'Sem acompanhamento');
-    await tester.enterText(
-        find.widgetWithText(TextFormField, 'Grupo exclusivo (opcional)'),
-        'sala');
+        find.widgetWithText(TextFormField, 'Nome'), 'Pilates Clínico');
     await tester.tap(find.text('Criar'));
     await tester.pumpAndSettle();
 
@@ -141,36 +146,28 @@ void main() {
         .collection('services')
         .get();
     expect(snap.docs, hasLength(1));
-    expect(snap.docs.first.data()['name'], 'Sem acompanhamento');
-    expect(snap.docs.first.data()['exclusiveGroup'], 'sala');
-
-    expect(find.textContaining('Grupo exclusivo: sala'), findsOneWidget);
+    expect(snap.docs.first.data()['name'], 'Pilates Clínico');
   });
 
-  testWidgets(
-      'Fase 8 (UC26 fechado) — editar um serviço existente atualiza nome/grupo',
-      (tester) async {
+  testWidgets('editar um serviço muda o nome', (tester) async {
     final firestore = FakeFirebaseFirestore();
     await firestore
         .collection('tenants')
         .doc(_tenantId)
         .collection('services')
         .doc('service_1')
-        .set({'name': 'Hyrox', 'active': true, 'exclusiveGroup': null});
+        .set({'name': 'Hyrox', 'active': true});
 
     await tester.pumpWidget(buildApp(firestore));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Grupo exclusivo'), findsNothing);
-
     await tester.tap(find.text('Hyrox'));
     await tester.pumpAndSettle();
-
     expect(find.text('Editar serviço'), findsOneWidget);
+    expect(find.textContaining('Grupo exclusivo'), findsNothing);
 
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Grupo exclusivo (opcional)'),
-        'sala');
+        find.widgetWithText(TextFormField, 'Nome'), 'Hyrox Team');
     await tester.tap(find.text('Guardar'));
     await tester.pumpAndSettle();
 
@@ -180,7 +177,6 @@ void main() {
         .collection('services')
         .doc('service_1')
         .get();
-    expect(doc.data()?['exclusiveGroup'], 'sala');
-    expect(find.textContaining('Grupo exclusivo: sala'), findsOneWidget);
+    expect(doc.data()?['name'], 'Hyrox Team');
   });
 }

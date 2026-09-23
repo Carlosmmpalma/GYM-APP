@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 
 import { requireAuthenticated } from './lib/callerContext';
+import { encontrarSobreposicao, erroDeSobreposicao } from './lib/overlap';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resolveEligibility, runBookingTransaction } from './lib/bookingLogic';
 import { parseInput } from './lib/validation';
@@ -66,6 +67,31 @@ export const bookFreeTrainingSlot = onCall(async (request) => {
   const policySnap = await tenantRef.collection('config').doc('bookingPolicy').get();
   const minNoticeMinutes =
     (policySnap.data()?.minBookingNoticeMinutes as number | undefined) ?? 0;
+  // A outra ponta da mesma janela: não marcar demasiado longe.
+  //
+  // As séries geram ocorrências com 8 semanas de antecedência para o
+  // estúdio planear; deixar o aluno marcar todas ocupa vagas que
+  // ninguém mais pode usar, para aulas de que ele já não se vai
+  // lembrar. `0` = sem limite (o valor por omissão, para não mudar o
+  // comportamento de quem já usa a app sem saber desta definição).
+  //
+  // Validado aqui e não só no ecrã: o ecrã esconde as aulas fora do
+  // horizonte, mas esconder não é impedir — um pedido direto à função
+  // continuava a passar.
+  const horizonDays =
+    (policySnap.data()?.bookingHorizonDays as number | undefined) ?? 0;
+  if (horizonDays > 0) {
+    const limite = new Date();
+    limite.setDate(limite.getDate() + horizonDays);
+    if (startAt > limite) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Só é possível marcar com ${horizonDays} dia(s) de antecedência.`,
+        { reason: 'beyond-horizon', horizonDays },
+      );
+    }
+  }
+
   const minutesUntilStart = (startAt.getTime() - Date.now()) / (60 * 1000);
   if (minNoticeMinutes > 0 && minutesUntilStart < minNoticeMinutes) {
     throw new HttpsError(
@@ -81,6 +107,20 @@ export const bookFreeTrainingSlot = onCall(async (request) => {
       'permission-denied',
       'Não tens um plano ativo que dê acesso a treino livre.',
     );
+  }
+
+  // A mesma regra das aulas: ninguém está em dois sítios ao mesmo
+  // tempo. Um bloco de treino livre e uma aula cruzam-se tal como duas
+  // aulas se cruzam — ver `lib/overlap.ts`.
+  const endAt = (slotData.endAt as Timestamp | undefined)?.toDate();
+  if (endAt) {
+    const sobreposta = await encontrarSobreposicao(firestore, tenantRef, {
+      memberId,
+      inicio: startAt,
+      fim: endAt,
+      excluirOccurrenceId: slotId,
+    });
+    if (sobreposta) throw erroDeSobreposicao(sobreposta);
   }
 
   const result = await runBookingTransaction(firestore, {

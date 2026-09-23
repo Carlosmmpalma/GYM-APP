@@ -431,6 +431,8 @@ class _EditStaffProfileCardState extends ConsumerState<_EditStaffProfileCard> {
       TextEditingController(text: widget.profile.emergencyContact);
   late DateTime? _birthDate = widget.profile.birthDate;
   bool _saving = false;
+  String? _erroNome;
+  String? _erroEmail;
 
   @override
   void dispose() {
@@ -446,11 +448,25 @@ class _EditStaffProfileCardState extends ConsumerState<_EditStaffProfileCard> {
   Future<void> _save() async {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
-    if (name.isEmpty || email.isEmpty || !email.contains('@')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nome e email válido são obrigatórios.')),
-      );
+
+    // Cada campo diz o SEU problema. Uma frase única para dois campos
+    // obriga a adivinhar qual deles é.
+    final erroNome = name.isEmpty ? 'Obrigatório' : null;
+    final erroEmail = email.isEmpty
+        ? 'Obrigatório'
+        : (!email.contains('@') ? 'Falta o @' : null);
+    if (erroNome != null || erroEmail != null) {
+      setState(() {
+        _erroNome = erroNome;
+        _erroEmail = erroEmail;
+      });
       return;
+    }
+    if (_erroNome != null || _erroEmail != null) {
+      setState(() {
+        _erroNome = null;
+        _erroEmail = null;
+      });
     }
 
     setState(() => _saving = true);
@@ -492,16 +508,31 @@ class _EditStaffProfileCardState extends ConsumerState<_EditStaffProfileCard> {
             Text('Dados pessoais',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
+            // O erro fica DEBAIXO do campo que está errado, e fica até
+            // ser corrigido. Estava num SnackBar — "Nome e email válido
+            // são obrigatórios" subia do fundo do ecrã, não dizia qual
+            // dos dois estava mal, e desaparecia em quatro segundos.
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Nome completo'),
+              decoration: InputDecoration(
+                labelText: 'Nome completo',
+                errorText: _erroNome,
+              ),
+              onChanged: (_) {
+                if (_erroNome != null) setState(() => _erroNome = null);
+              },
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _emailController,
-              decoration:
-                  const InputDecoration(labelText: 'Email (usado para login)'),
+              decoration: InputDecoration(
+                labelText: 'Email (usado para login)',
+                errorText: _erroEmail,
+              ),
               keyboardType: TextInputType.emailAddress,
+              onChanged: (_) {
+                if (_erroEmail != null) setState(() => _erroEmail = null);
+              },
             ),
             const Padding(
               padding: EdgeInsets.only(top: 4),

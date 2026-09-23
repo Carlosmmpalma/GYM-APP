@@ -243,6 +243,24 @@ titulo('3. Índices em uso (não só declarados)');
 // query: sem índice pronto, o Firestore devolve FAILED_PRECONDITION.
 const queries = [
   {
+    // A verificação de sobreposição de horários (`lib/overlap.ts`)
+    // corre esta query a CADA marcação. Sem o índice pronto, marcar
+    // falha — e falha depois de o site já estar publicado, que é o
+    // pior momento para descobrir. Aconteceu: o índice foi declarado,
+    // o deploy disse "successfully", e a query ainda recusava minutos
+    // depois.
+    nome: 'sobreposição de horários (memberId + status + startAt)',
+    correr: () =>
+      firestore
+        .collectionGroup('bookings')
+        .where('memberId', '==', '__sonda__')
+        .where('status', '==', 'booked')
+        .where('startAt', '>=', Timestamp.now())
+        .where('startAt', '<', Timestamp.fromMillis(Date.now() + 3600_000))
+        .limit(1)
+        .get(),
+  },
+  {
     nome: 'lembretes (status + reminderSentAt + startAt)',
     correr: () =>
       tenantRef

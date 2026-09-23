@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/utils/firebase_error_text.dart';
+import 'async_action_button.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../application/providers/training_providers.dart';
 import '../../core/theme/app_colors.dart';
@@ -84,27 +85,26 @@ class StartWorkoutButton extends ConsumerWidget {
     );
   }
 
+  /// `AsyncActionButton` e não um `FilledButton`: isto chamava
+  /// `startSession` sem guarda nenhuma, e dois toques criavam **dois
+  /// treinos** para a mesma pessoa. O segundo ficava aberto para
+  /// sempre, porque o ecrã só mostra um.
+  ///
+  /// Entre o toque e a resposta do servidor o botão não mudava nada —
+  /// e tocar outra vez num botão que parece não ter feito nada é a
+  /// reação certa de qualquer pessoa.
   Widget _button(
     BuildContext context,
     String label,
     IconData icon,
-    VoidCallback onPressed,
+    Future<void> Function() onPressed,
   ) {
-    if (compact) {
-      return OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 18),
-        label: Text(label),
-      );
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon),
-        label: Text(label),
-      ),
+    return AsyncActionButton(
+      label: label,
+      icon: icon,
+      onPressed: onPressed,
+      kind: compact ? AsyncButtonKind.outlined : AsyncButtonKind.filled,
+      expand: !compact,
     );
   }
 

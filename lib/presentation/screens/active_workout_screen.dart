@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/exercise.dart';
 import '../../domain/entities/workout_session.dart';
+import '../widgets/async_action_button.dart';
 import '../widgets/design_system.dart';
 import '../widgets/exercise_logger.dart';
 import '../../domain/entities/training_plan_entry.dart';
@@ -62,9 +63,14 @@ class ActiveWorkoutScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(liveSession.workoutName),
         actions: [
-          TextButton(
+          // Terminar escreve no servidor e navega para trás. Dois
+          // toques enquanto a escrita corre tentavam terminar duas
+          // vezes e fazer dois `pop` — o segundo levava o ecrã de
+          // baixo com ele.
+          AsyncActionButton(
+            label: 'Terminar',
+            kind: AsyncButtonKind.text,
             onPressed: () => _finish(context, ref, liveSession),
-            child: const Text('Terminar'),
           ),
         ],
       ),

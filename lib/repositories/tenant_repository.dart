@@ -51,6 +51,31 @@ abstract class TenantRepository {
     required int minutes,
   });
 
+  /// Quantos dias para a frente o aluno consegue marcar.
+  ///
+  /// As séries geram ocorrências com 8 semanas de antecedência, para o
+  /// estúdio poder planear. O aluno via-as todas — dois meses de aulas
+  /// numa lista, quando a decisão que ele está a tomar é sobre esta
+  /// semana ou a próxima.
+  ///
+  /// Não é só ruído: marcar com dois meses de antecedência ocupa uma
+  /// vaga que ninguém mais pode usar, e quem marcou já não se lembra de
+  /// lá ir. Um horizonte curto é o que mantém as vagas a circular.
+  ///
+  /// Vive ao lado de `minBookingNoticeMinutes`, no mesmo documento —
+  /// são as duas pontas da mesma janela: não marcar demasiado em cima
+  /// da hora, nem demasiado longe.
+  ///
+  /// `0` = sem limite, e é o valor por omissão para não mudar o
+  /// comportamento de um estúdio que já esteja a usar a app sem saber
+  /// desta definição.
+  Future<int> getBookingHorizonDays(String tenantId);
+
+  Future<void> setBookingHorizonDays({
+    required String tenantId,
+    required int days,
+  });
+
   /// Fase 11 — com quantas horas de antecedência sai o lembrete da
   /// aula. `0` = lembretes desligados.
   ///

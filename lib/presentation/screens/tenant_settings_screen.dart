@@ -24,6 +24,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _hoursController = TextEditingController();
   final _minutesController = TextEditingController();
+  final _horizonteController = TextEditingController();
   final _reminderHoursController = TextEditingController();
   bool _initialized = false;
   bool _saving = false;
@@ -33,6 +34,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
   void dispose() {
     _hoursController.dispose();
     _minutesController.dispose();
+    _horizonteController.dispose();
     _reminderHoursController.dispose();
     super.dispose();
   }
@@ -53,12 +55,17 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
             tenantId: tenantId,
             minutes: int.parse(_minutesController.text.trim()),
           );
+      await ref.read(tenantRepositoryProvider).setBookingHorizonDays(
+            tenantId: tenantId,
+            days: int.parse(_horizonteController.text.trim()),
+          );
       await ref.read(tenantRepositoryProvider).setSessionReminderHours(
             tenantId: tenantId,
             hours: int.parse(_reminderHoursController.text.trim()),
           );
       ref.invalidate(minCancellationNoticeHoursProvider);
       ref.invalidate(minBookingNoticeMinutesProvider);
+      ref.invalidate(bookingHorizonDaysProvider);
       ref.invalidate(sessionReminderHoursProvider);
       if (!mounted) return;
       setState(() => _message = 'Guardado.');
@@ -93,6 +100,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
   Widget build(BuildContext context) {
     final hoursAsync = ref.watch(minCancellationNoticeHoursProvider);
     final minutesAsync = ref.watch(minBookingNoticeMinutesProvider);
+    final horizonteAsync = ref.watch(bookingHorizonDaysProvider);
     final freeTrainingAsync = ref.watch(freeTrainingServiceIdProvider);
     final reminderHoursAsync = ref.watch(sessionReminderHoursProvider);
     final servicesAsync = ref.watch(servicesProvider);
@@ -116,6 +124,8 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
                 if (!_initialized && reminderHours != null) {
                   _hoursController.text = hours.toString();
                   _minutesController.text = minutes.toString();
+                  _horizonteController.text =
+                      (horizonteAsync.valueOrNull ?? 0).toString();
                   _reminderHoursController.text = reminderHours.toString();
                   _initialized = true;
                 }
@@ -165,6 +175,40 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
                         decoration: const InputDecoration(
                           labelText:
                               'Antecedência mínima para marcar (minutos)',
+                        ),
+                        keyboardType: TextInputType.number,
+                        validator: (v) {
+                          final parsed = int.tryParse((v ?? '').trim());
+                          if (parsed == null) {
+                            return 'Introduz um número inteiro';
+                          }
+                          return parsed < 0 ? 'Não pode ser negativo' : null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      // A outra ponta da mesma janela.
+                      //
+                      // As séries geram aulas com 8 semanas de
+                      // antecedência para o estúdio poder planear, e o
+                      // aluno via-as todas — dois meses de horário para
+                      // uma decisão que é sobre esta semana ou a
+                      // próxima. Pior: marcar com dois meses de
+                      // antecedência ocupa uma vaga que mais ninguém
+                      // pode usar, para uma aula de que já não se vai
+                      // lembrar.
+                      const Text(
+                        'Com quantos dias de antecedência o aluno pode marcar. '
+                        'As aulas para lá deste limite não lhe aparecem no '
+                        'horário, e o servidor recusa-as mesmo que tente. '
+                        'Aplica-se às aulas e ao treino livre. "0" significa '
+                        'sem limite — vê tudo o que estiver gerado.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _horizonteController,
+                        decoration: const InputDecoration(
+                          labelText: 'Marcar com até quantos dias (dias)',
                         ),
                         keyboardType: TextInputType.number,
                         validator: (v) {

@@ -9,7 +9,6 @@ Service _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     id: doc.id,
     name: data['name'] as String? ?? '',
     active: data['active'] as bool? ?? false,
-    exclusiveGroup: data['exclusiveGroup'] as String?,
   );
 }
 
@@ -38,12 +37,10 @@ class FirebaseServiceRepository implements ServiceRepository {
   @override
   Future<String> createService({
     required String name,
-    String? exclusiveGroup,
   }) async {
     final ref = await _services.add({
       'name': name,
       'active': true,
-      'exclusiveGroup': exclusiveGroup,
       'createdAt': FieldValue.serverTimestamp(),
     });
     return ref.id;
@@ -61,11 +58,9 @@ class FirebaseServiceRepository implements ServiceRepository {
   Future<void> updateService({
     required String serviceId,
     required String name,
-    String? exclusiveGroup,
   }) async {
     await _services.doc(serviceId).update({
       'name': name,
-      'exclusiveGroup': exclusiveGroup,
     });
   }
 }

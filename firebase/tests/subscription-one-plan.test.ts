@@ -1,23 +1,23 @@
-// Fase 8 (auditoria funcional, UC26 fechado) — "Sem acompanhamento" e
-// Standard/Plus/Premium não são produtos independentes, são NÍVEIS DO
-// MESMO PRODUTO: um membro nunca pode ter subscriptions ativas a dois
-// serviços com o mesmo `Service.exclusiveGroup`, mesmo quando são
-// serviços DIFERENTES — o conflito por `activeServiceIds` já existente
-// em `createSubscription.ts` (Fase 3) só apanhava dois planos a dar
-// acesso ao MESMO serviço, nunca este caso.
+// **Um plano ativo por membro** — atribuir um novo cancela o anterior.
 //
-// Mesmo padrão de `booking-concurrency.test.ts`: chama a Cloud
-// Function `createSubscription` A SÉRIO através do Functions Emulator,
-// autenticado com um custom token — é a única forma de exercitar a
-// lógica de negócio real (Admin SDK), não uma reimplementação paralela
-// dela. Precisa de TRÊS emuladores (Firestore + Functions + Auth) e de
-// `firebase/functions` já compilado (`lib/index.js`). Corre com, a
-// partir da raiz do projeto:
+// Este ficheiro testava o contrário: que um segundo plano era RECUSADO
+// quando desse um serviço com o mesmo `Service.exclusiveGroup` do que
+// o membro já tinha. Essa etiqueta era texto livre que o Gestor tinha
+// de escrever à mão no ecrã dos serviços, para declarar quais eram
+// alternativas uns dos outros — ninguém a preenchia, e o ecrã de
+// atribuir partia-se em duas secções por causa dela sem nunca explicar
+// porquê.
 //
-//   cd firebase/functions
-//   npm run build
-//   cd ../..
-//   firebase emulators:exec --project=demo-gym-saas-dev --only firestore,functions,auth "npm --prefix firebase/tests test"
+// Com um plano por membro não há combinações para proibir: a regra
+// desapareceu em vez de ser melhor explicada. A proteção que interessa
+// passou para o momento de MARCAR (ver `lib/overlap.ts`), onde se
+// entende sem explicação nenhuma — ninguém está em dois sítios à mesma
+// hora.
+//
+// Mesmo padrão de `booking-concurrency.test.ts`: chama a Cloud Function
+// A SÉRIO através do Functions Emulator, autenticada com um custom
+// token. Precisa de TRÊS emuladores (Firestore + Functions + Auth) e de
+// `firebase/functions` já compilado.
 
 import { initializeApp as initializeAdminApp } from 'firebase-admin/app';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
@@ -102,20 +102,14 @@ beforeAll(async () => {
     status: 'active',
   });
 
-  // Dois serviços DIFERENTES, mesmo `exclusiveGroup` — o caso que só a
-  // Fase 8 passou a apanhar.
   await adminFirestore.doc(`tenants/${TENANT_ID}/services/service_free`).set({
-    name: 'Sem acompanhamento',
+    name: 'Treino livre',
     active: true,
-    exclusiveGroup: 'sala',
   });
   await adminFirestore.doc(`tenants/${TENANT_ID}/services/service_standard`).set({
-    name: 'Aula de Grupo (Standard)',
+    name: 'Aulas de grupo',
     active: true,
-    exclusiveGroup: 'sala',
   });
-  // Serviço sem grupo nenhum — livremente combinável, prova que o
-  // novo código não bloqueia em excesso.
   await adminFirestore.doc(`tenants/${TENANT_ID}/services/service_hyrox`).set({
     name: 'Hyrox',
     active: true,
@@ -138,44 +132,59 @@ afterAll(async () => {
 
 // Timeouts explícitos (15s) em vez dos 5s por omissão do vitest, mesmo
 // motivo de `booking-concurrency.test.ts`: a PRIMEIRA invocação de uma
-// Cloud Function no emulador paga o arranque do runtime, e este
-// ficheiro corre em paralelo com o de concorrência (que satura o
-// emulador com 10 chamadas simultâneas) — 5s não chegam de forma
-// fiável, mesmo quando a função em si responde em ~250ms.
-describe('createSubscription — exclusividade por Service.exclusiveGroup (Fase 8, UC26 fechado)', () => {
-  it('primeira subscription do grupo "sala" é aceite', async () => {
+// Cloud Function no emulador paga o arranque do runtime.
+describe('createSubscription — um plano ativo por membro', () => {
+  async function subscricoesAtivas(): Promise<string[]> {
+    const snap = await adminFirestore
+      .collection(`tenants/${TENANT_ID}/subscriptions`)
+      .where('memberId', '==', MEMBER_ID)
+      .where('status', '==', 'active')
+      .get();
+    return snap.docs.map((d) => d.get('planId') as string);
+  }
+
+  it('o primeiro plano é aceite', async () => {
     const result = await httpsCallable(managerFunctions, 'createSubscription')({
       memberId: MEMBER_ID,
       planId: 'plan_free',
       agreedPrice: 0,
       currency: 'EUR',
     });
-    expect((result.data as { subscriptionId: string }).subscriptionId).toBeTruthy();
+    const data = result.data as { subscriptionId: string; replaced: string[] };
+    expect(data.subscriptionId).toBeTruthy();
+    // Nada substituído: não havia nada.
+    expect(data.replaced).toEqual([]);
+    expect(await subscricoesAtivas()).toEqual(['plan_free']);
   }, 15_000);
 
-  it('segunda subscription do MESMO grupo, serviço DIFERENTE, é rejeitada', async () => {
-    await expect(
-      httpsCallable(managerFunctions, 'createSubscription')({
-        memberId: MEMBER_ID,
-        planId: 'plan_standard',
-        agreedPrice: 30,
-        currency: 'EUR',
-      }),
-    ).rejects.toMatchObject({
-      code: 'functions/already-exists',
-      details: {
-        conflictingServiceNames: ['Sem acompanhamento'],
-      },
-    });
-  }, 15_000);
-
-  it('subscription a um serviço SEM grupo (Hyrox) continua permitida', async () => {
+  it('um segundo plano SUBSTITUI o primeiro em vez de ser recusado', async () => {
+    // Era aqui que a regra antiga recusava. Recusar obrigava a dois
+    // passos ("vai cancelar primeiro") para o que é um só gesto na
+    // cabeça de quem o faz — mudar de plano.
     const result = await httpsCallable(managerFunctions, 'createSubscription')({
+      memberId: MEMBER_ID,
+      planId: 'plan_standard',
+      agreedPrice: 30,
+      currency: 'EUR',
+    });
+    const data = result.data as { subscriptionId: string; replaced: string[] };
+    expect(data.subscriptionId).toBeTruthy();
+    // Devolve o NOME do que saiu, para o ecrã poder dizê-lo.
+    expect(data.replaced).toHaveLength(1);
+
+    // E fica exatamente um ativo. É esta a invariante toda: sem ela, o
+    // limite semanal volta a ser ambíguo (`resolveEligibility` resolve-o
+    // apanhando a primeira subscrição que der o serviço).
+    expect(await subscricoesAtivas()).toEqual(['plan_standard']);
+  }, 15_000);
+
+  it('mudar outra vez continua a deixar um só', async () => {
+    await httpsCallable(managerFunctions, 'createSubscription')({
       memberId: MEMBER_ID,
       planId: 'plan_hyrox',
       agreedPrice: 20,
       currency: 'EUR',
     });
-    expect((result.data as { subscriptionId: string }).subscriptionId).toBeTruthy();
+    expect(await subscricoesAtivas()).toEqual(['plan_hyrox']);
   }, 15_000);
 });

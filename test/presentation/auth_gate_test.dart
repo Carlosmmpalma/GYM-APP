@@ -202,14 +202,17 @@ void main() {
     await tester.pumpAndSettle();
 
     // Fase 10 — o separador inicial de um Aluno passou a ser "Início"
-    // (`MemberHomeScreen`), não "Marcar treino". "Início" aparece duas
+    // (`MemberHomeScreen`), não o das aulas. "Início" aparece duas
     // vezes de propósito (título da AppBar + rótulo do destino na barra
-    // inferior); "Marcar treino" deixou de servir como asserção porque
+    // inferior); o separador das aulas deixou de servir como asserção porque
     // também é o rótulo de um card de atalho do dashboard — passaria
     // pela razão errada.
     expect(find.text('Início'), findsNWidgets(2));
-    expect(find.text('Marcar'), findsOneWidget);
-    expect(find.text('Livre'), findsOneWidget);
+    // Dois: o atalho no início e o separador. Passaram a ter o mesmo
+    // nome de propósito — levam ao mesmo sítio, e antes um dizia
+    // "Marcar treino" e o outro "Marcar".
+    expect(find.text('Aulas'), findsWidgets);
+    expect(find.text('Treino livre'), findsOneWidget);
     expect(find.text('Marcações'), findsOneWidget);
   });
 
@@ -245,7 +248,7 @@ void main() {
 
       // O pedido explícito: um Gestor não tem nada que ver ecrãs de
       // marcação de treino.
-      expect(find.text('Marcar'), findsNothing);
+      expect(find.text('Aulas'), findsNothing);
       expect(find.text('Livre'), findsNothing);
       expect(find.text('Marcações'), findsNothing);
     });
@@ -409,7 +412,7 @@ void main() {
       expect(find.textContaining('Mensalidade em atraso'), findsOneWidget);
       expect(find.text('Sair'), findsOneWidget);
       // Nunca os dois ao mesmo tempo — bloqueado é bloqueado.
-      expect(find.text('Marcar treino'), findsNothing);
+      expect(find.text('Aulas'), findsNothing);
     });
 
     testWidgets('sem bloqueio, mostra o ecrã principal normalmente',
@@ -436,7 +439,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Marcar treino'), findsOneWidget);
+      expect(find.text('Aulas'), findsWidgets);
       expect(find.textContaining('Mensalidade em atraso'), findsNothing);
     });
   });

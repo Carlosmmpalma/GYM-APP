@@ -45,6 +45,15 @@ class _ExerciseLoggerState extends ConsumerState<ExerciseLogger> {
   late final _repsController = TextEditingController();
   late final _loadController = TextEditingController();
   bool _busy = false;
+
+  /// Validação do campo de repetições.
+  ///
+  /// Estava num SnackBar: a pessoa tocava em "Registar", a mensagem
+  /// subia do fundo do ecrã a dizer o que faltava, e quatro segundos
+  /// depois desaparecia — enquanto ela ainda olhava para o campo. Uma
+  /// mensagem de validação tem de ficar ONDE está o erro, e ficar até
+  /// ele ser corrigido.
+  String? _erroReps;
   bool _prefilled = false;
 
   @override
@@ -196,11 +205,18 @@ class _ExerciseLoggerState extends ConsumerState<ExerciseLogger> {
                 width: 80,
                 child: TextField(
                   controller: _repsController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'reps',
                     isDense: true,
+                    errorText: _erroReps,
                   ),
                   keyboardType: TextInputType.number,
+                  // Some assim que a pessoa começa a corrigir: manter o
+                  // erro enquanto ela escreve é ralhar com quem já está
+                  // a resolver.
+                  onChanged: (_) {
+                    if (_erroReps != null) setState(() => _erroReps = null);
+                  },
                 ),
               ),
               const SizedBox(width: 8),
@@ -226,11 +242,10 @@ class _ExerciseLoggerState extends ConsumerState<ExerciseLogger> {
   Future<void> _logSet(int setNumber) async {
     final reps = int.tryParse(_repsController.text.trim());
     if (reps == null || reps <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Escreve quantas repetições fizeste.')),
-      );
+      setState(() => _erroReps = 'Quantas repetições?');
       return;
     }
+    if (_erroReps != null) setState(() => _erroReps = null);
     final loadText = _loadController.text.trim().replaceAll(',', '.');
     // Sem carga é válido: prancha, corrida, peso do corpo.
     final load = loadText.isEmpty ? null : double.tryParse(loadText);

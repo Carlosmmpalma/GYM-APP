@@ -84,10 +84,10 @@ Future<bool> confirmAndDeleteCatalogueEntry(
 
   try {
     await ref.read(catalogueAdminRepositoryProvider).delete(kind: kind, id: id);
-    if (!context.mounted) return true;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('"$name" eliminado.')),
-    );
+    // Sem confirmação: o item desaparece da lista à frente dos olhos.
+    // Um aviso a dizer que desapareceu uma coisa que se viu desaparecer
+    // é ruído, e ruído ensina a ignorar os avisos que importam. As
+    // recusas (abaixo) continuam a falar, porque essas NÃO se veem.
     return true;
   } on CatalogueEntryInUseException catch (e) {
     if (!context.mounted) return false;

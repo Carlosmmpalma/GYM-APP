@@ -58,8 +58,6 @@ class ManageServicesScreen extends ConsumerWidget {
                   subtitle: Text(
                     [
                       service.active ? 'Ativo' : 'Inativo',
-                      if (service.exclusiveGroup != null)
-                        'Grupo exclusivo: ${service.exclusiveGroup}',
                     ].join(' · '),
                   ),
                   onTap: () => _editService(context, ref, service),
@@ -88,7 +86,7 @@ class ManageServicesScreen extends ConsumerWidget {
   }
 
   Future<void> _createService(BuildContext context, WidgetRef ref) async {
-    final result = await showDialog<({String name, String? exclusiveGroup})>(
+    final result = await showDialog<String>(
       context: context,
       builder: (_) => const _ServiceFormDialog(),
     );
@@ -96,8 +94,7 @@ class ManageServicesScreen extends ConsumerWidget {
 
     try {
       await ref.read(serviceRepositoryProvider).createService(
-            name: result.name,
-            exclusiveGroup: result.exclusiveGroup,
+            name: result,
           );
     } catch (e) {
       if (!context.mounted) return;
@@ -115,7 +112,7 @@ class ManageServicesScreen extends ConsumerWidget {
     WidgetRef ref,
     Service service,
   ) async {
-    final result = await showDialog<({String name, String? exclusiveGroup})>(
+    final result = await showDialog<String>(
       context: context,
       builder: (_) => _ServiceFormDialog(service: service),
     );
@@ -124,8 +121,7 @@ class ManageServicesScreen extends ConsumerWidget {
     try {
       await ref.read(serviceRepositoryProvider).updateService(
             serviceId: service.id,
-            name: result.name,
-            exclusiveGroup: result.exclusiveGroup,
+            name: result,
           );
     } catch (e) {
       if (!context.mounted) return;
@@ -161,13 +157,17 @@ class ManageServicesScreen extends ConsumerWidget {
   }
 }
 
-/// Serve tanto criar como editar — [service] `null` é criação. UC26
-/// (fechado) — `exclusiveGroup` é um identificador LIVRE (não um
-/// enum): o Gestor escreve a mesma palavra (ex.: "sala") em todos os
-/// serviços que devem ser mutuamente exclusivos entre si ("Sem
-/// acompanhamento" e o serviço que os planos Standard/Plus/Premium
-/// concedem) — só a IGUALDADE da string é que importa para
-/// `createSubscription.ts`, não o texto em si.
+/// Serve tanto criar como editar — [service] `null` é criação.
+///
+/// Um serviço é um nome, e mais nada. Teve um segundo campo, "Grupo
+/// exclusivo (opcional)": texto livre onde o Gestor escrevia a mesma
+/// palavra em serviços que fossem alternativas uns dos outros, com uma
+/// ajuda que falava em `UC26` e em `subscriptions`. Escrever
+/// "Acompanhamento" num e "acompanhamento" noutro fazia-os não se
+/// ligarem, em silêncio.
+///
+/// Ninguém o preencheria, e deixou de ser preciso: com **um plano
+/// ativo por membro** não há combinações para proibir.
 class _ServiceFormDialog extends StatefulWidget {
   const _ServiceFormDialog({this.service});
 
@@ -181,23 +181,16 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final _nameController =
       TextEditingController(text: widget.service?.name ?? '');
-  late final _groupController =
-      TextEditingController(text: widget.service?.exclusiveGroup ?? '');
 
   @override
   void dispose() {
     _nameController.dispose();
-    _groupController.dispose();
     super.dispose();
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
-    final group = _groupController.text.trim();
-    Navigator.of(context).pop((
-      name: _nameController.text.trim(),
-      exclusiveGroup: group.isEmpty ? null : group,
-    ));
+    Navigator.of(context).pop(_nameController.text.trim());
   }
 
   @override
@@ -216,18 +209,6 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
               autofocus: true,
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _groupController,
-              decoration: const InputDecoration(
-                labelText: 'Grupo exclusivo (opcional)',
-                helperText: 'Serviços com o MESMO grupo tornam-se mutuamente '
-                    'exclusivos (UC26) — um membro nunca pode ter '
-                    'subscriptions ativas a dois deles ao mesmo tempo.',
-                helperMaxLines: 3,
-              ),
-              onFieldSubmitted: (_) => _submit(),
             ),
           ],
         ),

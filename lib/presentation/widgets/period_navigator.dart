@@ -85,7 +85,10 @@ class WeekNavigator extends StatelessWidget {
   final DateTime inicio;
   final DateTime fim;
   final VoidCallback onAnterior;
-  final VoidCallback onSeguinte;
+
+  /// `null` desativa a seta — há semanas sem "seguinte" (o horizonte de
+  /// marcação do aluno acaba algures).
+  final VoidCallback? onSeguinte;
 
   @override
   Widget build(BuildContext context) {

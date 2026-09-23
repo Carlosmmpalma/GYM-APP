@@ -167,47 +167,6 @@ final applicableUsageRuleProvider = FutureProvider.autoDispose
   return null;
 });
 
-/// Fase 10 (UC26 atualizado) — a que grupo exclusivo pertence cada
-/// Plan ativo, para o picker agrupado de `AssignSubscriptionScreen`.
-///
-/// O mockup mostra a atribuição orientada a SERVIÇOS, com os níveis do
-/// mesmo produto em seleção única ("Nível de treino de sala: Sem
-/// acompanhamento / Standard / Plus / Premium") e os extras em seleção
-/// múltipla ("Aulas de grupo"). No nosso modelo o que se atribui é um
-/// Plan, e a exclusividade vive no Service (`Service.exclusiveGroup`,
-/// acrescentado na auditoria da Fase 8) — por isso o grupo de um Plan
-/// deriva dos serviços a que ele dá acesso.
-///
-/// Um Plan cujos serviços caiam em DOIS grupos exclusivos diferentes
-/// não pode ser uma opção única de nenhum deles (estaria em dois sítios
-/// ao mesmo tempo); esse caso conta como plano independente, e é
-/// deliberado — a alternativa seria escolher um dos grupos à sorte.
-/// Devolve `{planId: grupo ou null}`; `null` = plano independente.
-final planExclusiveGroupsProvider =
-    FutureProvider.autoDispose<Map<String, String?>>((ref) async {
-  final plans = await ref.watch(plansProvider.future);
-  final services = await ref.watch(servicesProvider.future);
-  // Lido ANTES do primeiro await do ciclo: `ref.watch` depois de um
-  // await async assinaria o provider fora do build e o Riverpod avisa.
-  final planRepository = ref.watch(planRepositoryProvider);
-
-  final groupOfService = {
-    for (final service in services) service.id: service.exclusiveGroup,
-  };
-
-  final result = <String, String?>{};
-  for (final plan in plans.where((p) => p.active)) {
-    final planServices = await planRepository.getPlanServices(plan.id);
-    final groups = planServices
-        .where((ps) => ps.enabled)
-        .map((ps) => groupOfService[ps.serviceId])
-        .whereType<String>()
-        .toSet();
-    result[plan.id] = groups.length == 1 ? groups.single : null;
-  }
-  return result;
-});
-
 /// Fase 5 (UC08-A fechado) — membros elegíveis para um serviço (têm uma
 /// subscription ativa que dá acesso a ele), para o picker de
 /// pré-atribuição em `ManageSeriesScreen`. Cruza

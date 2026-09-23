@@ -95,8 +95,8 @@ class _ManageSeriesScreenState extends ConsumerState<ManageSeriesScreen> {
               title: 'Horário vazio',
               message: 'Aqui defines as aulas: uma série repete-se todas '
                   'as semanas no mesmo dia e hora, uma sessão avulsa '
-                  'acontece só numa data. É isto que os alunos veem em '
-                  '"Marcar treino".',
+                  'acontece só numa data. É isto que os alunos veem no '
+                  'separador "Aulas".',
               prerequisite: servicesById.isEmpty
                   ? 'Cria primeiro os serviços (Gestão › Serviços): cada '
                       'aula tem de ser de um serviço.'

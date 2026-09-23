@@ -183,19 +183,19 @@ const EXERCICIOS = [
 // =====================================================================
 // SERVIÇOS
 //
-// `exclusivo` agrupa serviços que são NÍVEIS DO MESMO PRODUTO: um
-// membro não pode ter subscrições ativas a dois serviços do mesmo grupo
-// ao mesmo tempo (ver `Service.exclusiveGroup`). Treinar sozinho e
-// treinar acompanhado são a mesma coisa em níveis diferentes; Hyrox e
-// aulas de grupo são produtos distintos e combináveis.
+// Um serviço é um nome. Teve um terceiro campo, `exclusivo`, que
+// agrupava serviços "alternativos" uns dos outros para o servidor
+// recusar planos incompatíveis — desapareceu com a passagem a um plano
+// ativo por membro: sem dois planos ao mesmo tempo, não há combinações
+// para proibir.
 // =====================================================================
 
 const SERVICOS = [
-  ['svc_treino_livre', 'Treino livre (sem acompanhamento)', 'acompanhamento'],
-  ['svc_treino_acompanhado', 'Treino acompanhado', 'acompanhamento'],
-  ['svc_aulas_grupo', 'Aulas de grupo', null],
-  ['svc_personal_training', 'Personal Training', null],
-  ['svc_hyrox', 'Hyrox', null],
+  ['svc_treino_livre', 'Treino livre', 'Acesso à sala, sem instrutor ao lado'],
+  ['svc_treino_acompanhado', 'Treino acompanhado', 'Sessões com instrutor'],
+  ['svc_aulas_grupo', 'Aulas de grupo', 'Pilates, Yoga, HIIT, ciclismo'],
+  ['svc_personal_training', 'Personal Training', 'Sessões individuais'],
+  ['svc_hyrox', 'Hyrox', 'Preparação específica para Hyrox'],
 ];
 
 // =====================================================================
@@ -220,32 +220,39 @@ const MODALIDADES = [
 //
 // Cada plano lista os serviços que inclui e a regra de utilização de
 // cada um: `null` = ilimitado, ou [quantidade, período].
+//
+// **Um membro tem UM plano.** Por isso cada plano é um pacote completo,
+// não uma peça para combinar: quem quer sala e aulas compra o plano que
+// traz as duas, não dois planos. É assim que um ginásio vende de
+// qualquer forma — três ou quatro pacotes, não combinações arbitrárias.
+//
+// A lista cobre de propósito os quatro casos que se quer ver a testar:
+// um plano só de sala, um com limite semanal, um com dois limites
+// diferentes, e um sem limite nenhum. O ecrã de atribuir ordena-os por
+// nome, não por esta ordem.
 // =====================================================================
 
 const PLANOS = [
   ['plan_livre', 'Livre Trânsito', 39.9,
-    'Acesso ao ginásio em horário completo, sem acompanhamento. Para quem já sabe o que anda a fazer.',
+    'Só sala, em horário completo, sem instrutor ao lado.',
     [['svc_treino_livre', null]]],
 
-  ['plan_acompanhado_2x', 'Acompanhado 2x', 54.9,
-    'Duas sessões por semana com plano de treino individual, revisto pelo instrutor.',
-    [['svc_treino_acompanhado', [2, 'week']]]],
-
-  ['plan_acompanhado_3x', 'Acompanhado 3x', 64.9,
-    'Três sessões por semana com plano individual e avaliação física trimestral.',
-    [['svc_treino_acompanhado', [3, 'week']]]],
-
   ['plan_aulas', 'Aulas de Grupo', 44.9,
-    'Acesso livre a todas as aulas de grupo do horário — Pilates, Yoga, HIIT e ciclismo.',
-    [['svc_aulas_grupo', null]]],
+    'Todas as aulas do horário — Pilates, Yoga, HIIT e ciclismo — mais acesso à sala.',
+    [['svc_aulas_grupo', null], ['svc_treino_livre', null]]],
+
+  ['plan_acompanhado_2x', 'Acompanhado 2x', 54.9,
+    'Duas sessões por semana com instrutor e plano de treino individual, mais acesso livre à sala.',
+    [['svc_treino_acompanhado', [2, 'week']], ['svc_treino_livre', null]]],
 
   ['plan_hyrox', 'Hyrox Team', 59.9,
-    'Treino específico de preparação para Hyrox, em grupo, três vezes por semana.',
-    [['svc_hyrox', [3, 'week']], ['svc_treino_livre', null]]],
+    'Três sessões de preparação para Hyrox por semana, mais aulas de grupo e sala.',
+    [['svc_hyrox', [3, 'week']], ['svc_aulas_grupo', null], ['svc_treino_livre', null]]],
 
   ['plan_premium', 'Premium', 89.9,
-    'Tudo incluído: treino acompanhado sem limite, todas as aulas de grupo e duas sessões de Hyrox por semana.',
-    [['svc_treino_acompanhado', null], ['svc_aulas_grupo', null], ['svc_hyrox', [2, 'week']]]],
+    'Tudo: treino acompanhado sem limite, todas as aulas, duas sessões de Hyrox por semana e sala.',
+    [['svc_treino_acompanhado', null], ['svc_aulas_grupo', null],
+      ['svc_hyrox', [2, 'week']], ['svc_treino_livre', null]]],
 ];
 
 // =====================================================================
@@ -386,10 +393,10 @@ if (escolhidas.includes('exercicios')) {
 }
 
 if (escolhidas.includes('servicos')) {
-  await commitInChunks(SERVICOS, (batch, [id, name, exclusiveGroup]) => {
+  await commitInChunks(SERVICOS, (batch, [id, name]) => {
     batch.set(
       tenantRef.collection('services').doc(id),
-      { name, active: true, exclusiveGroup, createdAt: FieldValue.serverTimestamp() },
+      { name, active: true, createdAt: FieldValue.serverTimestamp() },
       { merge: true },
     );
   });

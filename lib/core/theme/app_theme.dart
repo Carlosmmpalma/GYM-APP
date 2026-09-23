@@ -172,9 +172,33 @@ abstract final class AppTheme {
           borderRadius: BorderRadius.circular(14),
         ),
       ),
+      // Um SnackBar por omissão atravessa o ecrã de ponta a ponta,
+      // encostado ao fundo, sem forma — parece uma faixa do sistema
+      // colada por cima da app, não uma coisa da app.
+      //
+      // `floating` + cantos + contorno fazem-no ler-se como um cartão
+      // igual aos outros (`PanelCard`), que é o que ele é: uma
+      // informação da app, sobre a app.
+      //
+      // O que reduziu mesmo o número de SnackBars não foi isto — foi o
+      // `AsyncActionButton` passar a confirmar no próprio botão. Estes
+      // são os que ficam: erros, e coisas que NÃO se veem no ecrã.
       snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.panel2,
-        contentTextStyle: TextStyle(color: AppColors.bone),
+        contentTextStyle: TextStyle(
+          color: AppColors.bone,
+          fontSize: 13,
+          height: 1.35,
+        ),
+        elevation: 6,
+        insetPadding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+          // O mesmo contorno dos cartões — é o que o faz pertencer à
+          // app em vez de parecer colado por cima dela.
+          side: BorderSide(color: AppColors.cardBorder),
+        ),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.panel2,

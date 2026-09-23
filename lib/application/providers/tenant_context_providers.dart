@@ -131,6 +131,17 @@ final sessionReminderHoursProvider = FutureProvider.autoDispose<int>((ref) {
   return ref.watch(tenantRepositoryProvider).getSessionReminderHours(tenantId);
 });
 
+/// Quantos dias para a frente o aluno consegue marcar. `0` = sem
+/// limite. Ver [TenantRepository.getBookingHorizonDays].
+///
+/// NÃO é `autoDispose`: os dois ecrãs de marcar leem-no, e recarregá-lo
+/// a cada navegação entre separadores era uma leitura por toque numa
+/// definição que muda uma vez por ano.
+final bookingHorizonDaysProvider = FutureProvider<int>((ref) {
+  final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
+  return ref.watch(tenantRepositoryProvider).getBookingHorizonDays(tenantId);
+});
+
 final minBookingNoticeMinutesProvider = FutureProvider.autoDispose<int>((ref) {
   final tenantId = ref.watch(tenantAppConfigProvider).tenantId;
   return ref

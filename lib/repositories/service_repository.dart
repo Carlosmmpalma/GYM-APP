@@ -11,23 +11,23 @@ abstract class ServiceRepository {
 
   /// Devolve o id do documento criado.
   ///
-  /// [exclusiveGroup] — UC26 (fechado): identificador livre partilhado
-  /// por serviços mutuamente exclusivos (ex.: "sala" em "Sem
-  /// acompanhamento" e no serviço que Standard/Plus/Premium concedem).
-  /// `null` (omisso) para serviços sem essa restrição.
-  Future<String> createService({required String name, String? exclusiveGroup});
+  /// Um serviço é só um nome. Teve um `exclusiveGroup` — uma etiqueta
+  /// de texto livre que declarava quais eram alternativas uns dos
+  /// outros — e essa ideia desapareceu com a passagem a **um plano
+  /// ativo por membro**: sem dois planos ao mesmo tempo, não há
+  /// combinações para proibir. Ver `createSubscription.ts`.
+  Future<String> createService({required String name});
 
   Future<void> setServiceActive({
     required String serviceId,
     required bool active,
   });
 
-  /// Fase 8 (auditoria funcional) — editar nome/`exclusiveGroup` de um
-  /// serviço já criado. Nunca toca em `active` (isso é
-  /// [setServiceActive], ação já isolada e com o seu próprio switch).
+  /// Editar o nome de um serviço já criado. Nunca toca em `active`
+  /// (isso é [setServiceActive], ação já isolada e com o seu próprio
+  /// switch).
   Future<void> updateService({
     required String serviceId,
     required String name,
-    String? exclusiveGroup,
   });
 }

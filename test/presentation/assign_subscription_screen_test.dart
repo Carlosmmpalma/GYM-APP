@@ -11,6 +11,7 @@ import 'package:gym_saas/application/providers/firebase_providers.dart';
 import 'package:gym_saas/application/providers/tenant_context_providers.dart';
 import 'package:gym_saas/core/config/tenant_app_config.dart';
 import 'package:gym_saas/core/theme/app_theme.dart';
+import 'package:gym_saas/domain/entities/member_summary.dart';
 import 'package:gym_saas/domain/entities/subscription.dart';
 import 'package:gym_saas/presentation/screens/assign_subscription_screen.dart';
 import 'package:gym_saas/repositories/subscription_repository.dart';
@@ -38,12 +39,7 @@ const _tenantId = 'tenant_test';
 /// agora é a seleção múltipla, a exclusividade por grupo, e o relato
 /// honesto de sucessos/falhas quando são várias chamadas.
 class _FakeSubscriptionRepository implements SubscriptionRepository {
-  _FakeSubscriptionRepository({this.conflictException, this.failOnPlanId});
-
-  /// Se não for `null`, toda chamada a [createSubscription] falha com
-  /// esta exceção — simula o que `createSubscription.ts` faria ao
-  /// encontrar um conflito (Domain Model v1 §15).
-  final SubscriptionServiceConflictException? conflictException;
+  _FakeSubscriptionRepository({this.failOnPlanId});
 
   /// Falha só para UM plano — para testar o caso de várias atribuições
   /// em que umas passam e outras não.
@@ -52,6 +48,12 @@ class _FakeSubscriptionRepository implements SubscriptionRepository {
   final _controller = StreamController<List<Subscription>>.broadcast();
   final List<Subscription> _subscriptions = [];
   final List<String> createdPlanIds = [];
+
+  List<String> activePlanIdsFor(String memberId) => _subscriptions
+      .where((s) =>
+          s.memberId == memberId && s.status == SubscriptionStatus.active)
+      .map((s) => s.planId)
+      .toList();
   int _nextId = 1;
 
   void _emit() => _controller.add(List.unmodifiable(_subscriptions));
@@ -70,11 +72,27 @@ class _FakeSubscriptionRepository implements SubscriptionRepository {
     required double agreedPrice,
     required String currency,
   }) async {
-    if (conflictException != null) throw conflictException!;
     if (failOnPlanId == planId) {
       throw Exception('falha simulada');
     }
     createdPlanIds.add(planId);
+    // Um plano ativo por membro: atribuir um novo cancela o anterior,
+    // como `createSubscription.ts` faz numa escrita atómica.
+    for (var i = 0; i < _subscriptions.length; i++) {
+      final s = _subscriptions[i];
+      if (s.memberId == memberId && s.status == SubscriptionStatus.active) {
+        _subscriptions[i] = Subscription(
+          id: s.id,
+          memberId: s.memberId,
+          planId: s.planId,
+          status: SubscriptionStatus.cancelled,
+          startDate: s.startDate,
+          agreedPrice: s.agreedPrice,
+          currency: s.currency,
+          activeServiceIds: s.activeServiceIds,
+        );
+      }
+    }
     _subscriptions.add(Subscription(
       id: 'sub_${_nextId++}',
       memberId: memberId,
@@ -122,11 +140,10 @@ class _FakeSubscriptionRepository implements SubscriptionRepository {
 class _MockFirebaseFunctions extends Mock implements FirebaseFunctions {}
 
 void main() {
-  /// Semeia membro + serviços + planos. `salaLevels` cria dois planos
-  /// ligados a um serviço com `exclusiveGroup: 'sala'` — é o que faz o
-  /// ecrã desenhar um grupo de seleção única em vez de checkboxes.
+  /// Semeia membro + serviços + planos. `maisPlanos` acrescenta dois,
+  /// para provar que a lista é uma só e que todos são escolhíveis.
   Future<FakeFirebaseFirestore> seedFirestore({
-    bool salaLevels = false,
+    bool maisPlanos = false,
   }) async {
     final firestore = FakeFirebaseFirestore();
     final tenant = firestore.collection('tenants').doc(_tenantId);
@@ -147,11 +164,10 @@ void main() {
       'active': true,
     });
 
-    if (salaLevels) {
+    if (maisPlanos) {
       await tenant.collection('services').doc('service_sala').set({
         'name': 'Treino de sala',
         'active': true,
-        'exclusiveGroup': 'sala',
       });
       for (final level in [
         ('plan_plus', 'Sala Plus'),
@@ -207,7 +223,47 @@ void main() {
     );
   }
 
-  // O picker agrupado é alto (membro + o que já tem + grupos + avulsos +
+  /// Como a app o abre a sério: empilhado por cima da ficha do membro,
+  /// pelo botão flutuante de `MemberDetailScreen`, e já com o membro
+  /// escolhido.
+  Widget buildAppDaFicha(
+    FakeFirebaseFirestore firestore,
+    _FakeSubscriptionRepository subscriptionRepository,
+    MemberSummary membro,
+  ) {
+    return ProviderScope(
+      overrides: [
+        tenantAppConfigProvider.overrideWithValue(
+          const TenantAppConfig(tenantId: _tenantId),
+        ),
+        firestoreProvider.overrideWithValue(firestore),
+        functionsProvider.overrideWithValue(_MockFirebaseFunctions()),
+        subscriptionRepositoryProvider
+            .overrideWithValue(subscriptionRepository),
+      ],
+      child: MaterialApp(
+        theme: AppTheme.dark,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        AssignSubscriptionScreen(initialMember: membro),
+                  ),
+                ),
+                child: const Text('ficha do membro'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // O picker agrupado é alto (membro + o que já tem + grupos + os
+  // combináveis +
   // preços + botão) e não cabe nos 800x600 do viewport de teste: um
   // `tap()` num alvo fora do ecrã não falha, simplesmente não acerta em
   // nada — e o teste passava/falhava por posição em vez de por
@@ -232,138 +288,169 @@ void main() {
       (tester) async {
     setLargeSurface(tester);
     await tester.pumpWidget(
-      buildApp(await seedFirestore(), _FakeSubscriptionRepository()),
-    );
+        buildApp(await seedFirestore(), _FakeSubscriptionRepository()));
     await tester.pumpAndSettle();
 
     expect(find.text('Escolhe um membro'), findsOneWidget);
   });
 
-  testWidgets('atribui um plano avulso e reflete-o no que o membro já tem',
-      (tester) async {
+  testWidgets('escolher um plano e guardar atribui-o', (tester) async {
     final repository = _FakeSubscriptionRepository();
     setLargeSurface(tester);
     await tester.pumpWidget(buildApp(await seedFirestore(), repository));
     await tester.pumpAndSettle();
-
     await pickMember(tester);
 
     expect(find.text('Nenhum plano ativo.'), findsOneWidget);
-    // Sem `exclusiveGroup` em nenhum serviço, o plano é avulso →
-    // checkbox, não radio.
-    expect(find.byType(CheckboxListTile), findsOneWidget);
 
     await tester.tap(find.text('Plano Standard'));
     await tester.pumpAndSettle();
 
-    // O campo de preço só aparece depois de escolher, pré-preenchido com
-    // o preço de tabela (agreedPrice vs currentPrice).
+    // O campo de preço só aparece depois de escolher, pré-preenchido
+    // com o preço de tabela (agreedPrice vs currentPrice).
     expect(find.text('30.00'), findsOneWidget);
-    expect(find.text('Guardar 1 plano(s)'), findsOneWidget);
 
-    await tester.tap(find.text('Guardar 1 plano(s)'));
+    await tester.tap(find.text('Atribuir plano'));
     await tester.pumpAndSettle();
 
     expect(repository.createdPlanIds, ['plan_1']);
-    expect(find.textContaining('Atribuído: Plano Standard'), findsOneWidget);
-    // A seleção do que ficou feito é limpa; o card de topo já mostra o
-    // plano novo.
-    expect(find.text('· Plano Standard (Aula de Grupo)'), findsOneWidget);
   });
 
-  testWidgets('níveis do mesmo grupo são seleção única (UC26 atualizado)',
+  testWidgets('a lista não tem secções nem vocabulário interno',
       (tester) async {
-    final repository = _FakeSubscriptionRepository();
+    // O ecrã partia-se em duas secções — "níveis" em escolha única e
+    // "avulsos" em escolha múltipla — sem nunca dizer porquê, e um
+    // plano caía numa ou na outra consoante os serviços que
+    // embrulhasse. Com um plano por membro é uma lista só.
+    //
+    // "Avulso" era ainda um falso amigo: a app usa "sessão avulsa"
+    // noutro ecrã com o sentido normal (uma aula pontual fora da série
+    // semanal).
     setLargeSurface(tester);
-    await tester.pumpWidget(
-        buildApp(await seedFirestore(salaLevels: true), repository));
+    await tester.pumpWidget(buildApp(
+        await seedFirestore(maisPlanos: true), _FakeSubscriptionRepository()));
     await tester.pumpAndSettle();
-
     await pickMember(tester);
 
-    expect(find.textContaining('NÍVEL DE SALA'), findsOneWidget);
-    expect(find.text('Nenhum'), findsOneWidget);
-
-    await tester.tap(find.text('Sala Plus'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Sala Premium'));
-    await tester.pumpAndSettle();
-
-    // O segundo toque SUBSTITUI o primeiro — é isto que a exclusividade
-    // significa, e é o que antes só se descobria com um erro da Cloud
-    // Function depois de submeter.
-    expect(find.text('Guardar 1 plano(s)'), findsOneWidget);
-
-    await tester.tap(find.text('Guardar 1 plano(s)'));
-    await tester.pumpAndSettle();
-
-    expect(repository.createdPlanIds, ['plan_premium']);
+    expect(find.textContaining('avulso'), findsNothing);
+    expect(find.textContaining('Nível'), findsNothing);
+    expect(find.textContaining('Grupo'), findsNothing);
+    expect(find.text('ESCOLHE O PLANO'), findsOneWidget);
+    // Os três planos numa lista só, todos escolhíveis.
+    expect(find.byType(RadioListTile<String?>), findsNWidgets(3));
   });
 
-  testWidgets('grupo já ocupado fica bloqueado e diz o que fazer',
-      (tester) async {
-    final repository = _FakeSubscriptionRepository();
+  testWidgets('guardar sem escolher nada diz o que falta', (tester) async {
     setLargeSurface(tester);
     await tester.pumpWidget(
-        buildApp(await seedFirestore(salaLevels: true), repository));
+        buildApp(await seedFirestore(), _FakeSubscriptionRepository()));
     await tester.pumpAndSettle();
-
     await pickMember(tester);
-    await tester.tap(find.text('Sala Plus'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Guardar 1 plano(s)'));
+
+    await tester.tap(find.text('Atribuir plano'));
     await tester.pumpAndSettle();
 
-    // Com o nível já atribuído, o grupo deixa de oferecer opções.
-    expect(find.textContaining('Os níveis deste grupo não se acumulam'),
-        findsOneWidget);
-    expect(find.text('Sala Premium'), findsNothing);
+    expect(find.text('Escolhe um plano para atribuir.'), findsOneWidget);
   });
 
-  testWidgets(
-      'mostra a mensagem de conflito quando a Cloud Function recusa por serviço já coberto',
+  testWidgets('o plano em vigor aparece marcado, e o botão diz "mudar"',
       (tester) async {
-    final repository = _FakeSubscriptionRepository(
-      conflictException:
-          const SubscriptionServiceConflictException(['Aula de Grupo']),
+    final repository = _FakeSubscriptionRepository();
+    await repository.createSubscription(
+      memberId: 'member_1',
+      planId: 'plan_1',
+      agreedPrice: 30,
+      currency: 'EUR',
     );
+
     setLargeSurface(tester);
-    await tester.pumpWidget(buildApp(await seedFirestore(), repository));
+    await tester.pumpWidget(
+        buildApp(await seedFirestore(maisPlanos: true), repository));
     await tester.pumpAndSettle();
-
     await pickMember(tester);
-    await tester.tap(find.text('Plano Standard'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Guardar 1 plano(s)'));
-    await tester.pumpAndSettle();
 
+    expect(find.text('atual'), findsOneWidget);
+    expect(find.text('MUDAR PARA'), findsOneWidget);
+    expect(find.text('Mudar de plano'), findsOneWidget);
     expect(
-      find.textContaining('Este membro já tem acesso a: Aula de Grupo'),
+      find.textContaining('escolher outro substitui o atual'),
       findsOneWidget,
     );
   });
 
-  testWidgets(
-      'com várias atribuições, diz o que passou E o que falhou (não é atómico)',
-      (tester) async {
-    final repository = _FakeSubscriptionRepository(failOnPlanId: 'plan_1');
+  testWidgets('mudar de plano cancela o anterior', (tester) async {
+    // O servidor faz isto numa escrita atómica (ver
+    // `createSubscription.ts`); aqui prova-se que o ecrã pede a coisa
+    // certa e mostra o resultado certo.
+    final repository = _FakeSubscriptionRepository();
+    await repository.createSubscription(
+      memberId: 'member_1',
+      planId: 'plan_1',
+      agreedPrice: 30,
+      currency: 'EUR',
+    );
+
     setLargeSurface(tester);
     await tester.pumpWidget(
-        buildApp(await seedFirestore(salaLevels: true), repository));
+        buildApp(await seedFirestore(maisPlanos: true), repository));
     await tester.pumpAndSettle();
-
     await pickMember(tester);
+
     await tester.tap(find.text('Sala Plus'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Plano Standard'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Guardar 2 plano(s)'));
+    await tester.tap(find.text('Mudar de plano'));
     await tester.pumpAndSettle();
 
-    // Um passou, o outro não — e o ecrã diz as duas coisas em vez de
-    // fingir tudo-ou-nada.
-    expect(repository.createdPlanIds, ['plan_plus']);
-    expect(find.textContaining('Atribuído: Sala Plus'), findsOneWidget);
-    expect(find.textContaining('Plano Standard:'), findsOneWidget);
+    expect(repository.createdPlanIds, ['plan_1', 'plan_plus']);
+    expect(repository.activePlanIdsFor('member_1'), ['plan_plus']);
+  });
+
+  testWidgets('vindo da ficha do membro, guardar fecha o ecrã', (tester) async {
+    // Ficava aberto em modo de formulário depois de guardar. Com as
+    // secções antigas isso era pior: a parte que a pessoa tinha acabado
+    // de usar colapsava e outra tomava-lhe o lugar — indistinguível de
+    // ter sido levada para outro ecrã a pedir mais qualquer coisa.
+    final repository = _FakeSubscriptionRepository();
+    setLargeSurface(tester);
+    await tester.pumpWidget(buildAppDaFicha(
+      await seedFirestore(),
+      repository,
+      const MemberSummary(
+        uid: 'member_1',
+        memberNumber: '000142',
+        name: 'Maria Madalena Gonçalves',
+        active: true,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ficha do membro'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Plano Standard'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Atribuir plano'));
+    await tester.pumpAndSettle();
+
+    expect(repository.createdPlanIds, ['plan_1']);
+    expect(find.text('ficha do membro'), findsOneWidget);
+    expect(find.textContaining('Plano: Plano Standard'), findsOneWidget);
+  });
+
+  testWidgets('uma recusa do servidor aparece no ecrã', (tester) async {
+    final repository = _FakeSubscriptionRepository(failOnPlanId: 'plan_1');
+    setLargeSurface(tester);
+    await tester.pumpWidget(buildApp(await seedFirestore(), repository));
+    await tester.pumpAndSettle();
+    await pickMember(tester);
+
+    await tester.tap(find.text('Plano Standard'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Atribuir plano'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Não foi possível atribuir o plano'),
+      findsOneWidget,
+    );
   });
 }
