@@ -8003,6 +8003,71 @@ esperar pelo cron das 03:00.
 **7. Correr o `check-deploy` outra vez.** Verde é a definição de "está
 publicado".
 
+### Esvaziar o estúdio antes de o entregar (`reset-tenant.mjs`)
+
+Produção esteve todo o desenvolvimento cheia de dados de demonstração:
+51 alunos inventados, 82 aulas geradas, planos, marcações, avaliações,
+pagamentos. Nada disso pode estar lá quando o estúdio verdadeiro abrir a
+app pela primeira vez.
+
+**Não se faz pela consola do Firebase.** Apagar um documento no
+Firestore **não apaga as subcoleções**. As marcações vivem dentro da
+ocorrência, as avaliações dentro do membro, o `private` dentro do staff.
+À mão ficavam 82 ocorrências apagadas e as marcações intactas por
+baixo — invisíveis na consola, e bem vivas nas queries de grupo de
+coleção (`match /{path=**}/bookings/{id}` existe nas Rules precisamente
+porque essas queries são usadas).
+
+```bash
+node firebase/scripts/reset-tenant.mjs --project=gym-sas --tenant=nxt_performance_studio --keep-manager=leo@nxtperformancestudio.pt --keep=exercises,exerciseCategories,modalities
+```
+
+Sem `--yes` conta o que está lá e não toca em nada. Fica de pé: o
+documento do estúdio, e o Gestor indicado — documento em `staff`, o que
+tiver em `staff/{id}/private`, a conta de Auth e os custom claims. Vai
+abaixo tudo o resto sob `tenants/{id}`, as contas de Auth do estúdio
+(as que têm o `tenantId` no token **e** as que vêm dos documentos
+apagados), os ficheiros do Storage e os `_rateLimits`.
+
+**O script recusa-se a correr se o Gestor não estiver inteiro** — conta,
+claims e documento em `staff`, os três. Sem essa verificação, o
+resultado de apagar o resto era um estúdio onde ninguém entra: criar
+staff pela app exige já ser Gestor, e a consola do Firebase não sabe
+atribuir custom claims. A única saída seria o `create-first-manager.mjs`
+outra vez.
+
+**Porque é que `--keep` existe.** Os exercícios, as categorias e as
+modalidades não são dados do cliente: são catálogo. Na passagem a
+produção guardaram-se, e com eles os 2 exercícios que tinham sido
+criados **pela app** (ids aleatórios), que o `seed-content.mjs` não sabe
+repor. O `--keep` também protege a media no Storage desses exercícios.
+Cuidado com `--keep=config`: o `bookingPolicy` tem um
+`freeTrainingServiceId` que aponta para um documento de `services`:
+guardar um e apagar o outro deixa-o a apontar para nada.
+
+**O que se perde e é preciso refazer.** A conta de revisão da
+App Store / Play Store é um membro como outro qualquer e vai abaixo com
+o resto. Só se volta a semear (`seed-review-account.mjs`) **depois** de
+o estúdio ter serviços, planos e séries a sério — a conta existe para
+mostrar a app andada, e sem conteúdo não mostra nada. É o último passo
+antes de submeter, não o primeiro.
+
+**Está testado, e a primeira versão estava partida.** O
+`reset-tenant.test.mjs` semeia um estúdio com a mesma forma que o real
+contra o emulador, corre o script e verifica 32 coisas — incluindo, por
+queries de grupo de coleção, que não ficou um único documento órfão, e
+que uma conta de **outro** `tenantId` não é tocada. Existe porque a
+primeira passagem em produção rebentou a meio: o inventário guardava
+`{id, docs}` e passava esse objeto ao `recursiveDelete`, que quer uma
+referência. Rebentou na primeira coleção, antes de apagar seja o que
+for, e deu para corrigir — mas um script destrutivo que só se prova em
+produção prova-se sempre tarde demais.
+
+```bash
+firebase emulators:start --only firestore,auth --project=demo-reset
+node firebase/scripts/reset-tenant.test.mjs
+```
+
 ### O que o verificador não cobre
 
 * **As regras do Storage.** Publicam-se no passo 1, mas não há forma de
