@@ -38,11 +38,6 @@ class FirebaseSessionSeriesRepository implements SessionSeriesRepository {
       .doc(_tenantId)
       .collection('sessionSeries');
 
-  CollectionReference<Map<String, dynamic>> get _occurrences => _firestore
-      .collection('tenants')
-      .doc(_tenantId)
-      .collection('sessionOccurrences');
-
   @override
   Future<int> countActiveSeries() async {
     final snapshot =
@@ -101,19 +96,27 @@ class FirebaseSessionSeriesRepository implements SessionSeriesRepository {
     });
   }
 
+  /// Passou de escrita direta para Cloud Function, e por duas razões.
+  ///
+  /// Era um batch que punha `status: 'cancelled'` na série e em cada
+  /// ocorrência futura. As Rules passaram a exigir, no `update` de
+  /// `sessionOccurrences`, que `status` não mude por escrita direta —
+  /// e como um batch é atómico, o cancelamento inteiro falhava com
+  /// `permission-denied`. A um Gestor, que tem todas as permissões.
+  ///
+  /// A regra está certa: cancelar tem de CASCATAR. Mesmo que passasse,
+  /// este código só mudava `status` — as marcações dos alunos ficavam
+  /// `booked` numa aula cancelada e a utilização semanal continuava
+  /// consumida. O aluno perdia a sessão do plano por causa de uma aula
+  /// que o estúdio cancelou.
+  ///
+  /// `cancelOccurrenceForStudio` foi migrado na altura em que a regra
+  /// entrou; este ficou para trás.
   @override
   Future<void> cancelSeries(String seriesId) async {
-    final batch = _firestore.batch();
-    batch.update(_series.doc(seriesId), {'status': 'cancelled'});
-
-    final futureOccurrences = await _occurrences
-        .where('seriesId', isEqualTo: seriesId)
-        .where('startAt', isGreaterThan: Timestamp.now())
-        .get();
-    for (final doc in futureOccurrences.docs) {
-      batch.update(doc.reference, {'status': 'cancelled'});
-    }
-    await batch.commit();
+    await _functions
+        .httpsCallable('cancelSeriesForStudio')
+        .call<void>({'seriesId': seriesId});
   }
 
   @override

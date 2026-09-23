@@ -76,13 +76,12 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
   ///
   /// Sem isto, o aviso de conflito disparava mal se escolhesse o
   /// instrutor, a comparar com um horário que ninguém tinha indicado.
-  /// Quem já tem uma aula às segundas às 18:00 via o aviso em TODAS as
-  /// criações seguintes, antes sequer de dizer quando queria a aula —
-  /// e um aviso que aparece sempre deixa de ser lido. O aviso só faz
-  /// sentido depois de o horário ser uma escolha.
+  /// Um aviso que aparece sempre deixa de ser lido.
   ///
-  /// O que não muda: ao gravar, o conflito é reavaliado de qualquer
-  /// forma (ver `_submit`), tenha o horário sido mexido ou não.
+  /// Passa a `true` também quando o `_submit` encontra um conflito: se
+  /// a pessoa escolher "Rever", volta a um formulário onde o problema
+  /// já é visível, em vez de a mandar procurar às cegas o que a caixa
+  /// acabou de dizer.
   bool _scheduleTouched = false;
   final Set<String> _preAssignedMemberIds = {};
 
@@ -273,7 +272,35 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
                   _scheduleTouched = true;
                 }),
               ),
-              if (_instructorId != null && _scheduleTouched)
+              // `!_submitting` é a correção do bug reportado — e a
+              // causa era exatamente a que foi descrita: "ele primeiro
+              // cria a aula e depois é que verifica".
+              //
+              // `seriesProvider` é um STREAM. Assim que `createSeries`
+              // escreve, ele emite — e o ecrã ainda está aberto, à
+              // espera que o `generateNow()` (uma Cloud Function, com
+              // arranque a frio) termine. Nesse intervalo o aviso
+              // recalculava e encontrava a série acabada de criar:
+              // apontava para a PRÓPRIA aula, a dizer que o instrutor
+              // já tinha uma àquela hora.
+              //
+              // Quem carregava em Criar via o alerta vermelho aparecer
+              // a seguir ao toque, a nomear uma aula que "não existia"
+              // — porque não existia mesmo, até àquele instante.
+              //
+              // Provado com os dados: a série de segunda às 02:00 foi
+              // escrita às 15:59:16 UTC, e o screenshot do aviso a
+              // nomeá-la é do mesmo minuto.
+              //
+              // O `_scheduleTouched` mascarava metade disto e foi
+              // dado como a correção na altura. Não era: depois de
+              // escolher o dia ele já está `true`, e é aí que o
+              // conflito consigo próprio aparece.
+              //
+              // A partir do momento em que se submete, o formulário
+              // deixa de ser uma proposta a validar e passa a ser uma
+              // escrita em curso. Não há nada a avisar.
+              if (_instructorId != null && _scheduleTouched && !_submitting)
                 _TimeConflictBanner(
                   recurring: _recurring,
                   instructorId: _instructorId!,
@@ -434,6 +461,13 @@ class _CreateSeriesScreenState extends ConsumerState<CreateSeriesScreen> {
         ],
       ),
     );
+    // A outra metade do "aparece do nada": o conflito era descoberto
+    // ao carregar em Criar, e quem escolhesse "Rever" voltava a um
+    // formulário sem aviso nenhum — a procurar às cegas o que a caixa
+    // tinha acabado de dizer. A partir daqui, o horário já é
+    // seguramente uma escolha: o aviso fica visível.
+    if (mounted) setState(() => _scheduleTouched = true);
+
     return proceed ?? false;
   }
 

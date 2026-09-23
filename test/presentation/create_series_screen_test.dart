@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +12,9 @@ import 'package:gym_saas/application/providers/tenant_context_providers.dart';
 import 'package:gym_saas/core/config/tenant_app_config.dart';
 import 'package:gym_saas/domain/entities/service.dart';
 import 'package:gym_saas/domain/entities/session_occurrence.dart';
+import 'package:gym_saas/repositories/session_series_repository.dart';
+import 'package:gym_saas/domain/entities/session_series.dart';
+import 'package:gym_saas/infrastructure/firebase/firebase_session_series_repository.dart';
 import 'package:gym_saas/presentation/screens/create_series_screen.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:mocktail/mocktail.dart';
@@ -23,6 +28,60 @@ const _tenantId = 'tenant_test';
 /// `seriesProvider`/`allUpcomingOccurrencesProvider`, ambos Firestore
 /// puro). Mesma justificação de `manage_series_screen_test.dart`.
 class _MockFirebaseFunctions extends Mock implements FirebaseFunctions {}
+
+/// Delega tudo no repositório real (contra o `FakeFirebaseFirestore`) e
+/// prende só o [generateNow].
+///
+/// É essa a janela em que o bug vivia: `createSeries` já escreveu — o
+/// stream de séries já emitiu — mas o ecrã continua aberto à espera que
+/// a geração das ocorrências termine. Em produção é uma Cloud Function
+/// com arranque a frio, segundos de janela; num teste com fakes seria
+/// microssegundos, e o bug passava despercebido.
+class _SeriesRepoComGeracaoPresa implements SessionSeriesRepository {
+  _SeriesRepoComGeracaoPresa(this._real);
+
+  final SessionSeriesRepository _real;
+  final geracao = Completer<void>();
+
+  @override
+  Future<void> generateNow() => geracao.future;
+
+  @override
+  Future<int> countActiveSeries() => _real.countActiveSeries();
+
+  @override
+  Stream<List<SessionSeries>> watchSeries() => _real.watchSeries();
+
+  @override
+  Future<String> createSeries({
+    required String serviceId,
+    String? instructorId,
+    String? modalityId,
+    required int dayOfWeek,
+    required String startTime,
+    required int durationMinutes,
+    required int capacity,
+    required DateTime startDate,
+    List<String> preAssignedMemberIds = const [],
+  }) =>
+      _real.createSeries(
+        serviceId: serviceId,
+        instructorId: instructorId,
+        modalityId: modalityId,
+        dayOfWeek: dayOfWeek,
+        startTime: startTime,
+        durationMinutes: durationMinutes,
+        capacity: capacity,
+        startDate: startDate,
+        preAssignedMemberIds: preAssignedMemberIds,
+      );
+
+  @override
+  Future<void> updateSeries(SessionSeries series) => _real.updateSeries(series);
+
+  @override
+  Future<void> cancelSeries(String seriesId) => _real.cancelSeries(seriesId);
+}
 
 void main() {
   setUpAll(() async {
@@ -194,6 +253,75 @@ void main() {
     expect(find.textContaining('já tem'), findsNothing);
   });
 
+  testWidgets('o aviso não reage à aula que ACABOU de ser criada',
+      (tester) async {
+    // O bug reportado, na sua forma exata: "ele primeiro cria a aula e
+    // depois é que verifica".
+    //
+    // `seriesProvider` é um stream. Assim que `createSeries` escreve,
+    // ele emite — e o ecrã ainda está aberto, à espera que a geração
+    // das ocorrências termine. Nesse intervalo o aviso recalculava e
+    // encontrava a série acabada de criar: apontava para a própria
+    // aula, a dizer que o instrutor já tinha uma àquela hora.
+    //
+    // Provado com os dados reais: a série de segunda às 02:00 foi
+    // escrita às 15:59:16, e o screenshot do aviso a nomeá-la é do
+    // mesmo minuto.
+    final firestore = await seedBase();
+    late _SeriesRepoComGeracaoPresa repo;
+    setLargeSurface(tester);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        tenantAppConfigProvider.overrideWithValue(
+          const TenantAppConfig(tenantId: _tenantId),
+        ),
+        firestoreProvider.overrideWithValue(firestore),
+        functionsProvider.overrideWithValue(_MockFirebaseFunctions()),
+        sessionSeriesRepositoryProvider.overrideWith((ref) {
+          repo = _SeriesRepoComGeracaoPresa(
+            FirebaseSessionSeriesRepository(
+              firestore,
+              _MockFirebaseFunctions(),
+              _tenantId,
+            ),
+          );
+          return repo;
+        }),
+      ],
+      child: const MaterialApp(home: CreateSeriesScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    await pickService(tester);
+    await pickInstructor(tester);
+    await pickDayOfWeek(tester, 'Terça');
+
+    // Terça está livre: nada a avisar.
+    expect(find.textContaining('já tem'), findsNothing);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Criar'));
+    await tester.pump();
+    await tester.pump();
+
+    // A série JÁ existe — foi escrita — e o ecrã continua aberto.
+    final criadas = await firestore
+        .collection('tenants')
+        .doc(_tenantId)
+        .collection('sessionSeries')
+        .get();
+    expect(criadas.docs, hasLength(1), reason: 'a escrita já aconteceu');
+    expect(find.byType(CreateSeriesScreen), findsOneWidget);
+
+    expect(
+      find.textContaining('já tem'),
+      findsNothing,
+      reason: 'o aviso estaria a apontar para a aula que acabou de criar',
+    );
+
+    repo.geracao.complete();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
       'gravar com conflito pede confirmação em vez de criar em silêncio',
       (tester) async {
@@ -241,6 +369,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AlertDialog), findsNothing);
+
+    // E o aviso passa a estar visível: quem escolheu "Rever" volta a um
+    // formulário onde o problema se vê, em vez de ir procurar às cegas
+    // o que a caixa acabou de dizer.
+    expect(find.textContaining('já tem uma aula a esta hora'), findsOneWidget);
+
     final created = await firestore
         .collection('tenants')
         .doc(_tenantId)

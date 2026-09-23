@@ -81,6 +81,7 @@ export { assignMembersToOccurrence } from './assignMembersToOccurrence';
 // usage) partilham `lib/bookingLogic.ts#prepareRelease`/`applyRelease`.
 export { removeMembersFromOccurrence } from './removeMembersFromOccurrence';
 export { cancelOccurrenceForStudio } from './cancelOccurrenceForStudio';
+export { cancelSeriesForStudio } from './cancelSeriesForStudio';
 export { deactivateInstructor } from './deactivateInstructor';
 export { rescheduleBooking } from './rescheduleBooking';
 
