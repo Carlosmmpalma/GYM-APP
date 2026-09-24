@@ -8068,6 +8068,63 @@ firebase emulators:start --only firestore,auth --project=demo-reset
 node firebase/scripts/reset-tenant.test.mjs
 ```
 
+### Publicar no iOS a partir do Windows (`codemagic.yaml`)
+
+Toda a cadeia da Apple — `xcodebuild`, assinatura, upload — só corre em
+macOS, por licença. Esta app é desenvolvida em Windows, por isso o Mac é
+um runner alugado: o `codemagic.yaml` na raiz clona o repositório,
+constrói, assina e envia para o TestFlight.
+
+**Não corre sozinho.** Não há bloco `triggering:` — as builds arrancam à
+mão. Num repositório com vários commits por dia, um gatilho automático
+queima os minutos a construir o que ninguém vai publicar.
+
+**O erro número um é a assinatura, e a causa está fora do repositório.**
+O App ID `pt.nxtperformancestudio.app` tem de existir no Apple Developer
+Portal **com as capabilities Push Notifications e App Attest ligadas**.
+Sem elas o perfil de aprovisionamento sai sem esses direitos, não bate
+certo com o `Runner.entitlements`, e a build falha a assinar sem dizer
+porquê de forma óbvia.
+
+**Porque há dois ficheiros de entitlements.** O `Runner.entitlements`
+(Release e Profile) declara `aps-environment` e
+`com.apple.developer.devicecheck.appattest-environment` como
+`production`; o `RunnerDebug.entitlements` declara-os como
+`development`. Os valores têm de corresponder ao perfil com que a build
+é assinada: um binário de App Store assinado com `development` é
+recusado no upload, e um `flutter run` num iPhone com `production` não
+recebe notificações.
+
+Estas duas chaves não são acessórios. O `bootstrap.dart` ativa
+`AppleProvider.appAttest` em produção — sem a capability, o App Check
+não emite token e, com a imposição ligada no Firebase, **todas** as
+chamadas ao Firestore e às Functions são recusadas. A app abre e não
+mostra nada. E sem `aps-environment` o `firebase_messaging` nunca recebe
+token APNs, silenciosamente: não há erro, só não chegam notificações.
+
+**`ITSAppUsesNonExemptEncryption = false` no `Info.plist`.** A app só
+fala HTTPS, que é uso isento. Sem a chave, o App Store Connect faz a
+pergunta à mão em cada envio e a build fica parada em "Missing
+Compliance" — descoberto, tipicamente, já à espera do TestFlight.
+
+**O build number vem do `PROJECT_BUILD_NUMBER` do Codemagic**, que
+incrementa sozinho. O App Store Connect recusa números repetidos.
+
+**O que não está verificado.** Estas alterações foram escritas em
+Windows e **nunca foram compiladas** — o `project.pbxproj`, os
+entitlements e o `codemagic.yaml` só se provam no primeiro build no Mac,
+e esse build é o do Codemagic. O que foi verificado daqui: os três
+plists fazem parse (`plistlib`), o `codemagic.yaml` faz parse
+(`yaml.safe_load`), e o `project.pbxproj` ficou com chaves e parênteses
+equilibrados e com as três configurações do alvo Runner a apontar para o
+ficheiro certo. Nada disso prova que o Xcode gosta.
+
+**O que falha primeiro, provavelmente:** o `IPHONEOS_DEPLOYMENT_TARGET`
+está em 13.0 e alguns pods do Firebase exigem mais. O CocoaPods pára com
+"requires a higher minimum deployment target". Não há `ios/Podfile` no
+repositório — o Flutter gera-o na primeira build, que é onde isto vai
+aparecer.
+
 ### O que o verificador não cobre
 
 * **As regras do Storage.** Publicam-se no passo 1, mas não há forma de

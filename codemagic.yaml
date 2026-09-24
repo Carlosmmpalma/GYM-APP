@@ -1,0 +1,125 @@
+# Build e publicação do iOS a partir do Codemagic.
+#
+# ## Porque isto existe
+#
+# A cadeia de ferramentas da Apple — `xcodebuild`, a assinatura e o
+# upload — só corre em macOS, por licença. O desenvolvimento desta app é
+# feito em Windows, por isso o Mac é este ficheiro: um runner alugado
+# que clona o repositório, constrói, assina e envia para o TestFlight.
+#
+# ## O que é preciso ter feito ANTES da primeira build
+#
+#   1. No Apple Developer Portal, o App ID `pt.nxtperformancestudio.app`
+#      registado, com as capabilities **Push Notifications** e
+#      **App Attest** ligadas. Se faltarem, o perfil de aprovisionamento
+#      sai sem elas, não bate certo com o `Runner.entitlements`, e a
+#      build falha a assinar. É o erro número um aqui.
+#   2. No Codemagic, em Teams → Integrations → Developer Portal, uma
+#      chave da App Store Connect API com o nome indicado em
+#      `app_store_connect:` abaixo.
+#   3. O `ios/Runner/GoogleService-Info.plist` no repositório. Não está
+#      no `.gitignore` de propósito: é config de cliente, vai embebida
+#      no binário de qualquer forma, e o equivalente Android já está
+#      versionado. O primeiro passo da build confirma que lá está.
+#
+# ## Não corre sozinho
+#
+# Não há bloco `triggering:`. As builds arrancam à mão, do painel do
+# Codemagic. Num repositório com muitos commits por dia, um gatilho
+# automático queima os minutos gratuitos a construir coisas que ninguém
+# vai publicar.
+
+workflows:
+  ios-app-store:
+    name: iOS — TestFlight e App Store
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    integrations:
+      # O nome tem de ser IGUAL ao que deste à chave no Codemagic.
+      app_store_connect: NXT App Store Connect
+
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: pt.nxtperformancestudio.app
+
+    scripts:
+      # Falha já, com uma frase que se percebe, em vez de rebentar vinte
+      # minutos depois no meio de output de CocoaPods.
+      - name: Confirmar a configuração do Firebase
+        script: |
+          if [ ! -f ios/Runner/GoogleService-Info.plist ]; then
+            echo "Falta ios/Runner/GoogleService-Info.plist."
+            echo "Descarrega-o da consola do Firebase (Definições do projeto"
+            echo "→ Geral → app iOS) e commita-o."
+            exit 1
+          fi
+
+      - name: Pacotes do Flutter
+        script: flutter pub get
+
+      # A app tem 988 testes de unidade/widget e 522 de layout. Correm
+      # em minutos e apanham o que o compilador não apanha. Se isto
+      # atrasar demais as publicações, tira — mas tira a sério, com a
+      # decisão escrita, em vez de o deixar a falhar ignorado.
+      - name: Análise estática
+        script: flutter analyze --fatal-infos
+
+      - name: Testes
+        script: flutter test
+
+      - name: Assinatura no projeto Xcode
+        script: xcode-project use-profiles
+
+      # O Flutter gera o `ios/Podfile` na primeira build se não existir —
+      # e neste repositório não existe, porque nunca houve um Mac.
+      - name: CocoaPods
+        script: find . -name "Podfile" -execdir pod install \;
+
+      # `PROJECT_BUILD_NUMBER` é do Codemagic e incrementa a cada build.
+      # O App Store Connect recusa um build number repetido, e reenviar
+      # um número já usado é a forma mais rápida de perder meia hora.
+      - name: Construir o IPA
+        script: |
+          flutter build ipa --release \
+            -t lib/main_production.dart \
+            --build-number=$PROJECT_BUILD_NUMBER \
+            --export-options-plist=/Users/builder/export_options.plist
+
+      # Os dSYM são o que transforma um crash em `_$AppState.build` em
+      # vez de `0x1045c8a2c`. Só corre se houver credenciais — sem elas
+      # avisa e segue, porque um símbolo em falta não justifica perder
+      # uma build que já está feita e assinada.
+      - name: Símbolos para o Crashlytics
+        script: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "Sem FIREBASE_SERVICE_ACCOUNT — dSYM não enviados."
+            echo "Os crashes do iOS vão chegar sem nomes de funções."
+            exit 0
+          fi
+          echo "$FIREBASE_SERVICE_ACCOUNT" > /tmp/sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
+          npm install -g firebase-tools
+          find build/ios -name "*.dSYM" -print0 | xargs -0 -I {} \
+            firebase crashlytics:symbols:upload \
+              --app=1:447002052350:ios:3447643f112c88d03dc7af "{}"
+        ignore_failure: true
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/archive/**/*.dSYM
+      - flutter_drive.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        # Vai para o TestFlight, não para a loja. A submissão para
+        # revisão faz-se à mão no App Store Connect, depois de alguém ter
+        # instalado a build e confirmado que arranca — o que nenhum
+        # pipeline consegue verificar por ti.
+        submit_to_testflight: true
+        submit_to_app_store: false

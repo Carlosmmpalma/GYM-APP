@@ -24,6 +24,16 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Declaração de criptografia de exportação.
+
+	     A app só fala HTTPS, que é uso isento ao abrigo da categoria 5
+	     parte 2 do regulamento de exportação dos EUA. Sem esta chave, o
+	     App Store Connect faz a pergunta à mão em CADA envio e a build
+	     fica parada em "Missing Compliance" até alguém responder — o
+	     que costuma ser descoberto quando já se está à espera do
+	     TestFlight. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<!-- Seletor de fotos (file_picker).
 
 	     Sem isto, o iOS mata a app no instante em que o seletor abre — e,

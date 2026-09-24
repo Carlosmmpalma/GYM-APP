@@ -3,7 +3,7 @@ description: >
   Gym SaaS — plataforma multi-tenant para ginásios.
   Ver Technical/Platform Foundation — Gym SaaS.md para a arquitetura de referência.
 publish_to: 'none'
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

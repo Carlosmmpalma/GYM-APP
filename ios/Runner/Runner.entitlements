@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Release e Profile. O par de desenvolvimento está em
+	     RunnerDebug.entitlements: os dois valores TÊM de corresponder ao
+	     perfil de aprovisionamento com que a build é assinada, e um
+	     binário de App Store assinado com `development` é recusado no
+	     upload. -->
+
+	<!-- Sem isto o firebase_messaging nunca recebe token APNs, e a app
+	     não dá erro nenhum — simplesmente não chegam notificações. -->
+	<key>aps-environment</key>
+	<string>production</string>
+
+	<!-- bootstrap.dart ativa AppleProvider.appAttest em produção. Sem
+	     esta capability o App Check não emite token, e com a imposição
+	     ligada no Firebase TODAS as chamadas ao Firestore e às Functions
+	     são recusadas — a app abre e não mostra nada. -->
+	<key>com.apple.developer.devicecheck.appattest-environment</key>
+	<string>production</string>
+</dict>
+</plist>
