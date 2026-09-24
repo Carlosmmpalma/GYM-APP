@@ -293,22 +293,45 @@ if (exercisesSnap.empty) {
 // ---------------------------------------------------------------------
 // 5. Uma avaliação física e a mensalidade do mês.
 // ---------------------------------------------------------------------
+// Os nomes dos campos são os que `firebase_assessment_repository.dart`
+// lê — em português, e NÃO `weightKg`/`heightCm`/`recordedAt`, que foi o
+// que aqui esteve e não aparecia em lado nenhum.
+//
+// O `createdAt` é o que mais importa: o ecrã ordena por ele
+// (`orderBy('createdAt')`), e no Firestore um documento sem o campo da
+// ordenação **não é devolvido pela query**. A avaliação existia na base
+// de dados e o ecrã dizia "Sem avaliações" — que é exatamente o que um
+// revisor da App Store veria, numa conta criada para lhe mostrar a app
+// cheia.
 await memberRef
   .collection('assessments')
   .doc('review_avaliacao_1')
   .set(
     {
       memberId: user.uid,
-      recordedAt: Timestamp.fromDate(
+      createdAt: Timestamp.fromDate(
         new Date(now.getTime() - 21 * 86_400_000),
       ),
-      recordedBy: 'seed-review-account',
-      weightKg: 72.4,
-      heightCm: 175,
-      bodyFatPercent: 18.2,
-      visceralFat: 6,
-      restingHeartRate: 62,
-      notes: 'Avaliação inicial.',
+      instructorId: 'seed-review-account',
+      idade: 34,
+      peso: 72.4,
+      // Em METROS: o IMC é calculado como peso / (altura * altura)
+      // (`Assessment.imc`). Com 175 dava 0.0 no ecrã.
+      altura: 1.75,
+      percentMassaGorda: 18.2,
+      massaMuscular: 33.8,
+      gorduraVisceral: 6,
+      metabolismoBasal: 1580,
+      percentAgua: 56.4,
+      idadeMetabolica: 30,
+      pressaoArterial: '12/8',
+      perimetroCintura: 81,
+      perimetroAbdominal: 86,
+      forcaMS: 'Bom',
+      forcaMI: 'Bom',
+      forcaCore: 'Razoável',
+      flexibilidade: 'Razoável',
+      resistencia: 'Bom',
     },
     { merge: true },
   );

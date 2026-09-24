@@ -4,4 +4,18 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- O Emulator Suite do Firebase fala HTTP simples, e desde o
+         targetSdk 28 o Android bloqueia tráfego não cifrado. Sem isto,
+         correr a app em desenvolvimento contra os emuladores num
+         dispositivo Android falha com "Cleartext HTTP traffic to
+         10.0.2.2 not permitted" — e o erro que chega ao ecrã é só "não
+         foi possível iniciar sessão", que não diz nada a ninguém.
+
+         Está no source set `debug`: o APK de release NÃO leva esta
+         permissão, por isso não há aqui nenhuma cedência de segurança
+         no que vai para as lojas. O `10.0.2.2` é o host visto de dentro
+         do emulador Android — o SDK do Firebase traduz `localhost` para
+         esse endereço sozinho. -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>
