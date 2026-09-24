@@ -56,20 +56,38 @@ class ProductionFirebaseOptions {
     measurementId: 'G-DVDXEGSHB2',
   );
 
+  // ---------------------------------------------------------------
+  // POR PREENCHER — as apps Android e iOS no Firebase ainda são as do
+  // identificador antigo (`pt.nxtperformancestudio.app`).
+  //
+  // O package name de uma app no Firebase NÃO se muda. Com a passagem
+  // para `app.payrise.nxtperformancestudio`, é preciso registar duas
+  // apps NOVAS na consola e colar aqui o `appId` e a `apiKey` de cada
+  // uma. As antigas (`...android:41543452dfc9f2653dc7af` e
+  // `...ios:3447643f112c88d03dc7af`) ficam a apagar.
+  //
+  // Estão como texto de aviso em vez dos valores antigos de propósito.
+  // Os valores antigos compilavam e arrancavam — e depois o Crashlytics
+  // reportava para a app errada, e o App Check nunca validaria, porque
+  // a impressão digital não bate certo com o package. Um erro no
+  // arranque é melhor do que telemetria calada a apontar ao sítio
+  // errado.
+  // ---------------------------------------------------------------
+
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBdEtC8oH0Zi_cehn8_Sxrc16IjLNVaEng',
-    appId: '1:447002052350:android:41543452dfc9f2653dc7af',
+    apiKey: 'SUBSTITUIR-apiKey-da-nova-app-Android',
+    appId: 'SUBSTITUIR-appId-da-nova-app-Android',
     messagingSenderId: '447002052350',
     projectId: 'gym-sas',
     storageBucket: 'gym-sas.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDKF6RSqldx7TqOaCKl4RYOltbYEJf7QOs',
-    appId: '1:447002052350:ios:3447643f112c88d03dc7af',
+    apiKey: 'SUBSTITUIR-apiKey-da-nova-app-iOS',
+    appId: 'SUBSTITUIR-appId-da-nova-app-iOS',
     messagingSenderId: '447002052350',
     projectId: 'gym-sas',
     storageBucket: 'gym-sas.firebasestorage.app',
-    iosBundleId: 'pt.nxtperformancestudio.app',
+    iosBundleId: 'app.payrise.nxtperformancestudio',
   );
 }

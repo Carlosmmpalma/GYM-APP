@@ -8068,6 +8068,35 @@ firebase emulators:start --only firestore,auth --project=demo-reset
 node firebase/scripts/reset-tenant.test.mjs
 ```
 
+### O identificador da app, e porque é `app.payrise.*`
+
+`app.payrise.nxtperformancestudio`, nas duas lojas. Antes era
+`pt.nxtperformancestudio.app`, e mudou-se enquanto ainda dava: depois de
+publicado, o applicationId e o bundle id **nunca mais mudam**.
+
+Nenhuma das lojas verifica o domínio — o identificador antigo era
+perfeitamente legal. A razão é outra: o tenant está **fixo na build**
+(`TenantAppConfig` compila `tenantId`, nome e logótipo), por isso é uma
+app por estúdio, e o próximo cliente repete isto. Um padrão
+`app.payrise.<estudio>`, sob um domínio que é nosso, mantém-se coerente
+do primeiro ao décimo.
+
+O que se perde: no Android o applicationId aparece no URL da loja
+(`play.google.com/store/apps/details?id=…`), por isso lê-se o nosso
+namespace e não o do cliente. A ficha da loja mostra o nome dele à
+mesma, porque a conta de developer é dele.
+
+**O que isto obriga do lado do Firebase.** O package name de uma app no
+Firebase não se muda: é preciso registar apps **novas** e substituir o
+`google-services.json`, o `GoogleService-Info.plist` e os pares
+`appId`/`apiKey` em `firebase_options_production.dart`. Enquanto isso
+não estiver feito, **nenhuma build Android funciona** — o plugin
+`google-services` recusa-se a compilar com "No matching client found for
+package name", e é assim que deve ser. Os valores em
+`firebase_options_production.dart` estão como texto de aviso em vez dos
+antigos, de propósito: os antigos compilavam, arrancavam, e depois
+mandavam a telemetria para a app errada.
+
 ### Publicar no iOS a partir do Windows (`codemagic.yaml`)
 
 Toda a cadeia da Apple — `xcodebuild`, assinatura, upload — só corre em
@@ -8080,7 +8109,7 @@ mão. Num repositório com vários commits por dia, um gatilho automático
 queima os minutos a construir o que ninguém vai publicar.
 
 **O erro número um é a assinatura, e a causa está fora do repositório.**
-O App ID `pt.nxtperformancestudio.app` tem de existir no Apple Developer
+O App ID `app.payrise.nxtperformancestudio` tem de existir no Apple Developer
 Portal **com as capabilities Push Notifications e App Attest ligadas**.
 Sem elas o perfil de aprovisionamento sai sem esses direitos, não bate
 certo com o `Runner.entitlements`, e a build falha a assinar sem dizer
