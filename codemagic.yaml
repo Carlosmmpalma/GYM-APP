@@ -9,7 +9,7 @@
 #
 # ## O que é preciso ter feito ANTES da primeira build
 #
-#   1. No Apple Developer Portal, o App ID `app.payrise.nxtperformancestudio`
+#   1. No Apple Developer Portal, o App ID `pt.nxtperformancestudio.app`
 #      registado, com as capabilities **Push Notifications** e
 #      **App Attest** ligadas. Se faltarem, o perfil de aprovisionamento
 #      sai sem elas, não bate certo com o `Runner.entitlements`, e a
@@ -45,7 +45,7 @@ workflows:
       cocoapods: default
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: app.payrise.nxtperformancestudio
+        bundle_identifier: pt.nxtperformancestudio.app
 
     scripts:
       # Falha já, com uma frase que se percebe, em vez de rebentar vinte
@@ -103,16 +103,10 @@ workflows:
           fi
           echo "$FIREBASE_SERVICE_ACCOUNT" > /tmp/sa.json
           export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
-          if [ -z "$FIREBASE_IOS_APP_ID" ]; then
-            echo "Sem FIREBASE_IOS_APP_ID — dSYM não enviados."
-            echo "É o appId da app iOS nova no Firebase (o do identificador"
-            echo "app.payrise.nxtperformancestudio), não o da antiga."
-            exit 0
-          fi
           npm install -g firebase-tools
           find build/ios -name "*.dSYM" -print0 | xargs -0 -I {} \
             firebase crashlytics:symbols:upload \
-              --app="$FIREBASE_IOS_APP_ID" "{}"
+              --app=1:447002052350:ios:3447643f112c88d03dc7af "{}"
         ignore_failure: true
 
     artifacts:

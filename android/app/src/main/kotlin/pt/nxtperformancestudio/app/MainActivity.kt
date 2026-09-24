@@ -1,4 +1,4 @@
-package app.payrise.nxtperformancestudio
+package pt.nxtperformancestudio.app
 
 import io.flutter.embedding.android.FlutterActivity
 
