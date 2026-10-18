@@ -45,6 +45,19 @@ class _InstructorStudentsScreenState
         data: (members) {
           final active = members.where((m) => m.active).toList();
           if (active.isEmpty) {
+            // Lista vazia tem duas causas e só uma delas é "não há
+            // alunos". Um Instrutor sem serviços atribuídos vê sempre
+            // zero, mesmo com o estúdio cheio — dizer-lhe "sem alunos
+            // ativos" manda-o procurar o problema no sítio errado.
+            if (ref.watch(instructorWithoutServicesProvider)) {
+              return const EmptyState(
+                icon: Icons.lock_outline,
+                title: 'Sem serviços atribuídos',
+                message: 'Vês aqui os alunos dos serviços que lecionas, '
+                    'e ainda não tens nenhum atribuído. Pede ao gestor '
+                    'do estúdio para os definir em Gestão › Equipa.',
+              );
+            }
             return const EmptyState(
               icon: Icons.groups_outlined,
               title: 'Sem alunos ativos',

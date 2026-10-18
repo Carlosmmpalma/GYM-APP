@@ -212,6 +212,33 @@ final visibleMembersProvider = StreamProvider<List<MemberSummary>>((ref) {
       .map((ids) => members.where((m) => ids.contains(m.uid)).toList());
 });
 
+/// Se o Instrutor atual não tem serviços atribuídos.
+///
+/// `visibleMembersProvider` devolve lista vazia em dois casos muito
+/// diferentes: o estúdio não tem alunos, ou o Instrutor não tem âmbito
+/// nenhum. Vistos do ecrã são indistinguíveis, e a diferença é tudo:
+/// no primeiro caso não há nada a fazer, no segundo falta o Gestor
+/// atribuir os serviços.
+///
+/// Isto custou uma ida e volta com o cliente: 79 alunos ativos na base
+/// de dados, o Instrutor a ver "Sem alunos ativos", e duas pessoas a
+/// conferir o Firestore à procura de dados que lá estavam o tempo todo.
+///
+/// `false` para o Gestor — ele vê todos os alunos e a pergunta não se
+/// lhe aplica.
+final instructorWithoutServicesProvider = Provider<bool>((ref) {
+  final appUser = ref.watch(currentAppUserProvider).valueOrNull;
+  if (appUser == null || appUser.isManager) return false;
+
+  final staff = ref.watch(staffProvider).valueOrNull;
+  // Ainda a carregar: não afirmar que não tem serviços, senão a
+  // mensagem errada pisca antes de os dados chegarem.
+  if (staff == null) return false;
+
+  final me = staff.where((s) => s.uid == appUser.uid).firstOrNull;
+  return me != null && me.serviceIds.isEmpty;
+});
+
 final eligibleMembersProvider = StreamProvider.autoDispose
     .family<List<MemberSummary>, String>((ref, serviceId) {
   final eligibleIdsAsync = ref
