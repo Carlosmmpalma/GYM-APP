@@ -43,9 +43,8 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: pt.nxtperformancestudio.app
+      vars:
+        BUNDLE_ID: pt.nxtperformancestudio.app
 
     scripts:
       # Falha já, com uma frase que se percebe, em vez de rebentar vinte
@@ -72,8 +71,54 @@ workflows:
       - name: Testes
         script: flutter test
 
-      - name: Assinatura no projeto Xcode
-        script: xcode-project use-profiles
+      # Assinatura em passos explícitos, e não pelo bloco `ios_signing`
+      # do `environment`.
+      #
+      # Com o `ios_signing`, três builds morreram em
+      #
+      #   No matching profiles found for bundle identifier
+      #   "pt.nxtperformancestudio.app" and distribution type "app_store"
+      #
+      # sem dizerem mais nada — a assinatura automática corre ANTES dos
+      # scripts, por isso não há log para ler. Perdeu-se um dia a
+      # adivinhar a causa: primeiro o papel da chave, depois a
+      # integração em falta, depois um acordo por aceitar. Os três eram
+      # problemas reais e foram corrigidos; nenhum era ESTE.
+      #
+      # O que o botão "Fetch profiles" do Codemagic mostrou: a chave
+      # autentica bem e devolve ZERO perfis. Não havia nenhum porque
+      # nunca foi criado — e quem o devia criar era a assinatura
+      # automática.
+      #
+      # Em passos explícitos cada comando imprime o que faz:
+      #   * `create-certificate` só corre se não houver certificado de
+      #     distribuição (a Apple limita quantos se podem ter, e
+      #     queimar um por build era mau);
+      #   * `--create` no `fetch-signing-files` é o que cria o perfil
+      #     quando não existe — que é exatamente o nosso caso.
+      - name: Assinatura (certificado e perfil)
+        script: |
+          keychain initialize
+
+          if ! app-store-connect certificates list \
+                --type IOS_DISTRIBUTION --save >/dev/null 2>&1; then
+            echo "Sem certificado de distribuição — a criar um."
+            app-store-connect certificates create \
+              --type IOS_DISTRIBUTION --save
+          else
+            echo "Certificado de distribuição já existe."
+          fi
+
+          app-store-connect profiles create \
+            --type IOS_APP_STORE \
+            --bundle-id-identifier "$BUNDLE_ID" \
+            --save || echo "Perfil já existia, ou foi criado antes."
+
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE --create
+
+          keychain add-certificates
+          xcode-project use-profiles
 
       # O Flutter gera o `ios/Podfile` na primeira build se não existir —
       # e neste repositório não existe, porque nunca houve um Mac.
