@@ -61,28 +61,19 @@ workflows:
       cocoapods: default
       vars:
         BUNDLE_ID: pt.nxtperformancestudio.app
-      # Assinatura AUTOMÁTICA, e é deliberado voltar a ela.
+      # Sem `ios_signing`: está provado que não serve aqui.
       #
-      # Esteve substituída por passos explícitos (`app-store-connect
-      # certificates create` + `fetch-signing-files`) porque as
-      # primeiras builds falhavam em "No matching profiles found" sem
-      # deixarem log — a assinatura automática corre antes dos scripts.
-      # Os passos explícitos serviram: deram log, e provaram que o
-      # analyze, os testes e o CocoaPods passam todos.
+      # Com ele, cinco builds morreram em "No matching profiles found"
+      # — e continuou a morrer depois de corrigidos os três problemas
+      # reais que encontrámos pelo caminho (papel da chave, integração
+      # por ligar, acordo da Apple por aceitar). Ele procura perfis;
+      # não os cria. E aqui não havia nenhum para encontrar.
       #
-      # Mas tinham um buraco. O `certificates list --save` traz o
-      # certificado e NÃO a chave privada que lhe corresponde, e sem o
-      # par o `flutter build ipa` para em "No valid code signing
-      # certificates were found". Este bloco trata disso: gera a chave,
-      # faz o CSR, cria o certificado e instala o par no keychain.
-      #
-      # E a causa original nunca foi o mecanismo — era o Apple Developer
-      # Program License Agreement por aceitar, que bloqueia a criação de
-      # certificados e perfis pela API. Trocou-se a ferramenta enquanto
-      # o problema estava noutro sítio.
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: pt.nxtperformancestudio.app
+      # A assinatura passa a ser feita em passos explícitos, abaixo.
+      groups:
+        - appstore
+      vars:
+        BUNDLE_ID: pt.nxtperformancestudio.app
 
     scripts:
       # Falha já, com uma frase que se percebe, em vez de rebentar vinte
@@ -109,10 +100,28 @@ workflows:
       - name: Testes
         script: flutter test
 
-      # O `ios_signing` acima já trouxe certificado e perfil antes dos
-      # scripts. Isto só os aplica ao projeto Xcode.
-      - name: Assinatura no projeto Xcode
-        script: xcode-project use-profiles
+      # Assinatura: certificado, perfil, keychain, projeto.
+      #
+      # `fetch-signing-files --create` faz tudo numa passagem — procura
+      # um certificado que corresponda à chave privada, cria-o se não
+      # existir, e depois cria o perfil do `app_store` se faltar. É o
+      # `--create` que faltava, e é a diferença entre isto e o
+      # `ios_signing`, que só procura.
+      #
+      # A chave privada vem de `CERTIFICATE_PRIVATE_KEY`, variável
+      # segura do grupo `appstore`, e TEM de ser sempre a mesma. Gerar
+      # uma chave nova a cada build faz a Apple emitir um certificado
+      # novo de cada vez, e ao terceiro esbarra-se no limite da conta —
+      # com os certificados anteriores todos inúteis, porque ninguém
+      # guardou as chaves deles.
+      - name: Assinatura (certificado e perfil)
+        script: |
+          keychain initialize
+
+          app-store-connect fetch-signing-files "$BUNDLE_ID"             --type IOS_APP_STORE             --certificate-key=@env:CERTIFICATE_PRIVATE_KEY             --create
+
+          keychain add-certificates
+          xcode-project use-profiles
 
       - name: CocoaPods
         script: find . -name "Podfile" -execdir pod install \;
