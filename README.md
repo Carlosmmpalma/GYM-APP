@@ -8068,6 +8068,85 @@ firebase emulators:start --only firestore,auth --project=demo-reset
 node firebase/scripts/reset-tenant.test.mjs
 ```
 
+### A assinatura iOS no Codemagic — seis builds a aprender
+
+A primeira build que chegou ao TestFlight foi a sexta. As cinco antes
+morreram, quatro delas com a mesma linha:
+
+    No matching profiles found for bundle identifier
+    "pt.nxtperformancestudio.app" and distribution type "app_store"
+
+A mesma mensagem, **quatro causas diferentes**. Fica aqui a lista, por
+ordem, porque a próxima app vai passar por isto outra vez:
+
+1. **A chave da App Store Connect nunca tinha sido ligada no
+   Codemagic.** O `codemagic.yaml` pedia uma integração por nome e ela
+   não existia. Vê-se num segundo em *Settings → Integrations*: o
+   Developer Portal tem um ponto vermelho e o botão diz *Connect*.
+2. **A chave tinha papel de Gestor de apps.** Criar certificados e
+   perfis exige **Admin**. Para só publicar, App Manager chega — por
+   isso é um erro fácil de cometer.
+3. **O Apple Developer Program License Agreement estava por aceitar.**
+   Enquanto houver um acordo pendente, a API recusa criar certificados
+   e perfis, e devolve erros que não dizem isso. Aceita-se em
+   **developer.apple.com**, não em App Store Connect, e só o titular da
+   conta o pode fazer. Há dois acordos e são em sítios diferentes.
+4. **Faltava a chave privada do certificado** — ver abaixo.
+
+**O `ios_signing` automático não serve aqui.** Ele PROCURA perfis; não
+os cria. Numa conta onde nunca existiu perfil nenhum, isso é um beco.
+Pior: corre **antes** dos scripts, por isso não deixa log — a página da
+build fica com uma linha vermelha e mais nada, e passa-se o dia a
+adivinhar. A assinatura é feita em passos explícitos precisamente para
+cada comando imprimir o que faz.
+
+**A chave privada tem de ser a mesma em todas as builds.** Está em
+`CERTIFICATE_PRIVATE_KEY`, variável segura do grupo `appstore` nas
+definições da app, e o original vive fora do repositório
+(`chaves/cert_key.pem`). O `fetch-signing-files --create` procura um
+certificado que corresponda a essa chave, cria-o se não existir, e cria
+o perfil a seguir. Gerar a chave no runner faria a Apple emitir um
+certificado novo a cada build, e ao terceiro esbarrava-se no limite da
+conta — com os anteriores inúteis, porque ninguém guardou as chaves
+deles.
+
+Depois da primeira build bem sucedida, o certificado **fica casado com
+essa chave**. Perder o `cert_key.pem` passa a obrigar a revogar o
+certificado na Apple. Guarda-se com o mesmo cuidado que o keystore do
+Android.
+
+**A ferramenta que destapou tudo** foi o botão *Fetch profiles*, em
+*Settings → Code signing identities → iOS provisioning profiles*. Ele
+exercita o mesmo caminho da API, isolado do resto da build. Quando
+disse "Fetched 0 profiles using App Store Connect API key", ficou
+provado de uma vez que a chave autenticava bem e que simplesmente não
+havia perfil nenhum. Antes disso eram hipóteses; a partir dali era
+facto. **É o primeiro sítio a ir quando a assinatura falha.**
+
+**A versão do Flutter está fixa** (`flutter: 3.41.4`) e não em
+`stable`. Com `stable`, o CI usa o que for estável no dia — e no dia em
+que passou à frente da máquina de desenvolvimento, o
+`analyze --fatal-infos` começou a falhar por um `onReorder` entretanto
+deprecado, com o código exatamente igual. Subir de versão passa a ser
+decisão explícita: muda-se aqui e na máquina na mesma passagem, e
+corre-se tudo outra vez. O Xcode fica em `latest`, que aí a Apple
+recusa binários construídos com versões antigas.
+
+**O que NÃO era problema:** o `IPHONEOS_DEPLOYMENT_TARGET` em 13.0.
+Apontei-o três vezes como o próximo suspeito. Os podspecs de todos os
+plugins pedem 13.0, e o SDK nativo da Firebase (11.15.0) também — dava
+para confirmar lendo os ficheiros no cache do pub, em dois minutos, em
+vez de adivinhar três vezes. O CocoaPods passou sem uma queixa.
+
+Fica, isso sim, um aviso do upload para o futuro:
+
+    Deployment target too low. Your app targets iOS 13.0. Starting in
+    April 2027, iOS apps must target 15.0 or later.
+
+Subir para 15.0 é uma linha em três configurações do Xcode, e nenhum
+plugin se opõe. Custa os iPhone 6s e 7. Decisão de produto, com prazo
+em abril de 2027.
+
 ### Publicar no iOS a partir do Windows (`codemagic.yaml`)
 
 Toda a cadeia da Apple — `xcodebuild`, assinatura, upload — só corre em
