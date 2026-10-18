@@ -3,74 +3,61 @@ import 'package:gym_saas/application/use_cases/complete_temporary_password_chang
 import 'package:gym_saas/domain/entities/app_user.dart';
 import 'package:gym_saas/domain/entities/role.dart';
 import 'package:gym_saas/repositories/account_repository.dart';
-import 'package:gym_saas/repositories/auth_repository.dart';
 
-class _FakeAuthRepository implements AuthRepository {
-  String? updatedPassword;
-  bool throwOnUpdate = false;
+/// Este teste já verificou duas coisas que deixaram de ser verdade: que
+/// o caso de uso mudava a password e SÓ DEPOIS limpava a flag, e que se
+/// a password fosse recusada a flag não era tocada.
+///
+/// Esses dois passos eram ambos do cliente, e o segundo nunca passava
+/// nas Security Rules para Instrutores e Alunos. Passaram para a Cloud
+/// Function `completeTemporaryPasswordChange`, e é lá que a ordem e o
+/// que acontece quando a password é recusada estão testados, contra o
+/// emulador — ver `firebase/tests/temporary-password.test.ts`.
+///
+/// O que sobra aqui é a costura: o ecrã chama o caso de uso, e o caso
+/// de uso leva a password ao repositório sem lhe mexer.
 
-  @override
-  Future<void> updatePassword(String newPassword) async {
-    if (throwOnUpdate) {
-      throw Exception('password fraca');
-    }
-    updatedPassword = newPassword;
-  }
-
-  @override
-  Stream<AppUser?> authStateChanges() => const Stream.empty();
-
-  @override
-  Future<void> signInWithMemberNumber({
-    required String tenantId,
-    required String memberNumber,
-    required String password,
-  }) async {}
+class _ContaFalsa implements AccountRepository {
+  String? passwordRecebida;
+  int chamadas = 0;
+  bool rebenta = false;
 
   @override
-  Future<void> signOut() async {}
+  Future<bool> hasTemporaryPassword(AppUser user) async =>
+      passwordRecebida == null;
 
   @override
-  Future<void> sendPasswordResetEmail(String email) async {}
-}
-
-class _FakeAccountRepository implements AccountRepository {
-  bool flagCleared = false;
-
-  @override
-  Future<bool> hasTemporaryPassword(AppUser user) async => !flagCleared;
-
-  @override
-  Future<void> clearTemporaryPasswordFlag(AppUser user) async {
-    flagCleared = true;
+  Future<void> completeTemporaryPasswordChange(String newPassword) async {
+    chamadas += 1;
+    if (rebenta) throw Exception('password recusada pelo servidor');
+    passwordRecebida = newPassword;
   }
 }
 
 void main() {
   const user = AppUser(uid: 'u1', tenantId: 't1', roles: {Role.member});
 
-  test('atualiza a password e só depois limpa a flag', () async {
-    final authRepo = _FakeAuthRepository();
-    final accountRepo = _FakeAccountRepository();
-    final useCase =
-        CompleteTemporaryPasswordChangeUseCase(authRepo, accountRepo);
+  test('leva a password ao repositório, tal e qual', () async {
+    final conta = _ContaFalsa();
+    final useCase = CompleteTemporaryPasswordChangeUseCase(conta);
 
     await useCase(user: user, newPassword: 'novaPassword123');
 
-    expect(authRepo.updatedPassword, 'novaPassword123');
-    expect(accountRepo.flagCleared, isTrue);
+    expect(conta.passwordRecebida, 'novaPassword123');
+    expect(conta.chamadas, 1);
   });
 
-  test('se a atualização da password falhar, a flag NÃO é limpa', () async {
-    final authRepo = _FakeAuthRepository()..throwOnUpdate = true;
-    final accountRepo = _FakeAccountRepository();
-    final useCase =
-        CompleteTemporaryPasswordChangeUseCase(authRepo, accountRepo);
+  test('o erro do servidor sobe até ao ecrã, não é engolido', () async {
+    // O ecrã apanha-o e mostra-o. Se este caso de uso o engolisse, a
+    // pessoa via o botão parar de rodar e mais nada — que é
+    // indistinguível de ter corrido bem, num ecrã de onde ela não sai.
+    final conta = _ContaFalsa()..rebenta = true;
+    final useCase = CompleteTemporaryPasswordChangeUseCase(conta);
 
     await expectLater(
       () => useCase(user: user, newPassword: 'x'),
       throwsException,
     );
-    expect(accountRepo.flagCleared, isFalse);
+    expect(conta.passwordRecebida, isNull);
   });
 }

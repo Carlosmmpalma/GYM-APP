@@ -18,6 +18,10 @@ import { getFirestore } from 'firebase-admin/firestore';
  */
 export default async function setup() {
   process.env.FIRESTORE_EMULATOR_HOST ??= 'localhost:8080';
+  // Sem isto, um `createUser` do Admin SDK vai bater no Firebase a
+  // sério em vez do emulador, e falha com um 403 sobre quota que não
+  // diz nada a ninguém.
+  process.env.FIREBASE_AUTH_EMULATOR_HOST ??= 'localhost:9099';
 
   const app = initializeApp({ projectId: 'demo-gym-saas-dev' }, 'global-setup');
   const firestore = getFirestore(app);

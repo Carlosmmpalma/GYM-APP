@@ -130,6 +130,7 @@ export { deleteMemberData } from './deleteMemberData';
 // quem se esqueceu, mexer no estado de uma subscrição (sem isto, trocar
 // um aluno de nível de plano era impossível dentro da app — ver
 // `updateSubscriptionStatus.ts`), e promover/despromover staff.
+export { completeTemporaryPasswordChange } from './completeTemporaryPasswordChange';
 export { resetUserPassword } from './resetUserPassword';
 export { updateSubscriptionStatus } from './updateSubscriptionStatus';
 export { updateStaffRoles } from './updateStaffRoles';

@@ -79,8 +79,15 @@ function toDomainLabel(tenantId: string): string {
 }
 
 beforeAll(async () => {
-  const users = await adminAuth(admin).listUsers(50);
-  const leo = users.users.find((u) => u.email === 'leo@nxtperformancestudio.pt');
+  // `getUserByEmail` e não `listUsers(50).find(...)`: a suite inteira
+  // cria dezenas de contas, e o Leo e a Rita passaram a cair para lá
+  // da primeira página — o teste falhava a dizer que o seed não tinha
+  // corrido, quando tinha. Uma procura exata não depende da ordem nem
+  // do tamanho da página.
+  const porEmail = (email: string) =>
+    adminAuth(admin).getUserByEmail(email).catch(() => null);
+
+  const leo = await porEmail('leo@nxtperformancestudio.pt');
   // O domínio do email sintético é derivado do `tenantId` e já mudou
   // uma vez: `nxt_performance_studio` virou `nxt-performance-studio`
   // quando se descobriu que o Firebase Auth real recusa `_` num
@@ -91,7 +98,7 @@ beforeAll(async () => {
   // isolamento), e apanhava-se o que viesse primeiro. Deriva-se o
   // domínio pela mesma regra da app.
   const ritaEmail = `member-000001@${toDomainLabel('nxt_performance_studio')}.gymsaas.internal`;
-  const rita = users.users.find((u) => u.email === ritaEmail);
+  const rita = await porEmail(ritaEmail);
 
   if (!leo || !rita) {
     throw new Error(

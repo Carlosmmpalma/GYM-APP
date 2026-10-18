@@ -66,7 +66,10 @@ final studioInfoProvider = FutureProvider.autoDispose<StudioInfo>((ref) {
 });
 
 final accountRepositoryProvider = Provider<AccountRepository>((ref) {
-  return FirebaseAccountRepository(ref.watch(firestoreProvider));
+  return FirebaseAccountRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(functionsProvider),
+  );
 });
 
 /// Fonte única de verdade de "quem está autenticado, em que tenant, com
@@ -95,7 +98,6 @@ final signInWithMemberNumberUseCaseProvider =
 final completeTemporaryPasswordChangeUseCaseProvider =
     Provider<CompleteTemporaryPasswordChangeUseCase>((ref) {
   return CompleteTemporaryPasswordChangeUseCase(
-    ref.watch(authRepositoryProvider),
     ref.watch(accountRepositoryProvider),
   );
 });

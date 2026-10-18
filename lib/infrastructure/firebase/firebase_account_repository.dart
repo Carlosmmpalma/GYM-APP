@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../domain/entities/app_user.dart';
 import '../../repositories/account_repository.dart';
@@ -14,9 +15,10 @@ import '../../repositories/account_repository.dart';
 /// composto só para um lookup que a Cloud Function `createMember`/
 /// `createStaff` já sabe fazer diretamente.
 class FirebaseAccountRepository implements AccountRepository {
-  FirebaseAccountRepository(this._firestore);
+  FirebaseAccountRepository(this._firestore, this._functions);
 
   final FirebaseFirestore _firestore;
+  final FirebaseFunctions _functions;
 
   DocumentReference<Map<String, dynamic>> _memberDoc(AppUser user) => _firestore
       .collection('tenants')
@@ -62,12 +64,9 @@ class FirebaseAccountRepository implements AccountRepository {
   }
 
   @override
-  Future<void> clearTemporaryPasswordFlag(AppUser user) async {
-    final docs = await _findDocs(user);
-    final batch = _firestore.batch();
-    for (final doc in docs) {
-      batch.update(doc.reference, {'passwordTemporaria': false});
-    }
-    await batch.commit();
+  Future<void> completeTemporaryPasswordChange(String newPassword) async {
+    await _functions
+        .httpsCallable('completeTemporaryPasswordChange')
+        .call<Map<String, dynamic>>({'newPassword': newPassword});
   }
 }
