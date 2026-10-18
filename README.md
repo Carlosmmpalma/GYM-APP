@@ -8138,14 +8138,15 @@ plugins pedem 13.0, e o SDK nativo da Firebase (11.15.0) também — dava
 para confirmar lendo os ficheiros no cache do pub, em dois minutos, em
 vez de adivinhar três vezes. O CocoaPods passou sem uma queixa.
 
-Fica, isso sim, um aviso do upload para o futuro:
+O upload da build 10 trouxe, isso sim, um aviso (`ITMS-90068`): a
+partir de abril de 2027 a Apple exige alvo 15.0 ou superior. Subiu-se
+já, nas três configurações do alvo Runner.
 
-    Deployment target too low. Your app targets iOS 13.0. Starting in
-    April 2027, iOS apps must target 15.0 or later.
-
-Subir para 15.0 é uma linha em três configurações do Xcode, e nenhum
-plugin se opõe. Custa os iPhone 6s e 7. Decisão de produto, com prazo
-em abril de 2027.
+**E não custou dispositivo nenhum.** O iOS 15 corre nos mesmos modelos
+que o iOS 13 — iPhone 6s e posteriores. Subir de 13 para 15 só deixa
+de fora quem tem um telemóvel compatível e nunca atualizou o sistema.
+Isto esteve aqui escrito ao contrário ("custa os iPhone 6s e 7"), que
+era simplesmente falso.
 
 ### Publicar no iOS a partir do Windows (`codemagic.yaml`)
 
