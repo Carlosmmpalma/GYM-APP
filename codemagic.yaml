@@ -40,7 +40,23 @@ workflows:
       app_store_connect: NXT App Store Connect
 
     environment:
-      flutter: stable
+      # Versão FIXA, e não `stable`.
+      #
+      # Com `stable`, o Codemagic usa o que for estável no dia da build
+      # — e no dia em que passou a ser mais recente do que a máquina de
+      # desenvolvimento, o `analyze --fatal-infos` começou a falhar por
+      # um `onReorder` que entretanto ficou deprecado. Localmente
+      # passava, no CI não, e o código era exatamente o mesmo.
+      #
+      # Os 991 testes foram verificados nesta versão. Um CI que anda
+      # sozinho testa num SDK em que ninguém verificou nada.
+      #
+      # Para subir: atualizar aqui E na máquina de desenvolvimento, na
+      # mesma passagem, e correr tudo outra vez.
+      flutter: 3.41.4
+      # O Xcode fica em `latest` de propósito: a Apple recusa binários
+      # construídos com versões antigas, por isso aqui andar à frente é
+      # requisito e não risco.
       xcode: latest
       cocoapods: default
       vars:
