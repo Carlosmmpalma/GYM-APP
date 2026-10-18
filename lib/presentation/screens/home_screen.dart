@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../application/providers/notification_providers.dart';
 import '../../application/providers/tenant_context_providers.dart';
 import '../../domain/entities/app_user.dart';
+import '../widgets/logout_button.dart';
 import 'book_training_screen.dart';
 import 'exercise_library_screen.dart';
 import 'free_training_screen.dart';
@@ -122,7 +123,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final index = _tabIndex.clamp(0, titles.length - 1);
 
     return Scaffold(
-      appBar: AppBar(title: Text(titles[index])),
+      appBar: AppBar(
+        title: Text(titles[index]),
+        actions: const [LogoutButton()],
+      ),
       body: IndexedStack(
         index: index,
         children: [
@@ -162,7 +166,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// justifique uma barra inferior.
   Widget _buildInstructorShell(AppUser appUser) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Início')),
+      appBar: AppBar(
+        title: const Text('Início'),
+        actions: const [LogoutButton()],
+      ),
       body: InstructorHomeScreen(appUser: appUser),
     );
   }
@@ -241,6 +248,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           ),
+          // Sempre o último da direita, nos três shells.
+          const LogoutButton(),
         ],
       ),
       body: IndexedStack(
