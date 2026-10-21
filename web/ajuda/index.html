@@ -31,7 +31,7 @@
 <title>Instalar a app — NXT Performance Studio</title>
 <meta name="description" content="Como instalar a app do NXT Performance Studio no telemóvel, passo a passo.">
 <meta name="robots" content="noindex">
-<link rel="icon" href="/icons/Icon-192.png">
+<link rel="icon" href="img/app-icone.png">
 <style>
   :root {
     --fundo: #0b0b0c;
@@ -171,7 +171,14 @@
      ajuda. Um desenho mostra a FORMA do que procurar — um botão azul no
      canto, um campo com um email — que é o que as pessoas reconhecem. */
   figure { margin: 18px 0; }
-  figure svg { width: 100%; height: auto; display: block; border-radius: 12px; }
+  figure svg,
+  figure img { width: 100%; height: auto; display: block; border-radius: 12px; }
+  /* As capturas do grupo são claras e a página é escura: uma moldura
+     evita que a imagem pareça um buraco branco no meio do cartão. */
+  figure img { border: 1px solid var(--cartao-borda); }
+
+  .duas-imagens { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .duas-imagens figure { margin: 0; }
   figcaption {
     color: var(--texto-fraco);
     font-size: 16px;
@@ -217,7 +224,7 @@
 <div class="envolve">
 
   <header>
-    <img src="/icons/Icon-192.png" alt="NXT Performance Studio">
+    <img src="img/app-icone.png" alt="NXT Performance Studio">
     <h1>Instalar a app<br>do estúdio</h1>
     <p class="subtitulo">Demora 5 minutos. Segue os passos por ordem.</p>
   </header>
@@ -296,16 +303,8 @@
     <a class="botao" href="https://groups.google.com/g/grupo-testes2" target="_blank" rel="noopener">Abrir o grupo e participar</a>
 
     <figure>
-      <svg viewBox="0 0 340 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Página do grupo com o botão Participar no grupo">
-        <rect width="340" height="120" rx="12" fill="#ffffff"/>
-        <text x="20" y="42" fill="#202124" font-size="18" font-weight="bold" font-family="sans-serif">Grupo testes</text>
-        <rect x="150" y="22" width="170" height="38" rx="19" fill="#fff" stroke="#1a73e8" stroke-width="2"/>
-        <text x="235" y="47" fill="#1a73e8" font-size="15" font-weight="bold" text-anchor="middle" font-family="sans-serif">Participar no grupo</text>
-        <path d="M235 76 v14" stroke="#e01f2d" stroke-width="3"/>
-        <path d="M229 84 l6 8 l6 -8" fill="#e01f2d"/>
-        <text x="170" y="110" fill="#5f6368" font-size="13" text-anchor="middle" font-family="sans-serif">Toca no botão azul</text>
-      </svg>
-      <figcaption>O botão azul com a borda, ao lado do nome do grupo.</figcaption>
+      <img src="img/grupo-botao.png" alt="O botao azul Participar no grupo, ao lado do nome do grupo" loading="lazy">
+      <figcaption>É este o botão. Está marcado a vermelho.</figcaption>
     </figure>
 
     <div class="aviso">
@@ -466,6 +465,20 @@
 
   <h2>Se nada resultar</h2>
   <p>Não percas a manhã com isto. <strong>Passa na receção com o telemóvel na mão</strong> — resolve-se em dois minutos com alguém a ver o ecrã contigo.</p>
+
+  <h2>É isto que te espera</h2>
+  <p>Capturas da app a funcionar, com o horário do estúdio.</p>
+
+  <div class="duas-imagens">
+    <figure>
+      <img src="img/app-aulas.jpg" alt="Ecra de aulas da app, com horarios e botao Marcar" loading="lazy">
+      <figcaption>Marcar aulas</figcaption>
+    </figure>
+    <figure>
+      <img src="img/app-plano.jpg" alt="Ecra do plano de treino, com exercicios e cargas" loading="lazy">
+      <figcaption>O teu plano de treino</figcaption>
+    </figure>
+  </div>
 
   <footer>
     NXT Performance Studio<br>
