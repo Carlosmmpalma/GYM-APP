@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<!--
+  Guia de instalação para os alunos, servido em /ajuda/.
+
+  Vive em `web/ajuda/` e não em `build/web/ajuda/`: o `flutter build web`
+  limpa a pasta de saída a cada build, e tudo o que esteja em `web/` é
+  copiado para lá. Posto no sítio errado, desaparecia na build seguinte
+  e ninguém perceberia porquê.
+
+  O `firebase.json` reescreve `**` para `/index.html`, mas o Hosting
+  serve ficheiros estáticos ANTES de aplicar reescritas — por isso
+  `/ajuda/` chega aqui e não à app.
+
+  ## Para quem isto é escrito
+
+  Pessoas que treinam num ginásio e não querem saber de tecnologia. Não
+  sabem o que é uma "conta Google", não distinguem a Play Store da App
+  Store, e desistem ao segundo passo que não perceberem.
+
+  Daí: um passo por cartão, números enormes, uma só ação por passo, e
+  zero vocabulário técnico. "Toca no botão azul que diz X" em vez de
+  "autentica-te no grupo".
+
+  Sem JavaScript de propósito. O FAQ usa <details>, que funciona em
+  qualquer telemóvel mesmo com dados fracos ou scripts bloqueados.
+-->
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instalar a app — NXT Performance Studio</title>
+<meta name="description" content="Como instalar a app do NXT Performance Studio no telemóvel, passo a passo.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="/icons/Icon-192.png">
+<style>
+  :root {
+    --fundo: #0b0b0c;
+    --cartao: #161618;
+    --cartao-borda: #2a2a2e;
+    --texto: #f2f2f0;
+    --texto-fraco: #a9a9b0;
+    --vermelho: #e01f2d;
+    --verde: #1f9d55;
+    --ambar: #b7791f;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--fundo);
+    color: var(--texto);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    /* 19px e não 16: metade de quem vai ler isto tem mais de 50 anos e
+       lê no telemóvel, muitas vezes no ginásio e com pressa. */
+    font-size: 19px;
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .envolve { max-width: 680px; margin: 0 auto; padding: 0 16px 80px; }
+
+  header { text-align: center; padding: 36px 0 8px; }
+  header img { width: 76px; height: 76px; border-radius: 18px; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 18px 0 6px; }
+  .subtitulo { color: var(--texto-fraco); margin: 0 0 8px; }
+
+  h2 {
+    font-size: 25px;
+    margin: 44px 0 14px;
+    padding-top: 22px;
+    border-top: 1px solid var(--cartao-borda);
+  }
+  h2:first-of-type { border-top: 0; }
+
+  /* --- A bifurcação do início ---------------------------------------
+     O erro mais caro é seguir os passos do telemóvel errado. Por isso a
+     primeira coisa na página é escolher, em dois botões que ocupam o
+     ecrã quase todo. */
+  .escolha { display: grid; gap: 14px; margin: 26px 0 10px; }
+  .escolha a {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--cartao);
+    border: 2px solid var(--cartao-borda);
+    border-radius: 16px;
+    padding: 20px;
+    text-decoration: none;
+    color: var(--texto);
+    font-size: 21px;
+    font-weight: 700;
+  }
+  .escolha a:active { border-color: var(--vermelho); }
+  .escolha svg { flex: 0 0 auto; }
+  .escolha span small {
+    display: block;
+    font-weight: 400;
+    font-size: 16px;
+    color: var(--texto-fraco);
+  }
+
+  /* --- Passos -------------------------------------------------------- */
+  .passo {
+    background: var(--cartao);
+    border: 1px solid var(--cartao-borda);
+    border-radius: 16px;
+    padding: 22px;
+    margin: 16px 0;
+  }
+  .numero {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    background: var(--vermelho);
+    color: #fff;
+    font-size: 24px;
+    font-weight: 800;
+    margin-bottom: 12px;
+  }
+  .passo h3 { font-size: 21px; margin: 0 0 10px; }
+  .passo p { margin: 0 0 12px; }
+  .passo p:last-child { margin-bottom: 0; }
+
+  /* Botões de ação: altura generosa, porque são tocados com o polegar
+     e muitas vezes de pé. */
+  .botao {
+    display: block;
+    text-align: center;
+    background: var(--vermelho);
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 19px;
+    padding: 18px 20px;
+    border-radius: 12px;
+    margin: 16px 0 6px;
+  }
+  .botao.escuro { background: #2b2b30; }
+
+  .nota {
+    border-left: 4px solid var(--ambar);
+    background: rgba(183, 121, 31, .12);
+    padding: 14px 16px;
+    border-radius: 0 10px 10px 0;
+    margin: 16px 0;
+  }
+  .nota strong { color: #e3b341; }
+
+  .aviso {
+    border-left: 4px solid var(--vermelho);
+    background: rgba(224, 31, 45, .12);
+    padding: 14px 16px;
+    border-radius: 0 10px 10px 0;
+    margin: 16px 0;
+  }
+
+  .ok {
+    border-left: 4px solid var(--verde);
+    background: rgba(31, 157, 85, .12);
+    padding: 14px 16px;
+    border-radius: 0 10px 10px 0;
+    margin: 16px 0;
+  }
+
+  /* --- Desenhos de apoio --------------------------------------------
+     Desenhos e não capturas de ecrã: as páginas reais mudam de aspeto
+     e de idioma, e uma captura desatualizada confunde mais do que
+     ajuda. Um desenho mostra a FORMA do que procurar — um botão azul no
+     canto, um campo com um email — que é o que as pessoas reconhecem. */
+  figure { margin: 18px 0; }
+  figure svg { width: 100%; height: auto; display: block; border-radius: 12px; }
+  figcaption {
+    color: var(--texto-fraco);
+    font-size: 16px;
+    text-align: center;
+    margin-top: 8px;
+  }
+
+  details {
+    background: var(--cartao);
+    border: 1px solid var(--cartao-borda);
+    border-radius: 12px;
+    padding: 4px 18px;
+    margin: 10px 0;
+  }
+  summary {
+    cursor: pointer;
+    font-weight: 700;
+    padding: 14px 0;
+    font-size: 19px;
+  }
+  details p { margin: 0 0 16px; }
+
+  .lista-simples { padding-left: 24px; }
+  .lista-simples li { margin-bottom: 10px; }
+
+  footer {
+    text-align: center;
+    color: var(--texto-fraco);
+    font-size: 16px;
+    margin-top: 48px;
+    padding-top: 22px;
+    border-top: 1px solid var(--cartao-borda);
+  }
+
+  @media (max-width: 380px) {
+    body { font-size: 18px; }
+    h1 { font-size: 26px; }
+    .escolha a { font-size: 19px; padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="envolve">
+
+  <header>
+    <img src="/icons/Icon-192.png" alt="NXT Performance Studio">
+    <h1>Instalar a app<br>do estúdio</h1>
+    <p class="subtitulo">Demora 5 minutos. Segue os passos por ordem.</p>
+  </header>
+
+  <div class="aviso">
+    <strong>Antes de começares, tem isto à mão:</strong>
+    <ul class="lista-simples" style="margin:10px 0 0">
+      <li>O teu <strong>número de sócio</strong> e a <strong>password</strong> que o estúdio te deu.</li>
+      <li>Se não tens, pede na receção antes de continuar.</li>
+    </ul>
+  </div>
+
+  <h2>Que telemóvel tens?</h2>
+  <p>Toca no teu. Os passos são diferentes — segue só os do teu telemóvel.</p>
+
+  <div class="escolha">
+    <a href="#android">
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M6 9h12v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9Z" fill="#3ddc84"/>
+        <path d="M7.5 9a4.5 4.5 0 0 1 9 0" stroke="#3ddc84" stroke-width="2"/>
+        <circle cx="10" cy="6.5" r=".9" fill="#0b0b0c"/>
+        <circle cx="14" cy="6.5" r=".9" fill="#0b0b0c"/>
+        <rect x="3" y="10" width="2.4" height="7" rx="1.2" fill="#3ddc84"/>
+        <rect x="18.6" y="10" width="2.4" height="7" rx="1.2" fill="#3ddc84"/>
+      </svg>
+      <span>Android<small>Samsung, Xiaomi, Huawei, Oppo…</small></span>
+    </a>
+    <a href="#iphone">
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M16.3 12.6c0-2.2 1.8-3.3 1.9-3.3-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.7.8-3.3.8-.7 0-1.7-.8-2.8-.8-1.5 0-2.8.8-3.6 2.1-1.5 2.6-.4 6.5 1.1 8.6.7 1 1.6 2.2 2.7 2.2 1.1 0 1.5-.7 2.8-.7 1.3 0 1.7.7 2.8.7 1.2 0 1.9-1.1 2.6-2.1.8-1.2 1.2-2.4 1.2-2.4s-2.2-.9-2.2-3.4Z" fill="#f2f2f0"/>
+        <path d="M14.4 6.1c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.6-1 1.6-.9 2.6 1 .1 2-.5 2.5-1.2Z" fill="#f2f2f0"/>
+      </svg>
+      <span>iPhone<small>Apple</small></span>
+    </a>
+  </div>
+
+
+  <!-- =============================== ANDROID =============================== -->
+  <h2 id="android">Android — passo a passo</h2>
+
+  <div class="nota">
+    <strong>A regra mais importante:</strong> vais usar um email nos dois
+    passos seguintes. <strong>Tem de ser o mesmo email nos dois</strong> —
+    o mesmo que já usas na Play Store do teu telemóvel. Se usares emails
+    diferentes, a app não aparece e ninguém percebe porquê.
+  </div>
+
+  <div class="passo">
+    <div class="numero">1</div>
+    <h3>Descobre o email da tua Play Store</h3>
+    <p>Abre a <strong>Play Store</strong> no telemóvel e toca na <strong>bolinha redonda com a tua foto ou inicial</strong>, no canto de cima à direita.</p>
+    <p>Aparece lá o teu email. <strong>É esse que vais usar.</strong> Guarda-o.</p>
+
+    <figure>
+      <svg viewBox="0 0 340 150" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Topo da Play Store com a bolinha da conta no canto direito">
+        <rect width="340" height="150" rx="12" fill="#161618"/>
+        <rect x="16" y="18" width="250" height="34" rx="17" fill="#232327"/>
+        <text x="36" y="40" fill="#a9a9b0" font-size="13" font-family="sans-serif">Pesquisar apps e jogos</text>
+        <circle cx="300" cy="35" r="18" fill="#e01f2d"/>
+        <text x="300" y="41" fill="#fff" font-size="17" font-weight="bold" text-anchor="middle" font-family="sans-serif">C</text>
+        <path d="M300 66 v16" stroke="#e01f2d" stroke-width="3"/>
+        <path d="M294 76 l6 8 l6 -8" fill="#e01f2d"/>
+        <text x="170" y="112" fill="#f2f2f0" font-size="15" text-anchor="middle" font-family="sans-serif">Toca aqui para ver o teu email</text>
+        <text x="170" y="134" fill="#a9a9b0" font-size="13" text-anchor="middle" font-family="sans-serif">exemplo@gmail.com</text>
+      </svg>
+      <figcaption>É a bolinha no canto de cima à direita.</figcaption>
+    </figure>
+  </div>
+
+  <div class="passo">
+    <div class="numero">2</div>
+    <h3>Entra no grupo e toca em “Participar no grupo”</h3>
+    <p>Toca no botão vermelho em baixo. Abre uma página do Google chamada <strong>Grupos</strong>.</p>
+    <p>Lá, toca no botão azul <strong>“Participar no grupo”</strong>, no topo.</p>
+
+    <a class="botao" href="https://groups.google.com/g/grupo-testes2" target="_blank" rel="noopener">Abrir o grupo e participar</a>
+
+    <figure>
+      <svg viewBox="0 0 340 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Página do grupo com o botão Participar no grupo">
+        <rect width="340" height="120" rx="12" fill="#ffffff"/>
+        <text x="20" y="42" fill="#202124" font-size="18" font-weight="bold" font-family="sans-serif">Grupo testes</text>
+        <rect x="150" y="22" width="170" height="38" rx="19" fill="#fff" stroke="#1a73e8" stroke-width="2"/>
+        <text x="235" y="47" fill="#1a73e8" font-size="15" font-weight="bold" text-anchor="middle" font-family="sans-serif">Participar no grupo</text>
+        <path d="M235 76 v14" stroke="#e01f2d" stroke-width="3"/>
+        <path d="M229 84 l6 8 l6 -8" fill="#e01f2d"/>
+        <text x="170" y="110" fill="#5f6368" font-size="13" text-anchor="middle" font-family="sans-serif">Toca no botão azul</text>
+      </svg>
+      <figcaption>O botão azul com a borda, ao lado do nome do grupo.</figcaption>
+    </figure>
+
+    <div class="aviso">
+      <strong>Se a página pedir para entrares na conta Google:</strong> usa o
+      <strong>mesmo email do Passo 1</strong>. Não uses outro.
+    </div>
+  </div>
+
+  <div class="passo">
+    <div class="numero">3</div>
+    <h3>Espera 5 minutos</h3>
+    <p>O Google demora alguns minutos a reconhecer-te. <strong>Não faças nada durante este tempo.</strong></p>
+    <p>Se avançares já, a app vai dizer que não existe — e não é verdade, é só cedo demais.</p>
+  </div>
+
+  <div class="passo">
+    <div class="numero">4</div>
+    <h3>Instala a app</h3>
+    <p>Agora sim. Toca no botão vermelho e depois em <strong>“Instalar”</strong>.</p>
+
+    <a class="botao" href="https://play.google.com/store/apps/details?id=pt.nxtperformancestudio.app" target="_blank" rel="noopener">Instalar a app na Play Store</a>
+
+    <div class="nota">
+      <strong>Diz “item não encontrado” ou “não disponível”?</strong>
+      Não fizeste nada de errado. Quase sempre é uma destas três:
+      <ul class="lista-simples" style="margin:10px 0 0">
+        <li>Ainda não passaram os 5 minutos — espera mais um bocado.</li>
+        <li>O email do grupo não é o mesmo da Play Store — volta ao Passo 1.</li>
+        <li>Tens mais do que uma conta no telemóvel — troca para a certa na bolinha do canto.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="passo">
+    <div class="numero">5</div>
+    <h3>Entra com o teu número de sócio</h3>
+    <p>Abre a app, toca em <strong>“Já sou membro — entrar”</strong>, e escreve o <strong>número de sócio</strong> e a <strong>password</strong> que o estúdio te deu.</p>
+    <p>Na primeira vez, a app pede-te para <strong>escolheres uma password nova</strong>. Escolhe uma que não te esqueças.</p>
+    <div class="ok">Pronto. Já podes marcar aulas.</div>
+  </div>
+
+
+  <!-- =============================== IPHONE =============================== -->
+  <h2 id="iphone">iPhone — passo a passo</h2>
+
+  <p>No iPhone é mais simples: <strong>não precisas de grupo nenhum.</strong> São dois passos.</p>
+
+  <div class="passo">
+    <div class="numero">1</div>
+    <h3>Instala primeiro o TestFlight</h3>
+    <p>O <strong>TestFlight</strong> é uma app da Apple que serve para instalar apps que ainda não estão abertas ao público. É por ela que a nossa app chega até ti.</p>
+    <p>Abre a <strong>App Store</strong>, procura por <strong>TestFlight</strong>, e instala. O ícone é azul claro com uma hélice branca.</p>
+
+    <figure>
+      <svg viewBox="0 0 340 110" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ícone do TestFlight">
+        <rect width="340" height="110" rx="12" fill="#161618"/>
+        <rect x="26" y="24" width="62" height="62" rx="14" fill="#2ac3f5"/>
+        <path d="M57 38 c8 8 8 22 0 34 c-8 -12 -8 -26 0 -34Z" fill="#fff"/>
+        <text x="106" y="52" fill="#f2f2f0" font-size="17" font-weight="bold" font-family="sans-serif">TestFlight</text>
+        <text x="106" y="74" fill="#a9a9b0" font-size="14" font-family="sans-serif">Procura este na App Store</text>
+      </svg>
+      <figcaption>É este o ícone. Instala-o primeiro.</figcaption>
+    </figure>
+  </div>
+
+  <div class="passo">
+    <div class="numero">2</div>
+    <h3>Abre o convite e instala a app</h3>
+    <p>Com o TestFlight já instalado, toca no botão vermelho em baixo. Depois toca em <strong>“Aceitar”</strong> e a seguir em <strong>“Instalar”</strong>.</p>
+
+    <a class="botao" href="https://testflight.apple.com/join/fpVsFrvf" target="_blank" rel="noopener">Abrir o convite no TestFlight</a>
+
+    <div class="nota">
+      Abre este link <strong>no iPhone</strong>, não no computador. No computador não funciona.
+    </div>
+  </div>
+
+  <div class="passo">
+    <div class="numero">3</div>
+    <h3>Entra com o teu número de sócio</h3>
+    <p>Abre a app, toca em <strong>“Já sou membro — entrar”</strong>, e escreve o <strong>número de sócio</strong> e a <strong>password</strong> que o estúdio te deu.</p>
+    <p>Na primeira vez, a app pede-te para <strong>escolheres uma password nova</strong>.</p>
+    <div class="ok">Pronto. Já podes marcar aulas.</div>
+  </div>
+
+
+  <!-- ============================ JÁ TINHAS A APP =========================== -->
+  <h2>Já instalaste e ficaste preso na password?</h2>
+
+  <div class="aviso">
+    <p style="margin:0 0 10px"><strong>Havia um problema e já está resolvido.</strong></p>
+    <p style="margin:0">Quem instalou nos primeiros dias podia ficar preso: a app pedia a password nova, ficava a rodar, e voltava a pedir, sem nunca entrar. A culpa não era tua.</p>
+  </div>
+
+  <div class="passo">
+    <h3>O que fazer</h3>
+    <ol class="lista-simples">
+      <li><strong>Desinstala</strong> a app do telemóvel. (Carrega no ícone sem largar, e escolhe desinstalar.)</li>
+      <li><strong>Instala outra vez</strong>, pelos passos acima. Vem a versão corrigida.</li>
+      <li><strong>Entra</strong> com o teu número de sócio e a password.</li>
+    </ol>
+    <div class="nota">
+      <strong>E se a password já não funcionar?</strong> É possível, porque na
+      tentativa anterior ela pode ter sido trocada a meio. <strong>Pede uma
+      password nova na receção</strong> — tratam disso em segundos.
+    </div>
+  </div>
+
+
+  <!-- ================================= FAQ ================================= -->
+  <h2>Perguntas frequentes</h2>
+
+  <details>
+    <summary>Tenho de pagar alguma coisa?</summary>
+    <p>Não. A app é gratuita e nunca te vai pedir dados de cartão.</p>
+  </details>
+
+  <details>
+    <summary>Porque é que tenho de entrar num grupo? (Android)</summary>
+    <p>Porque a app ainda está em testes. O Google só a mostra a quem está na lista, e o grupo é essa lista. Quando a app for pública, este passo deixa de existir.</p>
+  </details>
+
+  <details>
+    <summary>Tenho dois emails no telemóvel. Qual uso?</summary>
+    <p>O que aparece na <strong>Play Store</strong> quando tocas na bolinha do canto de cima à direita. Tem de ser esse no grupo e na Play Store — o mesmo nos dois sítios.</p>
+  </details>
+
+  <details>
+    <summary>Entrei no grupo mas a app continua a não aparecer</summary>
+    <p>Espera 10 minutos e tenta outra vez. Se continuar, é quase de certeza email trocado: confirma na bolinha da Play Store qual é a conta ativa, e entra no grupo com <strong>essa</strong>.</p>
+  </details>
+
+  <details>
+    <summary>Não sei o meu número de sócio</summary>
+    <p>Pede na receção. É um número que o estúdio te atribuiu quando te inscreveste — não é o teu telemóvel nem o teu email.</p>
+  </details>
+
+  <details>
+    <summary>Esqueci-me da password</summary>
+    <p>Pede uma nova na receção. Por agora não dá para a recuperares sozinho pela app — é mesmo preciso falar com o estúdio.</p>
+  </details>
+
+  <details>
+    <summary>Posso usar a app sem instalar nada?</summary>
+    <p>Podes, pelo browser do telemóvel: <a href="/" style="color:var(--vermelho)">abre aqui</a>. Funciona tudo igual, mas não recebes avisos das aulas.</p>
+  </details>
+
+  <details>
+    <summary>Mudei de telemóvel. Tenho de fazer tudo outra vez?</summary>
+    <p>Só instalar a app no telemóvel novo. A tua conta, as marcações e o teu plano de treino ficam todos lá — entras com o mesmo número de sócio.</p>
+  </details>
+
+  <details>
+    <summary>Não recebo os avisos das aulas</summary>
+    <p>Da primeira vez que abriste a app, ela perguntou se podia enviar notificações. Se disseste que não, vai às definições do telemóvel, procura a app NXT, e liga as notificações.</p>
+  </details>
+
+
+  <h2>Se nada resultar</h2>
+  <p>Não percas a manhã com isto. <strong>Passa na receção com o telemóvel na mão</strong> — resolve-se em dois minutos com alguém a ver o ecrã contigo.</p>
+
+  <footer>
+    NXT Performance Studio<br>
+    <a href="/" style="color:var(--texto-fraco)">Voltar à app</a>
+  </footer>
+
+</div>
+</body>
+</html>
