@@ -99,6 +99,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/ajuda{,/**}",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=300"
+          }
+        ]
       }
     ]
   },
