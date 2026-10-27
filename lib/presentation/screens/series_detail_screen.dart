@@ -6,6 +6,7 @@ import '../../application/providers/booking_providers.dart';
 import '../../application/providers/plan_providers.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/session_series.dart';
+import '../widgets/assign_scope_dialog.dart';
 import '../widgets/design_system.dart';
 import '../widgets/occurrence_dialogs.dart';
 import 'manage_series_screen.dart';
@@ -321,6 +322,48 @@ class _OccurrenceTile extends ConsumerWidget {
       occurrence: occurrence,
     );
     if (memberIds == null || memberIds.isEmpty) return;
+
+    // O menu desta linha é por ocorrência ("Editar esta", "Cancelar só
+    // esta"), mas quem está no ecrã da série quer, na maior parte das
+    // vezes, inscrever a pessoa em todas as semanas. Perguntar custa
+    // um toque e evita repetir o gesto semana a semana.
+    if (occurrence.seriesId != null) {
+      if (!context.mounted) return;
+      final ambito = await showAssignScopeDialog(
+        context: context,
+        quantosMembros: memberIds.length,
+      );
+      if (ambito == null) return;
+      if (ambito == AssignScope.todasAsSemanas) {
+        if (!context.mounted) return;
+        try {
+          final resultado = await ref
+              .read(sessionSeriesRepositoryProvider)
+              .assignMembersToSeries(
+                seriesId: occurrence.seriesId!,
+                memberIds: memberIds,
+              );
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(resumoDaAtribuicaoNaSerie(
+                totalAssigned: resultado.totalAssigned,
+                totalSkipped: resultado.totalSkipped,
+                occurrences: resultado.occurrences,
+              )),
+            ),
+          );
+        } catch (e) {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(userFacingError(e,
+                    fallback: 'Não foi possível atribuir. Tenta outra vez.'))),
+          );
+        }
+        return;
+      }
+    }
 
     try {
       final results =

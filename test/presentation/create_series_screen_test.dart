@@ -47,6 +47,14 @@ class _SeriesRepoComGeracaoPresa implements SessionSeriesRepository {
   Future<void> generateNow() => geracao.future;
 
   @override
+  Future<SeriesAssignmentResult> assignMembersToSeries({
+    required String seriesId,
+    required List<String> memberIds,
+    bool isExtra = false,
+  }) async =>
+      const SeriesAssignmentResult(occurrences: 0, porMembro: {});
+
+  @override
   Future<int> countActiveSeries() => _real.countActiveSeries();
 
   @override

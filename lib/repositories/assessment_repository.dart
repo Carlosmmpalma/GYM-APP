@@ -13,6 +13,13 @@ abstract class AssessmentRepository {
   Future<String> createAssessment({
     required String memberId,
     required String instructorId,
+
+    /// O dia em que a avaliação foi FEITA, que não é sempre o dia em
+    /// que é registada na app. Era `serverTimestamp()` — quem passasse
+    /// as medições da véspera para o sistema ficava com a data errada,
+    /// e é por este campo que o histórico ordena e que o gráfico de
+    /// evolução espaça os pontos.
+    required DateTime data,
     required int idade,
     required double peso,
     required double altura,
@@ -49,6 +56,10 @@ abstract class AssessmentRepository {
     required String memberId,
     required String assessmentId,
     required String updatedBy,
+
+    /// Corrigível na edição, como qualquer outro campo: a data errada
+    /// é das coisas que mais vezes se dá por elas tarde.
+    required DateTime data,
     required int idade,
     required double peso,
     required double altura,

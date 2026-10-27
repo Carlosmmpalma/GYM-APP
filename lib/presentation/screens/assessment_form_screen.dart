@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/utils/firebase_error_text.dart';
 import '../../application/providers/tenant_context_providers.dart';
@@ -105,6 +106,9 @@ class _AssessmentFormScreenState extends ConsumerState<AssessmentFormScreen> {
   late String _resistencia =
       widget.assessment?.resistencia ?? _forcaOptions.first;
 
+  /// Hoje ao criar; a data que lá está ao editar.
+  late DateTime _data = widget.assessment?.createdAt ?? DateTime.now();
+
   bool _saving = false;
 
   bool get _isEditing => widget.assessment != null;
@@ -142,6 +146,39 @@ class _AssessmentFormScreenState extends ConsumerState<AssessmentFormScreen> {
       double.parse(c.text.trim().replaceAll(',', '.'));
   int _int(TextEditingController c) => int.parse(c.text.trim());
 
+  /// A data da avaliação.
+  ///
+  /// Fica no topo e não no fim: é o campo que mais vezes precisa de
+  /// ser mudado (registar hoje o que se mediu ontem) e, deixado em
+  /// baixo, passava despercebido depois de preencher dezassete
+  /// medidas.
+  Widget _campoData(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: () async {
+          final escolhida = await showDatePicker(
+            context: context,
+            initialDate: _data,
+            // Dois anos para trás chegam para passar histórico antigo
+            // para a app; para a frente não faz sentido nenhum — uma
+            // avaliação é sempre de uma medição que já aconteceu.
+            firstDate: DateTime.now().subtract(const Duration(days: 730)),
+            lastDate: DateTime.now(),
+          );
+          if (escolhida != null) setState(() => _data = escolhida);
+        },
+        child: InputDecorator(
+          decoration: const InputDecoration(
+            labelText: 'Data da avaliação',
+            suffixIcon: Icon(Icons.calendar_today_outlined),
+          ),
+          child: Text(DateFormat.yMMMMd('pt_PT').format(_data)),
+        ),
+      ),
+    );
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -153,6 +190,7 @@ class _AssessmentFormScreenState extends ConsumerState<AssessmentFormScreen> {
               memberId: widget.member.uid,
               assessmentId: widget.assessment!.id,
               updatedBy: staffUid,
+              data: _data,
               idade: _int(_idadeController),
               peso: _num(_pesoController),
               altura: _num(_alturaController),
@@ -175,6 +213,7 @@ class _AssessmentFormScreenState extends ConsumerState<AssessmentFormScreen> {
         await ref.read(assessmentRepositoryProvider).createAssessment(
               memberId: widget.member.uid,
               instructorId: staffUid,
+              data: _data,
               idade: _int(_idadeController),
               peso: _num(_pesoController),
               altura: _num(_alturaController),
@@ -261,6 +300,7 @@ class _AssessmentFormScreenState extends ConsumerState<AssessmentFormScreen> {
                 Text(widget.member.name,
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 16),
+                _campoData(context),
                 _numberField(_idadeController, 'Idade', isInt: true),
                 Text('Composição corporal',
                     style: Theme.of(context).textTheme.titleSmall),

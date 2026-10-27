@@ -120,6 +120,34 @@ class FirebaseSessionSeriesRepository implements SessionSeriesRepository {
   }
 
   @override
+  Future<SeriesAssignmentResult> assignMembersToSeries({
+    required String seriesId,
+    required List<String> memberIds,
+    bool isExtra = false,
+  }) async {
+    final result =
+        await _functions.httpsCallable('assignMembersToSeries').call<Object?>({
+      'seriesId': seriesId,
+      'memberIds': memberIds,
+      'isExtra': isExtra,
+    });
+    // Mesmo padrão defensivo do resto: no Flutter Web o interop pode
+    // devolver `Map<Object?, Object?>`.
+    final data = Map<String, dynamic>.from(result.data as Map);
+    final cru = Map<String, dynamic>.from(data['results'] as Map? ?? {});
+    return SeriesAssignmentResult(
+      occurrences: (data['occurrences'] as num? ?? 0).toInt(),
+      porMembro: {
+        for (final entry in cru.entries)
+          entry.key: (
+            assigned: ((entry.value as Map)['assigned'] as num? ?? 0).toInt(),
+            skipped: ((entry.value as Map)['skipped'] as num? ?? 0).toInt(),
+          ),
+      },
+    );
+  }
+
+  @override
   Future<void> generateNow() async {
     await _functions
         .httpsCallable('generateRecurringOccurrencesNow')

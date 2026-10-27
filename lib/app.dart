@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'application/providers/firebase_providers.dart';
@@ -23,6 +24,13 @@ class GymSaasApp extends ConsumerWidget {
     return MaterialApp(
       title: tenant.displayName ?? 'Gym',
       debugShowCheckedModeBanner: false,
+      // A app é só em português, e os widgets do Material seguem a
+      // mesma língua: o calendário do `showDatePicker` abria em inglês,
+      // com "September" e "Mon/Tue", nos quatro sítios onde se escolhe
+      // uma data.
+      locale: const Locale('pt', 'PT'),
+      supportedLocales: const [Locale('pt', 'PT')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       // Fita no canto em tudo o que NÃO é produção.
       //
       // `flutter build web` sem `-t` compila `lib/main.dart`, que aponta

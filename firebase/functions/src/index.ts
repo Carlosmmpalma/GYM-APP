@@ -73,6 +73,7 @@ export {
   generateRecurringOccurrences,
   generateRecurringOccurrencesNow,
 } from './generateRecurringOccurrences';
+export { assignMembersToSeries } from './assignMembersToSeries';
 export { assignMembersToOccurrence } from './assignMembersToOccurrence';
 
 // Fase 6 — Operações do dia a dia. removeMembersFromOccurrence (UC18

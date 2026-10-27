@@ -43,4 +43,41 @@ abstract class SessionSeriesRepository {
   /// diário (`generateRecurringOccurrences.ts`). Principal forma de
   /// testar isto localmente, e também ferramenta operacional.
   Future<void> generateNow();
+
+  /// Atribuir alunos à série inteira — "todas as semanas", e não só a
+  /// uma aula.
+  ///
+  /// Entra em `preAssignedMemberIds` (que a geração semanal já usa
+  /// para marcar as aulas futuras assim que as cria) E marca as aulas
+  /// que já estão geradas, uma a uma, com as mesmas validações de
+  /// capacidade, plano e limite semanal.
+  ///
+  /// Uma semana que falhe — sala cheia, limite esgotado — não impede
+  /// as outras. Daí devolver a contagem por aluno em vez de um
+  /// sim/não: "marcado em 6 das 8 semanas" é acionável, um erro só não
+  /// é.
+  Future<SeriesAssignmentResult> assignMembersToSeries({
+    required String seriesId,
+    required List<String> memberIds,
+    bool isExtra = false,
+  });
+}
+
+/// O que aconteceu ao atribuir alunos a uma série inteira.
+class SeriesAssignmentResult {
+  const SeriesAssignmentResult({
+    required this.occurrences,
+    required this.porMembro,
+  });
+
+  /// Quantas aulas futuras já geradas foram percorridas.
+  final int occurrences;
+
+  /// Por aluno: quantas semanas ficaram marcadas e quantas não deram.
+  final Map<String, ({int assigned, int skipped})> porMembro;
+
+  int get totalAssigned =>
+      porMembro.values.fold(0, (soma, r) => soma + r.assigned);
+  int get totalSkipped =>
+      porMembro.values.fold(0, (soma, r) => soma + r.skipped);
 }

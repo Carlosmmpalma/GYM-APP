@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_saas/application/providers/tenant_context_providers.dart';
@@ -9,6 +10,7 @@ import 'package:gym_saas/domain/entities/member_summary.dart';
 import 'package:gym_saas/domain/entities/role.dart';
 import 'package:gym_saas/presentation/screens/assessment_form_screen.dart';
 import 'package:gym_saas/repositories/assessment_repository.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 const _tenantId = 'tenant_test';
 const _memberId = 'member_1';
@@ -25,6 +27,7 @@ class _FakeAssessmentRepository implements AssessmentRepository {
   Future<String> createAssessment({
     required String memberId,
     required String instructorId,
+    required DateTime data,
     required int idade,
     required double peso,
     required double altura,
@@ -46,6 +49,7 @@ class _FakeAssessmentRepository implements AssessmentRepository {
     lastCreateCall = {
       'memberId': memberId,
       'instructorId': instructorId,
+      'data': data,
       'idade': idade,
       'peso': peso,
       'altura': altura,
@@ -82,6 +86,7 @@ class _FakeAssessmentRepository implements AssessmentRepository {
     required String memberId,
     required String assessmentId,
     required String updatedBy,
+    required DateTime data,
     required int idade,
     required double peso,
     required double altura,
@@ -104,6 +109,10 @@ class _FakeAssessmentRepository implements AssessmentRepository {
 }
 
 void main() {
+  setUpAll(() async {
+    await initializeDateFormatting('pt_PT');
+  });
+
   const member = MemberSummary(
     uid: _memberId,
     memberNumber: '000001',
@@ -111,7 +120,10 @@ void main() {
     active: true,
   );
 
-  Widget buildApp(_FakeAssessmentRepository repository) {
+  Widget buildApp(
+    _FakeAssessmentRepository repository, {
+    Assessment? assessment,
+  }) {
     return ProviderScope(
       overrides: [
         assessmentRepositoryProvider.overrideWithValue(repository),
@@ -129,10 +141,15 @@ void main() {
       // `AsyncLoading` no primeiro toque (mesma armadilha já
       // documentada em `occurrence_detail_screen_test.dart`).
       child: MaterialApp(
+        // O campo da data formata em pt_PT; sem estes delegados o
+        // `showDatePicker` e o `DateFormat` rebentam no teste.
+        locale: const Locale('pt', 'PT'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('pt', 'PT')],
         home: Consumer(
           builder: (context, ref, _) {
             ref.watch(currentAppUserProvider);
-            return const AssessmentFormScreen(member: member);
+            return AssessmentFormScreen(member: member, assessment: assessment);
           },
         ),
       ),
@@ -207,5 +224,88 @@ void main() {
     // Físicos têm um valor por omissão (primeiro dropdown) — não
     // bloqueiam a gravação mesmo sem serem tocados.
     expect(repository.lastCreateCall?['forcaMS'], isNotEmpty);
+  });
+
+  testWidgets('a data começa em hoje e vai no pedido', (tester) async {
+    // Janela alta, como no teste de cima: o formulário tem dezassete
+    // campos e, numa janela normal, os últimos ficam fora do ecrã e o
+    // `enterText` não os encontra.
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // A data era `serverTimestamp()`: quem registasse hoje a avaliação
+    // feita ontem ficava com o dia errado — e é por este campo que o
+    // histórico ordena e que o gráfico de evolução espaça os pontos.
+    final repository = _FakeAssessmentRepository();
+    await tester.pumpWidget(buildApp(repository));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Data da avaliação'), findsOneWidget);
+
+    Future<void> fill(String label, String value) async {
+      await tester.enterText(find.widgetWithText(TextFormField, label), value);
+    }
+
+    await fill('Idade', '30');
+    await fill('Peso (kg)', '70');
+    await fill('Altura (m)', '1.75');
+    await fill('% Massa Gorda', '20');
+    await fill('Massa Muscular (kg)', '30');
+    await fill('Gordura Visceral', '8');
+    await fill('Metabolismo Basal (kcal)', '1600');
+    await fill('% Água', '55');
+    await fill('Idade Metabólica', '28');
+    await fill('Pressão Arterial', '112/72');
+    await fill('Perímetro Cintura (cm)', '80');
+    await fill('Perímetro Abdominal (cm)', '85');
+
+    await tester.tap(find.text('Guardar avaliação'));
+    await tester.pumpAndSettle();
+
+    final enviada = repository.lastCreateCall?['data'] as DateTime?;
+    expect(enviada, isNotNull);
+    final hoje = DateTime.now();
+    expect(enviada!.year, hoje.year);
+    expect(enviada.month, hoje.month);
+    expect(enviada.day, hoje.day);
+  });
+
+  testWidgets('a editar, mostra a data que a avaliação já tinha',
+      (tester) async {
+    // E não "hoje". Abrir uma avaliação de março para corrigir um peso
+    // não lhe pode mudar a data para o dia da correção — era assim que
+    // se estragava o histórico sem dar por isso.
+    final repository = _FakeAssessmentRepository();
+    final antiga = Assessment(
+      id: 'a1',
+      memberId: _memberId,
+      instructorId: _staffId,
+      createdAt: DateTime(2026, 3, 14),
+      idade: 30,
+      peso: 70,
+      altura: 1.75,
+      percentMassaGorda: 20,
+      massaMuscular: 30,
+      gorduraVisceral: 8,
+      metabolismoBasal: 1600,
+      percentAgua: 55,
+      idadeMetabolica: 28,
+      pressaoArterial: '112/72',
+      perimetroCintura: 80,
+      perimetroAbdominal: 85,
+      forcaMS: 'Boa',
+      forcaMI: 'Boa',
+      forcaCore: 'Boa',
+      flexibilidade: 'Boa',
+      resistencia: 'Boa',
+    );
+
+    await tester.pumpWidget(buildApp(repository, assessment: antiga));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('março'), findsOneWidget);
+    expect(find.textContaining('2026'), findsOneWidget);
   });
 }

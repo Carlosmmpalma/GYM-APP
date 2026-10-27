@@ -107,6 +107,7 @@ class FirebaseAssessmentRepository implements AssessmentRepository {
   Future<String> createAssessment({
     required String memberId,
     required String instructorId,
+    required DateTime data,
     required int idade,
     required double peso,
     required double altura,
@@ -127,7 +128,8 @@ class FirebaseAssessmentRepository implements AssessmentRepository {
   }) async {
     final ref = await _assessments(memberId).add({
       'instructorId': instructorId,
-      'createdAt': FieldValue.serverTimestamp(),
+      // A data escolhida no formulário, não a hora do servidor.
+      'createdAt': Timestamp.fromDate(data),
       ..._fields(
         idade: idade,
         peso: peso,
@@ -164,6 +166,7 @@ class FirebaseAssessmentRepository implements AssessmentRepository {
     required String memberId,
     required String assessmentId,
     required String updatedBy,
+    required DateTime data,
     required int idade,
     required double peso,
     required double altura,
@@ -185,6 +188,7 @@ class FirebaseAssessmentRepository implements AssessmentRepository {
     await _assessments(memberId).doc(assessmentId).update({
       'updatedBy': updatedBy,
       'updatedAt': FieldValue.serverTimestamp(),
+      'createdAt': Timestamp.fromDate(data),
       ..._fields(
         idade: idade,
         peso: peso,

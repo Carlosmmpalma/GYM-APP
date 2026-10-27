@@ -17,6 +17,7 @@ import '../../domain/entities/staff_summary.dart';
 import '../../repositories/session_occurrence_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/offline_write.dart';
+import '../widgets/assign_scope_dialog.dart';
 import '../widgets/attendance_status.dart';
 import '../widgets/design_system.dart';
 import '../widgets/occurrence_dialogs.dart';
@@ -427,6 +428,41 @@ class OccurrenceDetailScreen extends ConsumerWidget {
   /// UC08-A — [isExtra] só muda o texto mostrado e o parâmetro passado
   /// à Cloud Function; a decisão de negócio em si (isentar do limite
   /// semanal, nunca da capacidade da sala) é sempre do backend.
+  /// Atribuir à série inteira: as aulas já geradas e as que vierem.
+  Future<void> _assignToSeries(
+    BuildContext context,
+    WidgetRef ref, {
+    required String seriesId,
+    required List<String> memberIds,
+    required bool isExtra,
+  }) async {
+    try {
+      final resultado =
+          await ref.read(sessionSeriesRepositoryProvider).assignMembersToSeries(
+                seriesId: seriesId,
+                memberIds: memberIds,
+                isExtra: isExtra,
+              );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(resumoDaAtribuicaoNaSerie(
+            totalAssigned: resultado.totalAssigned,
+            totalSkipped: resultado.totalSkipped,
+            occurrences: resultado.occurrences,
+          )),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(userFacingError(e,
+                fallback: 'Não foi possível atribuir. Tenta outra vez.'))),
+      );
+    }
+  }
+
   Future<void> _assignMember(
     BuildContext context,
     WidgetRef ref,
@@ -440,6 +476,30 @@ class OccurrenceDetailScreen extends ConsumerWidget {
       isExtra: isExtra,
     );
     if (memberIds == null || memberIds.isEmpty) return;
+
+    // Numa aula que se repete, atribuir a uma data é quase sempre a
+    // resposta errada — quem inscreve um aluno numa aula semanal
+    // quer-lhe lá todas as semanas. A pergunta só aparece quando há
+    // série; numa aula avulsa não há decisão a tomar.
+    if (occurrence.seriesId != null) {
+      if (!context.mounted) return;
+      final ambito = await showAssignScopeDialog(
+        context: context,
+        quantosMembros: memberIds.length,
+      );
+      if (ambito == null) return;
+      if (ambito == AssignScope.todasAsSemanas) {
+        if (!context.mounted) return;
+        await _assignToSeries(
+          context,
+          ref,
+          seriesId: occurrence.seriesId!,
+          memberIds: memberIds,
+          isExtra: isExtra,
+        );
+        return;
+      }
+    }
 
     try {
       final results =

@@ -11,6 +11,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Traduz os widgets do Material (date pickers, diálogos) para
+  # português. Sem isto o calendário abre em inglês, com os meses e
+  # os dias da semana em inglês, numa app que é toda em português.
+  flutter_localizations:
+    sdk: flutter
 
   # Estado / DI (Platform Foundation §5, §10)
   flutter_riverpod: ^2.5.1
@@ -26,7 +31,7 @@ dependencies:
   firebase_crashlytics: ^4.0.1
 
   # Utilitários
-  intl: ^0.19.0
+  intl: ^0.20.2
   equatable: ^2.0.5
 
   # Fase 8 — vídeo demonstrativo de exercícios (UC15): `file_picker`
