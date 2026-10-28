@@ -14,6 +14,7 @@ import '../../domain/entities/service.dart';
 import '../../domain/entities/session_occurrence.dart';
 import '../../domain/entities/subscription.dart';
 import '../../repositories/waitlist_repository.dart';
+import '../widgets/day_strip.dart';
 import '../widgets/design_system.dart';
 import '../widgets/weekly_allowance.dart';
 
@@ -54,6 +55,28 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
   /// geram) vem a pedido, com o botão no fim da lista. Assim a abertura
   /// da app lê o que interessa e não o horário inteiro do ginásio.
   int _weeksAhead = defaultBookingWeeksAhead;
+
+  /// O dia que a faixa tem escolhido. `null` até a pessoa tocar num:
+  /// enquanto isso vale o primeiro dia com aulas, que é onde quem abre
+  /// o ecrã quer estar (hoje, se ainda houver aulas hoje).
+  ///
+  /// Guarda-se a data e não um índice, pelo mesmo motivo do
+  /// `_modalityId`: a lista de dias muda quando o horizonte alarga e um
+  /// índice ficaria a apontar para outro dia sem ninguém tocar em nada.
+  DateTime? _selectedDay;
+
+  /// O dia que vale agora: o escolhido, se ainda existir na faixa, ou o
+  /// primeiro com aulas. Um dia guardado que deixou de existir (a
+  /// meia-noite passou, o horizonte encolheu) cai no segundo caso em
+  /// vez de deixar a faixa sem nada escolhido.
+  DateTime _diaEscolhido(
+    List<DateTime> dias,
+    Map<DateTime, List<SessionOccurrence>> porDia,
+  ) {
+    final guardado = _selectedDay;
+    if (guardado != null && dias.contains(guardado)) return guardado;
+    return dias.firstWhere(porDia.containsKey, orElse: () => dias.first);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -184,7 +207,41 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
                 ? occurrences
                 : occurrences.where((o) => o.modalityId == selected).toList();
 
-            final rows = _rowsByDay(visible);
+            // Os dias da faixa: de hoje até onde o estúdio deixa marcar
+            // (ou, sem limite, até onde já foi pedido ao servidor). O
+            // +1 é para o último dia parcial — "daqui a 14 dias" cai a
+            // meio de um dia, e as aulas dessa tarde ficavam sem faixa.
+            final hoje = DateTime.now();
+            final totalDias =
+                horizonteDias > 0 ? horizonteDias + 1 : _weeksAhead * 7 + 1;
+            final dias = [
+              for (var i = 0; i < totalDias; i++)
+                DateTime(hoje.year, hoje.month, hoje.day + i),
+            ];
+
+            final porDia = <DateTime, List<SessionOccurrence>>{};
+            for (final o in visible) {
+              final dia =
+                  DateTime(o.startAt.year, o.startAt.month, o.startAt.day);
+              (porDia[dia] ??= []).add(o);
+            }
+
+            final diaAtual = _diaEscolhido(dias, porDia);
+            final doDia = porDia[diaAtual] ?? const <SessionOccurrence>[];
+            final indiceDia = dias.indexOf(diaAtual);
+
+            DateTime? proximoComAulas;
+            for (final d in dias.skip(indiceDia + 1)) {
+              if (porDia.containsKey(d)) {
+                proximoComAulas = d;
+                break;
+              }
+            }
+
+            void irPara(DateTime dia) => setState(() => _selectedDay = dia);
+
+            final aulasDoDia =
+                doDia.length == 1 ? '1 aula' : '${doDia.length} aulas';
 
             return Column(
               children: [
@@ -211,6 +268,27 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
                     ),
                   ),
                 ],
+                if (visible.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  // A queixa dos alunos: uma lista sem fim, em que chegar
+                  // à aula de quinta obrigava a rolar por tudo o que vem
+                  // antes. Um toque no dia mostra só esse dia.
+                  DayStrip(
+                    days: dias,
+                    selected: diaAtual,
+                    sessionsPerDay: {
+                      for (final e in porDia.entries) e.key: e.value.length,
+                    },
+                    onSelected: irPara,
+                    trailing:
+                        horizonteDias == 0 && _weeksAhead < maxBookingWeeksAhead
+                            ? DayStripMore(
+                                onTap: () => setState(
+                                    () => _weeksAhead = maxBookingWeeksAhead),
+                              )
+                            : null,
+                  ),
+                ],
                 Expanded(
                   child: visible.isEmpty
                       ? const EmptyState(
@@ -219,62 +297,81 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
                           message: 'Não há sessões futuras desta modalidade. '
                               'Toca em "Todas" para ver o horário completo.',
                         )
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          // +1 pelo rodapé que alarga o horizonte.
-                          // Com um horizonte definido não há mais
-                          // semanas para pedir — o rodapé de "ver mais"
-                          // levaria a uma lista que não cresce.
-                          itemCount: rows.length +
-                              (horizonteDias == 0 &&
-                                      _weeksAhead < maxBookingWeeksAhead
-                                  ? 1
-                                  : 0),
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 8),
-                          itemBuilder: (context, index) {
-                            if (index == rows.length) {
-                              return _MoreWeeksFooter(
-                                weeksShown: _weeksAhead,
-                                onExpand: () => setState(
-                                    () => _weeksAhead = maxBookingWeeksAhead),
-                              );
+                      // Deslizar para o lado passa de dia, como num
+                      // calendário. O limiar de velocidade evita que um
+                      // gesto diagonal a rolar a lista mude de dia por
+                      // engano.
+                      : GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragEnd: (detalhes) {
+                            final v = detalhes.primaryVelocity ?? 0;
+                            if (v < -300 && indiceDia < dias.length - 1) {
+                              irPara(dias[indiceDia + 1]);
+                            } else if (v > 300 && indiceDia > 0) {
+                              irPara(dias[indiceDia - 1]);
                             }
-                            final row = rows[index];
-                            // Cabeçalho de dia. Agrupar não é
-                            // decoração: uma lista corrida de 40 aulas
-                            // repete a data em cada cartão e obriga a
-                            // lê-la para saber se é hoje ou daqui a
-                            // duas semanas.
-                            if (row.day != null) {
-                              return Padding(
-                                padding: EdgeInsets.only(
-                                    top: index == 0 ? 0 : 12, bottom: 2),
-                                child: SectionLabel(_dayLabel(row.day!)),
-                              );
-                            }
-                            final occurrence = row.occurrence!;
-                            return _OccurrenceTile(
-                              // Sem `key`, o Flutter emparelha os
-                              // elementos por POSIÇÃO: se uma sessão
-                              // desaparece da lista (marcada, cancelada,
-                              // ou o stream reordena), o estado interno
-                              // — o spinner de "a marcar" — fica no
-                              // índice e passa a aparecer na linha
-                              // errada.
-                              key: ValueKey(occurrence.id),
-                              occurrence: occurrence,
-                              memberId: appUser.uid,
-                              alreadyBooked:
-                                  myBookedOccurrenceIds.contains(occurrence.id),
-                              serviceName:
-                                  servicesById[occurrence.serviceId]?.name ??
-                                      occurrence.serviceId,
-                              instructorName: occurrence.instructorId == null
-                                  ? null
-                                  : staffByUid[occurrence.instructorId]?.name,
-                            );
                           },
+                          child: doDia.isEmpty
+                              ? EmptyState(
+                                  icon: Icons.event_busy_outlined,
+                                  title: 'Sem aulas neste dia',
+                                  message: proximoComAulas == null
+                                      ? 'Não há aulas marcáveis nos dias seguintes.'
+                                      // Sem ponto final: o rótulo termina na
+                                      // abreviatura do mês ("nov."), que já o
+                                      // traz, e juntar outro dava "nov..".
+                                      : 'O próximo dia com aulas é '
+                                          '${_dayLabel(proximoComAulas).toLowerCase()}',
+                                  actionLabel: proximoComAulas == null
+                                      ? null
+                                      : 'Ver esse dia',
+                                  onAction: proximoComAulas == null
+                                      ? null
+                                      : () => irPara(proximoComAulas!),
+                                )
+                              : ListView.separated(
+                                  padding: const EdgeInsets.all(16),
+                                  // +1 pelo cabeçalho do dia.
+                                  itemCount: doDia.length + 1,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 8),
+                                  itemBuilder: (context, index) {
+                                    if (index == 0) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                            bottom: 2, top: 2),
+                                        child: SectionLabel(
+                                          '${_dayLabel(diaAtual)} · $aulasDoDia',
+                                        ),
+                                      );
+                                    }
+                                    final occurrence = doDia[index - 1];
+                                    return _OccurrenceTile(
+                                      // Sem `key`, o Flutter emparelha os
+                                      // elementos por POSIÇÃO: se uma
+                                      // sessão desaparece da lista
+                                      // (marcada, cancelada, ou o stream
+                                      // reordena), o estado interno — o
+                                      // spinner de "a marcar" — fica no
+                                      // índice e passa a aparecer na
+                                      // linha errada.
+                                      key: ValueKey(occurrence.id),
+                                      occurrence: occurrence,
+                                      memberId: appUser.uid,
+                                      alreadyBooked: myBookedOccurrenceIds
+                                          .contains(occurrence.id),
+                                      serviceName:
+                                          servicesById[occurrence.serviceId]
+                                                  ?.name ??
+                                              occurrence.serviceId,
+                                      instructorName: occurrence.instructorId ==
+                                              null
+                                          ? null
+                                          : staffByUid[occurrence.instructorId]
+                                              ?.name,
+                                    );
+                                  },
+                                ),
                         ),
                 ),
               ],
@@ -284,34 +381,6 @@ class _BookTrainingScreenState extends ConsumerState<BookTrainingScreen> {
       },
     );
   }
-}
-
-/// Uma linha da lista: ou um cabeçalho de dia, ou uma sessão.
-class _Row {
-  const _Row.day(this.day) : occurrence = null;
-  const _Row.occurrence(this.occurrence) : day = null;
-
-  final DateTime? day;
-  final SessionOccurrence? occurrence;
-}
-
-/// Intercala cabeçalhos de dia numa lista já ordenada por data.
-List<_Row> _rowsByDay(List<SessionOccurrence> occurrences) {
-  final rows = <_Row>[];
-  DateTime? currentDay;
-  for (final occurrence in occurrences) {
-    final day = DateTime(
-      occurrence.startAt.year,
-      occurrence.startAt.month,
-      occurrence.startAt.day,
-    );
-    if (currentDay == null || day != currentDay) {
-      rows.add(_Row.day(day));
-      currentDay = day;
-    }
-    rows.add(_Row.occurrence(occurrence));
-  }
-  return rows;
 }
 
 /// "Hoje" e "Amanhã" antes da data: é assim que se fala de treino, e
@@ -727,39 +796,6 @@ class _WeeklyUsageLine extends ConsumerWidget {
           ),
         );
       },
-    );
-  }
-}
-
-/// Rodapé que alarga o horário das duas semanas iniciais para as oito
-/// que as séries geram.
-///
-/// Existe para que a abertura da app leia só o que interessa. Um botão
-/// discreto no fim da lista, e não um seletor no topo: quem procura a
-/// aula de amanhã não devia ter de decidir nada primeiro.
-class _MoreWeeksFooter extends StatelessWidget {
-  const _MoreWeeksFooter({required this.weeksShown, required this.onExpand});
-
-  final int weeksShown;
-  final VoidCallback onExpand;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16, bottom: 8),
-      child: Column(
-        children: [
-          Text(
-            'A mostrar as próximas $weeksShown semanas.',
-            style: const TextStyle(color: AppColors.mute, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton(
-            onPressed: onExpand,
-            child: const Text('Ver horário completo'),
-          ),
-        ],
-      ),
     );
   }
 }

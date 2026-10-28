@@ -299,10 +299,10 @@ void main() {
         .doc('occ_2')
         .set({
       'serviceId': 'service_2',
-      'startAt':
-          Timestamp.fromDate(DateTime.now().add(const Duration(days: 2))),
+      'startAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(days: 1, hours: 2))),
       'endAt': Timestamp.fromDate(
-          DateTime.now().add(const Duration(days: 2, hours: 1))),
+          DateTime.now().add(const Duration(days: 1, hours: 3))),
       'capacity': 4,
       'status': 'scheduled',
       'activeBookingCount': 0,
@@ -367,10 +367,10 @@ void main() {
         .set({
       'serviceId': 'service_2',
       'modalityId': 'mod_hyrox',
-      'startAt':
-          Timestamp.fromDate(DateTime.now().add(const Duration(days: 2))),
+      'startAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(days: 1, hours: 2))),
       'endAt': Timestamp.fromDate(
-          DateTime.now().add(const Duration(days: 2, hours: 1))),
+          DateTime.now().add(const Duration(days: 1, hours: 3))),
       'capacity': 5,
       'status': 'scheduled',
       'activeBookingCount': 0,
@@ -570,4 +570,180 @@ void main() {
   // utilização que o provider reconheça, e depois semear uma aula a
   // mais de sete dias — aí a etiqueta tem de dizer "Nessa semana" e o
   // aviso de limite não pode aparecer.
+
+  group('faixa de dias', () {
+    /// Uma segunda aula, noutro serviço, [dias] à frente.
+    Future<void> aulaDeOutroDia(
+      FakeFirebaseFirestore firestore, {
+      required int dias,
+    }) async {
+      await firestore
+          .collection('tenants')
+          .doc(_tenantId)
+          .collection('services')
+          .doc('service_2')
+          .set({'name': 'Pilates', 'active': true});
+      await firestore
+          .collection('tenants')
+          .doc(_tenantId)
+          .collection('sessionOccurrences')
+          .doc('occ_dia')
+          .set({
+        'serviceId': 'service_2',
+        'startAt': Timestamp.fromDate(DateTime.now().add(Duration(days: dias))),
+        'endAt': Timestamp.fromDate(
+            DateTime.now().add(Duration(days: dias, hours: 1))),
+        'capacity': 4,
+        'status': 'scheduled',
+        'activeBookingCount': 0,
+      });
+    }
+
+    String diaDoMes(int diasAFrente) =>
+        '${DateTime.now().add(Duration(days: diasAFrente)).day}';
+
+    const appUser =
+        AppUser(uid: 'member_1', tenantId: _tenantId, roles: {Role.member});
+
+    testWidgets('mostra UM dia de cada vez, e tocar noutro troca a lista',
+        (tester) async {
+      // A queixa dos alunos: uma lista corrida de duas semanas de
+      // horário, em que chegar à aula de quinta obrigava a rolar por
+      // tudo o que vem antes.
+      final firestore = await seedFirestore(
+        capacity: 4,
+        grantedServiceIds: const ['service_1', 'service_2'],
+      );
+      await aulaDeOutroDia(firestore, dias: 3);
+
+      await tester.pumpWidget(buildApp(firestore, appUser));
+      await tester.pumpAndSettle();
+
+      // Abre no primeiro dia com aulas (amanhã), e só nele.
+      expect(find.text('Aula de Grupo'), findsOneWidget);
+      expect(find.text('Pilates'), findsNothing);
+
+      await tester.tap(find.text(diaDoMes(3)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pilates'), findsOneWidget);
+      expect(find.text('Aula de Grupo'), findsNothing);
+    });
+
+    testWidgets('um dia sem aulas diz-o, e leva ao próximo que as tem',
+        (tester) async {
+      // Os dias vazios ficam na faixa em vez de serem saltados: esconder
+      // que o estúdio fecha ao domingo deixava a pessoa a achar que
+      // faltava um dia. Mas um ecrã em branco é um beco — por isso diz
+      // o que se passa e oferece o caminho.
+      final firestore = await seedFirestore(
+        capacity: 4,
+        grantedServiceIds: const ['service_1', 'service_2'],
+      );
+      await aulaDeOutroDia(firestore, dias: 3);
+
+      await tester.pumpWidget(buildApp(firestore, appUser));
+      await tester.pumpAndSettle();
+
+      // Daqui a 2 dias não há nada: a aula 1 é amanhã, a outra daqui a 3.
+      await tester.tap(find.text(diaDoMes(2)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sem aulas neste dia'), findsOneWidget);
+      expect(find.text('Aula de Grupo'), findsNothing);
+      expect(find.text('Pilates'), findsNothing);
+
+      // O rótulo do dia acaba na abreviatura do mês ("nov."), que já
+      // traz o ponto: juntar-lhe outro dava "3 nov..", visto a olho.
+      expect(find.textContaining('..'), findsNothing);
+
+      await tester.tap(find.text('Ver esse dia'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pilates'), findsOneWidget);
+    });
+
+    testWidgets(
+        'sem dias com aulas à frente, não oferece um caminho que não existe',
+        (tester) async {
+      final firestore = await seedFirestore(capacity: 4);
+
+      await tester.pumpWidget(buildApp(firestore, appUser));
+      await tester.pumpAndSettle();
+
+      // A única aula é amanhã; daqui a 2 dias já não há mais nenhuma.
+      await tester.tap(find.text(diaDoMes(2)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sem aulas neste dia'), findsOneWidget);
+      expect(find.text('Ver esse dia'), findsNothing);
+    });
+
+    testWidgets('o dia da semana vem em três letras, nunca por extenso',
+        (tester) async {
+      // Na versão atual do `intl`, `DateFormat('EEE', 'pt_PT')` devolve
+      // o nome completo, que num cartão de 54 pontos se partia em duas
+      // linhas — "DOMING" por cima de "O". Visto no ecrã, não nos
+      // testes de layout, que só medem se transborda.
+      final firestore = await seedFirestore(capacity: 4);
+
+      await tester.pumpWidget(buildApp(firestore, appUser));
+      await tester.pumpAndSettle();
+
+      for (final porExtenso in [
+        'DOMINGO',
+        'SEGUNDA',
+        'TERÇA',
+        'QUARTA',
+        'QUINTA',
+        'SEXTA',
+        'SÁBADO',
+      ]) {
+        expect(find.text(porExtenso), findsNothing, reason: porExtenso);
+      }
+
+      // E aparecem mesmo, em três letras: sem esta metade, apagar os
+      // rótulos todos também passava.
+      final abreviados = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM']
+          .where((d) => find.text(d).evaluate().isNotEmpty);
+      expect(abreviados.length, greaterThanOrEqualTo(5));
+    });
+
+    testWidgets('hoje aparece por extenso na faixa', (tester) async {
+      final firestore = await seedFirestore(capacity: 4);
+
+      await tester.pumpWidget(buildApp(firestore, appUser));
+      await tester.pumpAndSettle();
+
+      // É assim que se fala de treino, e poupa a conta mental de ver
+      // um número e perceber que é hoje.
+      expect(find.text('HOJE'), findsOneWidget);
+    });
+
+    testWidgets('deslizar para o lado passa para o dia seguinte',
+        (tester) async {
+      final firestore = await seedFirestore(
+        capacity: 4,
+        grantedServiceIds: const ['service_1', 'service_2'],
+      );
+      await aulaDeOutroDia(firestore, dias: 2);
+
+      await tester.pumpWidget(buildApp(firestore, appUser));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Aula de Grupo'), findsOneWidget);
+
+      // Um gesto rápido para a esquerda, como se vira a página.
+      await tester.fling(
+        find.text('Aula de Grupo'),
+        const Offset(-300, 0),
+        1500,
+      );
+      await tester.pumpAndSettle();
+
+      // Amanhã -> daqui a 2 dias, que é onde está o Pilates.
+      expect(find.text('Pilates'), findsOneWidget);
+      expect(find.text('Aula de Grupo'), findsNothing);
+    });
+  });
 }
